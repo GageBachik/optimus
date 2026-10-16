@@ -2,11 +2,12 @@ import os from 'node:os';
 import { doctor } from './doctor.js';
 import { planCleanup } from './cleanup.js';
 import { setup } from './setup.js';
+import { initBank, projectInit } from './init.js';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'cleanup') {
   const actions = planCleanup(home); const apply = has('--apply');
@@ -22,4 +23,12 @@ else if (cmd === 'cleanup') {
   const device = value('--device');
   if (has('--device') && !device) { process.stderr.write('--device needs a name\n'); process.exitCode = 2; }
   else setup(home, { device, appendClaudeMd: has('--append-claude-md') });
+} else if (cmd === 'init') {
+  const bank = value('--bank'), clone = value('--clone');
+  if ((has('--bank') && !bank) || (has('--clone') && !clone)) { process.stderr.write('--bank and --clone need a value\n'); process.exitCode = 2; }
+  else try { initBank({ bank, clone }); } catch (e) { process.stderr.write(`kb init: ${(e as Error).message}\n`); process.exitCode = 1; }
+} else if (cmd === 'project' && args[0] === 'init') {
+  const domain = value('--domain'), id = value('--id');
+  if (!domain || (has('--id') && !id)) { process.stderr.write('usage: kb project init --domain <d> [--id <id>]\n'); process.exitCode = 2; }
+  else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + '\n');
 } else { process.stdout.write(usage); if (cmd && cmd !== 'help' && cmd !== '--help') process.exitCode = 2; }

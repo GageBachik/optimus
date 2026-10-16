@@ -1,4 +1,5 @@
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
+import { createRequire as requireFrom } from 'node:module'; // aliased: the esbuild banner already declares createRequire
 import path from 'node:path';
 import { paths } from '../lib/paths.js';
 import type { Kind } from './ids.js';
@@ -17,8 +18,14 @@ CREATE TABLE IF NOT EXISTS rank_weights(key TEXT PRIMARY KEY, value REAL NOT NUL
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE VIRTUAL TABLE IF NOT EXISTS note_fts USING fts5(note_id UNINDEXED, title, body, tokenize='porter unicode61');`;
 const WEIGHTS: [string, number][] = [['facet_value', 3], ['facet_key', 1], ['environment', 2], ['subject', 2], ['gate_rank', 1], ['recency', 1], ['transfer_confirmed', 2], ['transfer_refuted', -2], ['conflict', -3], ['expired_factor', 0.5]];
+/** Loads node:sqlite on first use, swallowing only its ExperimentalWarning (dist/kb.js runs without --disable-warning). */
+export function loadSqlite(): typeof import('node:sqlite') {
+  const emit = process.emitWarning;
+  process.emitWarning = ((w: string | Error, ...rest: any[]) => { const type = typeof rest[0] === 'string' ? rest[0] : rest[0]?.type; if (type === 'ExperimentalWarning') return; return (emit as any).call(process, w, ...rest); }) as typeof process.emitWarning;
+  try { return requireFrom(import.meta.url)('node:sqlite'); } finally { process.emitWarning = emit; }
+}
 export function openDb(file = path.join(paths.stateDir(), 'kb.sqlite')): Db {
-  const sql = new DatabaseSync(file); sql.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA foreign_keys=ON;'); sql.exec(DDL);
+  const sql = new (loadSqlite().DatabaseSync)(file); sql.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA foreign_keys=ON;'); sql.exec(DDL);
   const ins = sql.prepare('INSERT OR IGNORE INTO rank_weights(key, value) VALUES (?, ?)'); for (const [k, v] of WEIGHTS) ins.run(k, v);
   return { sql, file };
 }

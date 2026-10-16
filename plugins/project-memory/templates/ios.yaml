@@ -1,0 +1,11 @@
+domain: ios
+facets: [state_ownership, view_composition, navigation, persistence, concurrency]
+methods: [unit-test, ui-test, snapshot-test, instruments-profile, testflight-cohort, app-store-ab, review-submission]
+gates: [simulator, device, testflight, app-store-review, app-store-live]
+environment: os-xcode
+subject: device-class
+seed_concepts:
+  - { name: swiftui state ownership, aliases: [] }
+  - { name: main-thread confinement, aliases: [] }
+  - { name: app store review rule, aliases: [] }
+  - { name: idempotent state restore, aliases: [] }

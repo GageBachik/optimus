@@ -1,0 +1,32 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-'));
+const { initBank, projectInit } = await import('../../src/cli/init.js');
+const { openDb } = await import('../../src/kb/db.js');
+const { gateRank } = await import('../../src/kb/templates.js');
+const config = () => JSON.parse(readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'config.json'), 'utf8'));
+const git = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' }).stdout.trim();
+test('kb init creates a committed bank with the three templates installed; --clone rebuilds from it', () => {
+  const bank = path.join(mkdtempSync(path.join(tmpdir(), 'bank-')), 'kb');
+  initBank({ bank, print: () => {} });
+  assert.equal(readFileSync(path.join(bank, '.gitattributes'), 'utf8'), '* text=auto eol=lf\n');
+  assert.deepEqual(readdirSync(path.join(bank, 'templates')).sort(), ['gen-l1.yaml', 'ios.yaml', 'trading.yaml']);
+  assert.ok(existsSync(path.join(bank, 'notes'))); assert.equal(git(bank, 'branch', '--show-current'), 'main');
+  assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1'); assert.equal(git(bank, 'status', '--porcelain'), '');
+  assert.equal(config().bankDir, bank); assert.equal(gateRank(openDb(), 'ios', 'testflight'), 2);
+  initBank({ bank, print: () => {} }); assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1');
+  const clone = path.join(mkdtempSync(path.join(tmpdir(), 'clone-')), 'kb');
+  initBank({ bank: clone, clone: bank, print: () => {} });
+  assert.ok(existsSync(path.join(clone, 'templates', 'trading.yaml'))); assert.equal(config().bankDir, clone);
+});
+test('kb project init writes .kb.json with project_id defaulting to the lowercase basename', () => {
+  const dir = path.join(mkdtempSync(path.join(tmpdir(), 'proj-')), 'ES-MeanRev');
+  mkdirSync(dir);
+  assert.deepEqual(projectInit(dir, { domain: 'trading' }), { project_id: 'es-meanrev', domain: 'trading' });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, '.kb.json'), 'utf8')), { project_id: 'es-meanrev', domain: 'trading' });
+  assert.equal(projectInit(dir, { domain: 'gen-l1', id: 'genibook' }).project_id, 'genibook');
+});

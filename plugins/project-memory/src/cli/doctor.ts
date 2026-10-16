@@ -1,19 +1,16 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
-import { createRequire as requireFrom } from 'node:module'; // aliased: the esbuild banner already declares createRequire
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { paths } from '../lib/paths.js';
+import { loadSqlite } from '../kb/db.js';
 import { computeBaseline } from './baseline.js';
 import { runLiveTest, type LiveResult } from './live-test.js';
 export type Check = { status: 'PASS' | 'WARN' | 'FAIL' | 'INFO'; name: string; detail: string };
 const readJsonFile = (f: string): any => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
-/** DESIGN §7 hard check: node:sqlite creates an FTS5 table. Its ExperimentalWarning is swallowed for the probe only. */
+/** DESIGN §7 hard check: node:sqlite creates an FTS5 table. */
 function fts5Probe(): Check {
-  const emit = process.emitWarning;
-  process.emitWarning = ((w: string | Error, ...rest: any[]) => { const type = typeof rest[0] === 'string' ? rest[0] : rest[0]?.type; if (type === 'ExperimentalWarning') return; return (emit as any).call(process, w, ...rest); }) as typeof process.emitWarning;
-  try { const { DatabaseSync } = requireFrom(import.meta.url)('node:sqlite'); const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE t USING fts5(x)'); db.close(); return { status: 'PASS', name: 'sqlite-fts5', detail: 'node:sqlite creates an FTS5 table' }; }
+  try { const { DatabaseSync } = loadSqlite(); const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE t USING fts5(x)'); db.close(); return { status: 'PASS', name: 'sqlite-fts5', detail: 'node:sqlite creates an FTS5 table' }; }
   catch (e: any) { return { status: 'FAIL', name: 'sqlite-fts5', detail: `node:sqlite FTS5 probe failed: ${e?.message ?? e}` }; }
-  finally { process.emitWarning = emit; }
 }
 /** Installed plugins as `{ name, installPath }` from `~/.claude/plugins/installed_plugins.json` (version 2: `plugins: { name: [{ installPath }] }`). */
 function installedPlugins(home: string): { name: string; installPath: string }[] {

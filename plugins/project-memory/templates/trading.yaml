@@ -1,0 +1,11 @@
+domain: trading
+facets: [why, entry, risk, exit, horizon, instrument_class]
+methods: [grid-search, random-search, walk-forward, bayesian, monte-carlo, bootstrap]
+gates: [in-sample, out-of-sample, paper, live-small, live]
+environment: platform
+subject: instrument
+seed_concepts:
+  - { name: risk sizing, aliases: [position sizing, position-size, bet size, fixed-fractional sizing] }
+  - { name: autocorrelation, aliases: [autocorr, serial correlation, return memory] }
+  - { name: transaction cost model, aliases: [slippage model, fees and slippage] }
+  - { name: idempotency, aliases: [retry-safe, idempotent replay, safe to retry] }
