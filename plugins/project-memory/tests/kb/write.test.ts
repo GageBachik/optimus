@@ -51,3 +51,22 @@ test('R4 revert; a person\'s verdict is final; kb_link; retract soft-deletes; se
   const again = kbWrite(db, bank2, { kind: 'finding', id: f1.id, title: 'A renamed', attrs: { valid_to: '2027-01-01' } }, now); assert.equal(again.created, false);
   assert.deepEqual(getAttrs(db, f1.id).gate, ['live'], 'attrs merge over an existing note'); assert.equal(state(), 'confirmed', 'rels survive a re-write');
 });
+
+test('fix round 1: only user-authored kinds are writable; transfers cannot be forged; rel props are redacted', () => {
+  const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'c.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const bank3 = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  for (const kind of ['concept', 'evidence', 'domain', 'template', 'report'] as const)
+    assert.throws(() => kbWrite(db, bank3, { kind, title: 'risk sizing' }, now), /kb_write writes/, kind);
+  const a = kbWrite(db, bank3, { kind: 'approach', title: 'A', domain: 'trading', project: 'es' }, now);
+  const f = kbWrite(db, bank3, { kind: 'finding', title: 'F', domain: 'trading', project: 'spy', evidence: [{ kind: 'commit', ref: 'x1' }] }, now);
+  assert.throws(() => kbLink(db, bank3, { src: f.id, type: 'transfer', dst: a.id, props: { state: 'confirmed' } }), /transfers are proposed by kb_write/);
+  assert.throws(() => kbWrite(db, bank3, { kind: 'finding', title: 'G', domain: 'trading', project: 'spy', rels: [{ type: 'transfer', dst: a.id, props: { state: 'confirmed' } }] }, now), /transfers are proposed by kb_write/);
+  assert.ok(!getRels(db, f.id).some((r) => r.type === 'transfer'));
+  const key = 'sk_live_' + 'b'.repeat(24);
+  const { rel_id } = kbLink(db, bank3, { src: f.id, type: 'uses', dst: a.id, props: { objective: `token: ${'c'.repeat(20)}`, nested: { k: key } } });
+  kbWrite(db, bank3, { kind: 'finding', id: f.id, title: 'F', rels: [{ type: 'about', dst: a.id, props: { note: `Bearer ${'d'.repeat(20)}` } }] }, now);
+  const file = readFileSync(path.join(bank3, 'notes', 'finding', `${f.id}.md`), 'utf8');
+  assert.ok(!file.includes('c'.repeat(20)) && !file.includes(key) && !file.includes('d'.repeat(20)), file);
+  assert.ok(!JSON.stringify(getRels(db, f.id)).includes(key));
+  assert.ok(getRels(db, f.id).some((r) => r.id === rel_id), 'the rel id is computed from the redacted props');
+});

@@ -21291,6 +21291,7 @@ var PATTERNS = [
   { kind: "generic", re: /\b(api[_-]?key|secret|token|passphrase|password)\s*[:=]\s*["']?([A-Za-z0-9\/+_\-]{16,})/gi, group: 2 }
 ];
 var MAX_CHARS = 1e6;
+var redactJson = (_k, v) => typeof v === "string" ? redactSensitive(v).text : v;
 function redactSensitive(text) {
   if (text.length > MAX_CHARS) return { text: `[REDACTED:oversize ${text.length} chars]`, count: 1 };
   let count = 0;
@@ -21390,41 +21391,6 @@ function reindexFts(db2, noteId2) {
   const n = getNote(db2, noteId2);
   db2.sql.prepare("DELETE FROM note_fts WHERE note_id=?").run(noteId2);
   if (n && !n.deleted_at) db2.sql.prepare("INSERT INTO note_fts(note_id,title,body) VALUES(?,?,?)").run(noteId2, n.title, n.body);
-}
-
-// src/kb/ids.ts
-import { randomBytes as randomBytes2 } from "node:crypto";
-var ENC = "0123456789abcdefghjkmnpqrstvwxyz";
-var lastTime = 0;
-var lastRand = [];
-function ulid(now = Date.now()) {
-  let t = now, time = "";
-  for (let i = 0; i < 10; i++) {
-    time = ENC[t % 32] + time;
-    t = Math.floor(t / 32);
-  }
-  if (now === lastTime) {
-    for (let i = 15; i >= 0; i--) {
-      if (lastRand[i] < 31) {
-        lastRand[i]++;
-        break;
-      }
-      lastRand[i] = 0;
-    }
-  } else {
-    lastTime = now;
-    lastRand = [...randomBytes2(16)].map((b) => b % 32);
-  }
-  return time + lastRand.map((x) => ENC[x]).join("");
-}
-var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
-var KINDS = Object.keys(PREFIX);
-var noteId = (kind) => `${PREFIX[kind]}_${ulid()}`;
-var evidenceId = (sha2563) => `e_${sha2563.slice(0, 16)}`;
-function kindOfId(id) {
-  const k = Object.entries(PREFIX).find(([, p]) => id.startsWith(p + "_"))?.[0];
-  if (!k) throw new Error(`unknown id prefix: ${id}`);
-  return k;
 }
 
 // src/kb/write.ts
@@ -21578,6 +21544,40 @@ function exportNote(db2, bankDir, id) {
   return file;
 }
 
+// src/kb/ids.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+var ENC = "0123456789abcdefghjkmnpqrstvwxyz";
+var lastTime = 0;
+var lastRand = [];
+function ulid(now = Date.now()) {
+  let t = now, time = "";
+  for (let i = 0; i < 10; i++) {
+    time = ENC[t % 32] + time;
+    t = Math.floor(t / 32);
+  }
+  if (now === lastTime) {
+    for (let i = 15; i >= 0; i--) {
+      if (lastRand[i] < 31) {
+        lastRand[i]++;
+        break;
+      }
+      lastRand[i] = 0;
+    }
+  } else {
+    lastTime = now;
+    lastRand = [...randomBytes2(16)].map((b) => b % 32);
+  }
+  return time + lastRand.map((x) => ENC[x]).join("");
+}
+var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
+var noteId = (kind) => `${PREFIX[kind]}_${ulid()}`;
+var evidenceId = (sha2563) => `e_${sha2563.slice(0, 16)}`;
+function kindOfId(id) {
+  const k = Object.entries(PREFIX).find(([, p]) => id.startsWith(p + "_"))?.[0];
+  if (!k) throw new Error(`unknown id prefix: ${id}`);
+  return k;
+}
+
 // src/kb/concepts.ts
 import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3 } from "node:fs";
 import path6 from "node:path";
@@ -21644,6 +21644,11 @@ var must = (db2, id) => {
   if (!n || n.deleted_at) throw new Error(`no note ${id}`);
   return n;
 };
+var WRITABLE_KINDS = ["project", "theme", "approach", "experiment", "target", "finding"];
+function userRel(type, props = {}) {
+  if (type === "transfer") throw new Error("transfers are proposed by kb_write and settled by kb transfer");
+  return JSON.parse(JSON.stringify(props, redactJson));
+}
 function metricsOf(attrs) {
   return Object.entries(attrs).filter(([k]) => k.startsWith("metric:")).map(([k, [v]]) => {
     const [value, unit, better, baseline] = v.split("|");
@@ -21727,6 +21732,7 @@ function applyProvisionalVerdicts(db2, bankDir, findingId, now = (/* @__PURE__ *
   }
 }
 function kbWrite(db2, bankDir, rec, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  if (!WRITABLE_KINDS.includes(rec.kind)) throw new Error(`kb_write writes ${WRITABLE_KINDS.join(", ")}, not ${rec.kind}`);
   const id = rec.id ?? noteId(rec.kind);
   if (kindOfId(id) !== rec.kind) throw new Error(`id ${id} is not a ${rec.kind}`);
   const prev = getNote(db2, id), domain = rec.domain ?? prev?.domain ?? null, project = rec.project ?? prev?.project ?? null, facets = rec.facets ?? {};
@@ -21745,7 +21751,7 @@ function kbWrite(db2, bankDir, rec, now = (/* @__PURE__ */ new Date()).toISOStri
     if (!domain) throw new Error("gate needs a domain");
     attrs.gate_rank = [String(gateRank(db2, domain, attrs.gate[0]))];
   }
-  for (const r of rec.rels ?? []) must(db2, r.dst);
+  const rels = (rec.rels ?? []).map((r) => ({ type: r.type, dst: must(db2, r.dst).id, props: userRel(r.type, r.props) }));
   upsertNote(db2, { id, kind: rec.kind, domain, project, title: red(rec.title), body: red(rec.body ?? prev?.body ?? ""), created_at: prev?.created_at ?? now, updated_at: now, deleted_at: null, device_id: deviceId() });
   for (const [k, v] of Object.entries(facets)) attrs[`facet:${k}`] = [red(v)];
   for (const m of rec.metrics ?? []) attrs[`metric:${m.name}`] = [metricAttr(m)];
@@ -21758,7 +21764,7 @@ function kbWrite(db2, bankDir, rec, now = (/* @__PURE__ */ new Date()).toISOStri
   });
   const rel = (type, dst, props = {}) => addRel(db2, { id: relId(id, type, dst, props), src: id, type, dst, props, created_at: now, deleted_at: null });
   for (const c of concepts2) rel("about", c.conceptId);
-  for (const r of rec.rels ?? []) rel(r.type, r.dst, r.props ?? {});
+  for (const r of rels) rel(r.type, r.dst, r.props);
   for (const e of rec.evidence ?? []) {
     const eid = evidenceId(e.sha256 ?? sha2562(`${e.kind}|${e.ref}`));
     if (!getNote(db2, eid)) {
@@ -21778,7 +21784,7 @@ function kbWrite(db2, bankDir, rec, now = (/* @__PURE__ */ new Date()).toISOStri
 function kbLink(db2, bankDir, l, now = (/* @__PURE__ */ new Date()).toISOString()) {
   must(db2, l.src);
   must(db2, l.dst);
-  const props = l.props ?? {}, rel_id = relId(l.src, l.type, l.dst, props);
+  const props = userRel(l.type, l.props), rel_id = relId(l.src, l.type, l.dst, props);
   addRel(db2, { id: rel_id, src: l.src, type: l.type, dst: l.dst, props, created_at: now, deleted_at: null });
   touch2(db2, l.src, now);
   exportNote(db2, bankDir, l.src);
@@ -21805,9 +21811,9 @@ server.registerTool("recall", {
 var Metric = external_exports.object({ name: external_exports.string().min(1), value: external_exports.number(), unit: external_exports.string().optional(), better: external_exports.enum(["higher", "lower"]), baseline: external_exports.number().optional() });
 var Evidence = external_exports.object({ kind: external_exports.enum(["commit", "path", "transcript", "url"]), ref: external_exports.string().min(1), sha256: external_exports.string().regex(/^[0-9a-f]{64}$/).optional() });
 server.registerTool("kb_write", {
-  description: "Create or update a knowledge-bank note (finding, approach, experiment, target, theme, concept, evidence, \u2026). tags resolve to concepts (about rels); facets, metrics (with optional baseline), method/objective/trials become attrs; evidence becomes evidence notes with backed_by rels; a finding without evidence is stored as state=unverified; a finding proposes transfers to approaches in other projects. Returns {id, created, concepts, transfers, questions}. Never touches git.",
+  description: "Create or update a knowledge-bank note (project, theme, approach, experiment, target, finding; concepts come from tags, evidence notes from the evidence field). tags resolve to concepts (about rels); facets, metrics (with optional baseline), method/objective/trials become attrs; evidence becomes evidence notes with backed_by rels; a finding without evidence is stored as state=unverified; a finding proposes transfers to approaches in other projects. Returns {id, created, concepts, transfers, questions}. Never touches git.",
   inputSchema: {
-    kind: external_exports.enum(KINDS),
+    kind: external_exports.enum(WRITABLE_KINDS),
     id: external_exports.string().optional(),
     title: external_exports.string().min(1),
     body: external_exports.string().optional(),
@@ -21831,7 +21837,7 @@ server.registerTool("kb_write", {
   }
 });
 server.registerTool("kb_link", {
-  description: "Add one relation between two bank notes (about, relies_on, under, tests, on, at, in, uses, discovered_in, validated_in, supersedes, conflicts_with, backed_by, \u2026). Returns {rel_id}. Never touches git.",
+  description: "Add one relation between two bank notes (about, relies_on, under, tests, on, at, in, uses, discovered_in, validated_in, supersedes, conflicts_with, backed_by, \u2026; not transfer, which kb_write proposes and `kb transfer` settles). Returns {rel_id}. Never touches git.",
   inputSchema: { src: external_exports.string().min(1), type: external_exports.string().min(1), dst: external_exports.string().min(1), props: external_exports.record(external_exports.string(), external_exports.unknown()).optional() }
 }, async (l) => {
   try {

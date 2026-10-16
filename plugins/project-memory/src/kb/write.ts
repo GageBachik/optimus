@@ -4,7 +4,7 @@ import { exportNote, relId } from './export.js';
 import { type Kind, noteId, evidenceId, kindOfId } from './ids.js';
 import { resolveConcept } from './concepts.js';
 import { validateApproachFacets, gateRank } from './templates.js';
-import { redactSensitive } from '../lib/redaction.js';
+import { redactSensitive, redactJson } from '../lib/redaction.js';
 
 export type Metric = { name: string; value: number; unit?: string; better: 'higher' | 'lower'; baseline?: number };
 export type Evidence = { kind: 'commit' | 'path' | 'transcript' | 'url'; ref: string; sha256?: string };
@@ -22,6 +22,14 @@ const touch = (db: Db, id: string, now: string) => db.sql.prepare('UPDATE note S
 const TARGET_FACETS = ['environment', 'subject']; // Ruling R5
 /** A live note, or an error naming the id. */
 const must = (db: Db, id: string) => { const n = getNote(db, id); if (!n || n.deleted_at) throw new Error(`no note ${id}`); return n; };
+/** The kinds an agent authors. Concept ids are deterministic (resolveConcept, via `tags`), evidence ids are content hashes (the `evidence` field),
+ *  domain and template notes come from installTemplate, and no tool produces a report in phases 1–2 (DESIGN §4.1, §4.3). */
+export const WRITABLE_KINDS = ['project', 'theme', 'approach', 'experiment', 'target', 'finding'] as const satisfies readonly Kind[];
+/** A caller-supplied relation: never a transfer (DESIGN §4.8: proposed by kb_write, settled only by `kb transfer`), props redacted (rule 10). */
+function userRel(type: string, props: Record<string, unknown> = {}): Record<string, unknown> {
+  if (type === 'transfer') throw new Error('transfers are proposed by kb_write and settled by kb transfer');
+  return JSON.parse(JSON.stringify(props, redactJson));
+}
 
 /** Attr `metric:<name>` = `<value>|<unit>|<better>|<baseline or ''>` (DESIGN §4.2). */
 export function metricsOf(attrs: Record<string, string[]>): Metric[] {
@@ -108,6 +116,7 @@ export function applyProvisionalVerdicts(db: Db, bankDir: string, findingId: str
 /** DESIGN §4.5 `kb_write`: validates, then upserts the note (attrs merged over an existing note's, rels only ever added), resolves tags to concepts,
  *  writes evidence notes, exports, and for a finding proposes transfers and applies provisional verdicts. No git call anywhere (DESIGN §4.4). */
 export function kbWrite(db: Db, bankDir: string, rec: WriteRecord, now = new Date().toISOString()): WriteResult {
+  if (!(WRITABLE_KINDS as readonly Kind[]).includes(rec.kind)) throw new Error(`kb_write writes ${WRITABLE_KINDS.join(', ')}, not ${rec.kind}`);
   const id = rec.id ?? noteId(rec.kind);
   if (kindOfId(id) !== rec.kind) throw new Error(`id ${id} is not a ${rec.kind}`);
   const prev = getNote(db, id), domain = rec.domain ?? prev?.domain ?? null, project = rec.project ?? prev?.project ?? null, facets = rec.facets ?? {};
@@ -120,7 +129,7 @@ export function kbWrite(db: Db, bankDir: string, rec: WriteRecord, now = new Dat
   const attrs: Record<string, string[]> = prev ? getAttrs(db, id) : {};
   for (const [k, v] of Object.entries(rec.attrs ?? {})) attrs[k] = (Array.isArray(v) ? v : [v]).map(red);
   if (attrs.gate) { if (!domain) throw new Error('gate needs a domain'); attrs.gate_rank = [String(gateRank(db, domain, attrs.gate[0]))]; }
-  for (const r of rec.rels ?? []) must(db, r.dst);
+  const rels = (rec.rels ?? []).map((r) => ({ type: r.type, dst: must(db, r.dst).id, props: userRel(r.type, r.props) }));
   upsertNote(db, { id, kind: rec.kind, domain, project, title: red(rec.title), body: red(rec.body ?? prev?.body ?? ''), created_at: prev?.created_at ?? now, updated_at: now, deleted_at: null, device_id: deviceId() });
   for (const [k, v] of Object.entries(facets)) attrs[`facet:${k}`] = [red(v)];
   for (const m of rec.metrics ?? []) attrs[`metric:${m.name}`] = [metricAttr(m)];
@@ -130,7 +139,7 @@ export function kbWrite(db: Db, bankDir: string, rec: WriteRecord, now = new Dat
   const concepts = (rec.tags ?? []).map((tag) => { const r = resolveConcept(db, bankDir, tag, now); return { tag, conceptId: r.conceptId, how: r.how }; });
   const rel = (type: string, dst: string, props: Record<string, unknown> = {}) => addRel(db, { id: relId(id, type, dst, props), src: id, type, dst, props, created_at: now, deleted_at: null });
   for (const c of concepts) rel('about', c.conceptId);
-  for (const r of rec.rels ?? []) rel(r.type, r.dst, r.props ?? {});
+  for (const r of rels) rel(r.type, r.dst, r.props);
   for (const e of rec.evidence ?? []) {
     const eid = evidenceId(e.sha256 ?? sha256(`${e.kind}|${e.ref}`));
     if (!getNote(db, eid)) {
@@ -150,7 +159,7 @@ export function kbWrite(db: Db, bankDir: string, rec: WriteRecord, now = new Dat
 /** DESIGN §4.5 `kb_link`: one relation between two live notes; the src note is re-exported. */
 export function kbLink(db: Db, bankDir: string, l: { src: string; type: string; dst: string; props?: Record<string, unknown> }, now = new Date().toISOString()): { rel_id: string } {
   must(db, l.src); must(db, l.dst);
-  const props = l.props ?? {}, rel_id = relId(l.src, l.type, l.dst, props);
+  const props = userRel(l.type, l.props), rel_id = relId(l.src, l.type, l.dst, props);
   addRel(db, { id: rel_id, src: l.src, type: l.type, dst: l.dst, props, created_at: now, deleted_at: null });
   touch(db, l.src, now); exportNote(db, bankDir, l.src);
   return { rel_id };
