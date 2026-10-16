@@ -215,8 +215,8 @@ var init_session_state = __esm({
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path14, fromOffset = 0) {
-  const fd = openSync(path14, "r");
+function readTranscript(path17, fromOffset = 0) {
+  const fd = openSync(path17, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -332,7 +332,7 @@ function extractTaskState(entries, pointers) {
     goalLatest: cap(users.at(-1) ?? "", 600),
     constraints: uniq(constraints).slice(0, 12),
     decisions: uniq(decisions).slice(0, 12),
-    files: [...files.entries()].map(([path14, v]) => ({ path: path14, ...v })).slice(-40),
+    files: [...files.entries()].map(([path17, v]) => ({ path: path17, ...v })).slice(-40),
     commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
     tests: tests.slice(-10),
     openItems: openItems.slice(0, 20),
@@ -424,6 +424,366 @@ var init_restore_brief = __esm({
   }
 });
 
+// src/kb/db.ts
+import { createRequire as requireFrom } from "node:module";
+import path6 from "node:path";
+function loadSqlite() {
+  const emit = process.emitWarning;
+  process.emitWarning = ((w, ...rest) => {
+    const type = typeof rest[0] === "string" ? rest[0] : rest[0]?.type;
+    if (type === "ExperimentalWarning") return;
+    return emit.call(process, w, ...rest);
+  });
+  try {
+    return requireFrom(import.meta.url)("node:sqlite");
+  } finally {
+    process.emitWarning = emit;
+  }
+}
+function openDb(file = path6.join(paths.stateDir(), "kb.sqlite")) {
+  const sql = new (loadSqlite()).DatabaseSync(file);
+  sql.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA foreign_keys=ON;");
+  sql.exec(DDL);
+  const ins = sql.prepare("INSERT OR IGNORE INTO rank_weights(key, value) VALUES (?, ?)");
+  for (const [k, v] of WEIGHTS) ins.run(k, v);
+  return { sql, file };
+}
+function getNote(db, id) {
+  return db.sql.prepare("SELECT * FROM note WHERE id=?").get(id) ?? null;
+}
+function getAttrs(db, id) {
+  const out2 = {};
+  for (const r of db.sql.prepare("SELECT key, value FROM attr WHERE note_id=? ORDER BY key, value").all(id)) (out2[r.key] ??= []).push(r.value);
+  return out2;
+}
+function getRels(db, id, dir = "out") {
+  const where = dir === "out" ? "src=?" : dir === "in" ? "dst=?" : "(src=? OR dst=?)";
+  const args = dir === "both" ? [id, id] : [id];
+  return db.sql.prepare(`SELECT * FROM rel WHERE ${where} AND deleted_at IS NULL ORDER BY created_at`).all(...args).map((r) => ({ ...r, props: JSON.parse(r.props) }));
+}
+var DDL, WEIGHTS;
+var init_db = __esm({
+  "src/kb/db.ts"() {
+    "use strict";
+    init_paths();
+    DDL = `
+CREATE TABLE IF NOT EXISTS note(id TEXT PRIMARY KEY, kind TEXT NOT NULL, domain TEXT, project TEXT, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, device_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS attr(note_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(note_id, key, value));
+CREATE INDEX IF NOT EXISTS attr_kv ON attr(key, value);
+CREATE TABLE IF NOT EXISTS rel(id TEXT PRIMARY KEY, src TEXT NOT NULL, type TEXT NOT NULL, dst TEXT NOT NULL, props TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS rel_src ON rel(src, type); CREATE INDEX IF NOT EXISTS rel_dst ON rel(dst, type);
+CREATE TABLE IF NOT EXISTS alias(name_norm TEXT PRIMARY KEY, concept_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS pending_merge(id TEXT PRIMARY KEY, a TEXT NOT NULL, b TEXT NOT NULL, score REAL NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL, resolved TEXT);
+CREATE TABLE IF NOT EXISTS rank_weights(key TEXT PRIMARY KEY, value REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS note_fts USING fts5(note_id UNINDEXED, title, body, tokenize='porter unicode61');`;
+    WEIGHTS = [["facet_value", 3], ["facet_key", 1], ["environment", 2], ["subject", 2], ["gate_rank", 1], ["recency", 1], ["transfer_confirmed", 2], ["transfer_refuted", -2], ["conflict", -3], ["expired_factor", 0.5]];
+  }
+});
+
+// src/kb/project.ts
+import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
+import path7 from "node:path";
+function loadProjectConfig(cwd) {
+  let dir = path7.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    const f = path7.join(dir, ".kb.json");
+    if (existsSync4(f)) {
+      const c = JSON.parse(readFileSync4(f, "utf8"));
+      if (!c.project_id || !c.domain) {
+        log("warn", `.kb.json at ${f} lacks project_id or domain; ignored`);
+        return null;
+      }
+      return c;
+    }
+    const up = path7.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+var init_project = __esm({
+  "src/kb/project.ts"() {
+    "use strict";
+    init_log();
+  }
+});
+
+// src/kb/normalize.ts
+function measure(w) {
+  let m = 0, i = 0;
+  const n = w.length;
+  while (i < n && isCons(w, i)) i++;
+  while (i < n) {
+    while (i < n && !isCons(w, i)) i++;
+    if (i >= n) break;
+    while (i < n && isCons(w, i)) i++;
+    m++;
+  }
+  return m;
+}
+function rule(w, pairs, cond) {
+  for (const [s, r] of pairs) if (w.endsWith(s)) {
+    const stem2 = w.slice(0, -s.length);
+    return cond(stem2) ? stem2 + r : w;
+  }
+  return w;
+}
+function stem(word) {
+  let w = word;
+  if (w.length <= 2) return w;
+  if (w.endsWith("sses") || w.endsWith("ies")) w = w.slice(0, -2);
+  else if (w.endsWith("s") && !w.endsWith("ss")) w = w.slice(0, -1);
+  if (w.endsWith("eed")) {
+    if (measure(w.slice(0, -3)) > 0) w = w.slice(0, -1);
+  } else {
+    const suf = w.endsWith("ed") ? 2 : w.endsWith("ing") ? 3 : 0;
+    const base = w.slice(0, -suf);
+    if (suf && hasVowel(base)) {
+      w = base;
+      if (w.endsWith("at") || w.endsWith("bl") || w.endsWith("iz")) w += "e";
+      else if (doubleCons(w) && !"lsz".includes(w.at(-1))) w = w.slice(0, -1);
+      else if (measure(w) === 1 && cvc(w)) w += "e";
+    }
+  }
+  if (w.endsWith("y") && hasVowel(w.slice(0, -1))) w = w.slice(0, -1) + "i";
+  w = rule(w, STEP2, (s) => measure(s) > 0);
+  w = rule(w, STEP3, (s) => measure(s) > 0);
+  const s4 = STEP4.filter((s) => w.endsWith(s)).sort((a, b) => b.length - a.length)[0];
+  if (s4) {
+    const st = w.slice(0, -s4.length);
+    if (measure(st) > 1 && (s4 !== "ion" || /[st]$/.test(st))) w = st;
+  }
+  if (w.endsWith("e")) {
+    const st = w.slice(0, -1);
+    const m = measure(st);
+    if (m > 1 || m === 1 && !cvc(st)) w = st;
+  }
+  if (measure(w) > 1 && doubleCons(w) && w.endsWith("l")) w = w.slice(0, -1);
+  return w;
+}
+function tokens(name) {
+  const parts = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[\s\-_]+/).map((t) => t.replace(/[^a-z0-9]/g, ""));
+  return [...new Set(parts.filter((t) => t && !STOP.has(t)).map(stem))].sort();
+}
+var STOP, isCons, hasVowel, doubleCons, cvc, P, STEP2, STEP3, STEP4, normalizeName;
+var init_normalize = __esm({
+  "src/kb/normalize.ts"() {
+    "use strict";
+    STOP = new Set("a an and are as at be by for from has have in is it its of on or that the this to was were will with".split(" "));
+    isCons = (w, i) => {
+      const c = w[i];
+      if ("aeiou".includes(c)) return false;
+      return c === "y" ? i === 0 || !isCons(w, i - 1) : true;
+    };
+    hasVowel = (w) => [...w].some((_, i) => !isCons(w, i));
+    doubleCons = (w) => w.length >= 2 && w.at(-1) === w.at(-2) && isCons(w, w.length - 1);
+    cvc = (w) => {
+      const n = w.length;
+      return n >= 3 && isCons(w, n - 3) && !isCons(w, n - 2) && isCons(w, n - 1) && !"wxy".includes(w[n - 1]);
+    };
+    P = (s) => s.split(" ").map((p) => p.split(">"));
+    STEP2 = P("ational>ate tional>tion enci>ence anci>ance izer>ize bli>ble alli>al entli>ent eli>e ousli>ous ization>ize ation>ate ator>ate alism>al iveness>ive fulness>ful ousness>ous aliti>al iviti>ive biliti>ble logi>log");
+    STEP3 = P("icate>ic ative> alize>al iciti>ic ical>ic ful> ness>");
+    STEP4 = "al ance ence er ic able ible ant ement ment ent ion ou ism ate iti ous ive ize".split(" ");
+    normalizeName = (name) => tokens(name).join("-");
+  }
+});
+
+// src/kb/templates.ts
+var conceptNoteId;
+var init_templates = __esm({
+  "src/kb/templates.ts"() {
+    "use strict";
+    init_db();
+    init_normalize();
+    conceptNoteId = (name) => `c_${normalizeName(name).replace(/-/g, "").padEnd(26, "0").slice(0, 26)}`;
+  }
+});
+
+// src/kb/rank.ts
+function conceptIds(db, names) {
+  const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
+  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
+}
+function findingsAbout(db, concepts) {
+  if (!concepts.length) return [];
+  return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
+}
+function findingsIn(db, projects) {
+  if (!projects.length) return [];
+  return ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.project IN (${marks(projects)}) AND ${LIVE_FINDING}`).all(...projects));
+}
+function candidateIds(db, cfg) {
+  const out2 = new Set(findingsAbout(db, conceptIds(db, cfg.relies_on ?? [])));
+  const keys = Object.keys(cfg.facets ?? {}).map((k) => `facet:${k}`);
+  if (keys.length) for (const id of ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src JOIN note ap ON ap.id=r.dst AND ap.kind='approach' AND ap.deleted_at IS NULL
+    JOIN attr a ON a.note_id=ap.id AND a.key IN (${marks(keys)}) WHERE r.type='about' AND r.deleted_at IS NULL AND ${LIVE_FINDING}`).all(...keys))) out2.add(id);
+  const want = { environment: cfg.target?.environment, subject: cfg.target?.subject };
+  if (want.environment || want.subject) {
+    const axes = db.sql.prepare(`SELECT a.note_id AS id, a.key, a.value FROM attr a JOIN note t ON t.id=a.note_id AND t.kind='target' AND t.deleted_at IS NULL WHERE a.key IN ('facet:environment','facet:subject')`).all();
+    const targets = [...new Set(axes.filter((r) => {
+      const w = want[r.key.slice(6)];
+      return w && normalizeName(w) === normalizeName(r.value);
+    }).map((r) => r.id))];
+    if (targets.length) for (const id of ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='validated_in' AND r.deleted_at IS NULL AND r.dst IN (${marks(targets)}) AND ${LIVE_FINDING}`).all(...targets))) out2.add(id);
+  }
+  return [...out2];
+}
+function loadCandidates(db, findingIds) {
+  const note = db.sql.prepare("SELECT id, title, project, updated_at FROM note WHERE id=? AND deleted_at IS NULL");
+  const out2 = [];
+  for (const id of new Set(findingIds)) {
+    const n = note.get(id);
+    if (!n) continue;
+    const rels = getRels(db, id, "both");
+    const c = { ...n, attrs: getAttrs(db, id), facets: {}, target: { environment: [], subject: [] }, transfers: { confirmed: 0, refuted: 0 }, conflicts: 0, evidence: [] };
+    for (const r of rels) {
+      if (r.type === "conflicts_with") {
+        c.conflicts++;
+        continue;
+      }
+      if (r.src !== id) continue;
+      if (r.type === "transfer") {
+        if (r.props.state === "confirmed") c.transfers.confirmed++;
+        else if (r.props.state === "refuted") c.transfers.refuted++;
+      } else if (r.type === "about" && r.dst.startsWith("a_")) {
+        for (const [k, v] of Object.entries(getAttrs(db, r.dst))) if (k.startsWith("facet:")) (c.facets[k.slice(6)] ??= []).push(...v);
+      } else if (r.type === "validated_in") {
+        const a = getAttrs(db, r.dst);
+        c.target.environment.push(...a["facet:environment"] ?? []);
+        c.target.subject.push(...a["facet:subject"] ?? []);
+      } else if (r.type === "backed_by") c.evidence.push(getNote(db, r.dst)?.title ?? r.dst);
+    }
+    out2.push(c);
+  }
+  return out2;
+}
+function recency(validFrom, today) {
+  const days = (today.getTime() - Date.parse(validFrom ?? "")) / 864e5;
+  if (Number.isNaN(days)) return 0;
+  return days <= 90 ? 1 : days >= 365 ? 0 : (365 - days) / 275;
+}
+function loadWeights(db) {
+  return Object.fromEntries(db.sql.prepare("SELECT key, value FROM rank_weights").all().map((r) => [r.key, r.value]));
+}
+function scoreFinding(c, cfg, w, today) {
+  let s = 0;
+  for (const [k, v] of Object.entries(cfg.facets ?? {})) {
+    const have = c.facets[k];
+    if (have) s += have.includes(v) ? w.facet_value : w.facet_key;
+  }
+  for (const axis of ["environment", "subject"]) {
+    const want = cfg.target?.[axis];
+    if (want && c.target[axis].some((x) => normalizeName(x) === normalizeName(want))) s += w[axis];
+  }
+  s += w.gate_rank * Number(c.attrs.gate_rank?.[0] ?? 0);
+  s += w.recency * recency(c.attrs.valid_from?.[0], today);
+  s += w.transfer_confirmed * c.transfers.confirmed + w.transfer_refuted * c.transfers.refuted;
+  if (c.conflicts) s += w.conflict;
+  return expired(c, today) ? s * w.expired_factor : s;
+}
+function rankCandidates(db, cands, cfg, today = /* @__PURE__ */ new Date()) {
+  const w = loadWeights(db);
+  return cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) })).sort((a, b) => b.score - a.score || cmp(b.updated_at, a.updated_at) || cmp(a.id, b.id));
+}
+var NOT_SUPERSEDED, LIVE_FINDING, marks, ids, cmp, expired, candidateFindings, rankFindings;
+var init_rank = __esm({
+  "src/kb/rank.ts"() {
+    "use strict";
+    init_db();
+    init_normalize();
+    init_templates();
+    NOT_SUPERSEDED = `NOT EXISTS (SELECT 1 FROM rel s JOIN note m ON m.id=s.src AND m.deleted_at IS NULL WHERE s.type='supersedes' AND s.dst=n.id AND s.deleted_at IS NULL)`;
+    LIVE_FINDING = `n.kind='finding' AND n.deleted_at IS NULL AND ${NOT_SUPERSEDED}`;
+    marks = (xs) => xs.map(() => "?").join(",");
+    ids = (rows) => rows.map((r) => r.id);
+    cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+    expired = (c, today) => {
+      const to = c.attrs.valid_to?.[0];
+      return !!to && Date.parse(to) < today.getTime();
+    };
+    candidateFindings = (db, cfg) => loadCandidates(db, candidateIds(db, cfg));
+    rankFindings = (db, cfg, limit, today = /* @__PURE__ */ new Date()) => rankCandidates(db, candidateFindings(db, cfg), cfg, today).slice(0, limit);
+  }
+});
+
+// src/kb/brief.ts
+import path8 from "node:path";
+function lastSessionSection(projectKey) {
+  const last = readJson(path8.join(paths.projectDir(projectKey), "last-session.json"));
+  if (!last) return [];
+  const t = last.taskState;
+  return [{ title: "Last session in this project", priority: 10, items: [
+    `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
+    `Goal: ${t.goalFirst}`,
+    `Latest: ${t.goalLatest}`,
+    ...t.openItems.map((o) => `Open: ${o}`),
+    ...t.decisions,
+    ...t.files.map((f) => `${f.path} (${f.action})`),
+    ...t.pointers
+  ] }];
+}
+function pendingQuestions(db, max = 3) {
+  const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
+    WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max);
+  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
+}
+function findingLine(f) {
+  const a = f.attrs;
+  const meta = [a.state?.[0] ?? "unverified", a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(", ");
+  return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join("; ") || "none"}`;
+}
+function projectCard(cfg) {
+  const t = cfg.target, facets = Object.entries(cfg.facets ?? {}).map(([k, v]) => `${k}=${v}`);
+  const parts = [`Domain ${cfg.domain}`, t?.environment || t?.subject ? `target ${t.environment ?? "?"} \xD7 ${t.subject ?? "?"}` : "", facets.length ? `facets ${facets.join(", ")}` : "", cfg.relies_on?.length ? `relies on ${cfg.relies_on.join(", ")}` : ""];
+  return { title: `Project ${cfg.project_id}`, priority: 9, items: [`${parts.filter(Boolean).join("; ")}. Large tool outputs are offloaded; recall(id) reopens them exactly. kb_brief({ project: "${cfg.project_id}" }) re-reads this brief; kb_find searches the bank.`] };
+}
+function projectBrief(db, cfg, questions, limit = 9e3, today = /* @__PURE__ */ new Date()) {
+  const findings = rankFindings(db, cfg, TOP_FINDINGS, today);
+  const memories = db.sql.prepare(`SELECT n.title FROM note n WHERE n.kind='evidence' AND n.project=? AND n.deleted_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM attr a WHERE a.note_id=n.id AND a.key='origin' AND a.value IN (${WRITE_ORIGINS.map(() => "?").join(",")}))
+    ORDER BY n.updated_at DESC, n.id LIMIT ?`).all(cfg.project_id, ...WRITE_ORIGINS, MEMORY_TITLES).map((m) => m.title);
+  const sections = [
+    ...lastSessionSection(cfg.project_id),
+    projectCard(cfg),
+    { title: "Pending concept questions", priority: 8, items: questions.slice(0, 3) },
+    { title: "Relevant findings", priority: 7, items: findings.map(findingLine) },
+    { title: "Imported memories for this project", priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "\u2026" }) opens any of them`, ...memories] : [] }
+  ];
+  return { text: fitBrief(PREAMBLE, sections, limit).text, findings };
+}
+function buildRecallBrief(db, cfg, prompt, state, today = /* @__PURE__ */ new Date()) {
+  const words = new Set(tokens(prompt));
+  if (!words.size) return null;
+  const aliases = db.sql.prepare("SELECT a.name_norm, a.concept_id, n.title FROM alias a JOIN note n ON n.id=a.concept_id AND n.deleted_at IS NULL").all();
+  const hits = aliases.filter((a) => a.name_norm && a.name_norm.split("-").every((t) => words.has(t)));
+  const projects = db.sql.prepare("SELECT DISTINCT project FROM note WHERE project IS NOT NULL AND deleted_at IS NULL").all().map((r) => r.project).filter((p) => new RegExp(`\\b${escapeRe(p)}\\b`, "i").test(prompt));
+  const names = [.../* @__PURE__ */ new Set([...hits.map((h) => h.title), ...projects])];
+  if (!names.length) return null;
+  const fresh = [.../* @__PURE__ */ new Set([...findingsAbout(db, [...new Set(hits.map((h) => h.concept_id))]), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
+  if (!fresh.length) return null;
+  const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, TOP_FINDINGS);
+  state.briefed.push(...ranked.map((r) => r.id));
+  return fitBrief(PREAMBLE, [{ title: `Knowledge bank on ${names.join(", ")}`, priority: 7, items: ranked.map(findingLine) }]).text;
+}
+var TOP_FINDINGS, MEMORY_TITLES, WRITE_ORIGINS, escapeRe;
+var init_brief = __esm({
+  "src/kb/brief.ts"() {
+    "use strict";
+    init_normalize();
+    init_rank();
+    init_budget();
+    init_atomic();
+    init_paths();
+    init_restore_brief();
+    TOP_FINDINGS = 20;
+    MEMORY_TITLES = 40;
+    WRITE_ORIGINS = ["commit", "path", "transcript", "url"];
+    escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+});
+
 // src/hooks/session-start.ts
 var session_start_exports = {};
 __export(session_start_exports, {
@@ -431,63 +791,70 @@ __export(session_start_exports, {
   handler: () => handler,
   sessionStart: () => sessionStart
 });
-import path6 from "node:path";
-function buildStartupBrief(cwd) {
-  const sections = [];
-  const last = readJson(path6.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"));
-  if (last) {
-    const t = last.taskState;
-    sections.push({ title: "Last session in this project", priority: 10, items: [
-      `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
-      `Goal: ${t.goalFirst}`,
-      `Latest: ${t.goalLatest}`,
-      ...t.openItems.map((o) => `Open: ${o}`),
-      ...t.decisions,
-      ...t.files.map((f) => `${f.path} (${f.action})`),
-      ...t.pointers
-    ] });
+import path9 from "node:path";
+function buildStartupBrief(cwd, sessionId = "unknown") {
+  const cfg = loadProjectConfig(cwd);
+  if (cfg) {
+    try {
+      const state = loadState(sessionId), db = openDb();
+      try {
+        const { text, findings } = projectBrief(db, cfg, state.briefed.includes(QUESTIONS_SHOWN) ? [] : pendingQuestions(db, 3));
+        state.briefed = [.../* @__PURE__ */ new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.map((f) => f.id)])];
+        saveState(sessionId, state);
+        return text;
+      } finally {
+        db.sql.close();
+      }
+    } catch (e) {
+      log("warn", "bank brief failed; phase-1 brief only", String(e));
+    }
   }
-  sections.push({ title: "Project", priority: 9, items: [`Project memory active for ${path6.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. Knowledge-bank briefs arrive in phase 2.`] });
-  return fitBrief(PREAMBLE, sections).text;
+  const hint = cfg ? "The knowledge bank did not answer (see hooks.log)." : "No .kb.json here; kb project init --domain <d> adds this repo to the knowledge bank.";
+  const card = `Project memory active for ${path9.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. ${hint}`;
+  return fitBrief(PREAMBLE, [...lastSessionSection(paths.projectKey(cwd)), { title: "Project", priority: 9, items: [card] }]).text;
 }
 async function sessionStart(input) {
   if (input.agent_id) return void 0;
-  const source = String(input.source ?? "");
-  if (source === "startup" || source === "clear") return out(buildStartupBrief(String(input.cwd ?? "")));
+  const source = String(input.source ?? ""), sessionId = String(input.session_id ?? "unknown");
+  if (source === "startup" || source === "clear") return out(buildStartupBrief(String(input.cwd ?? ""), sessionId));
   if (source !== "compact") return void 0;
-  const sessionId = String(input.session_id ?? "unknown");
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
-  if (ts) return out(buildRestoreBrief(ts, readJson(path6.join(paths.sessionDir(sessionId), "audit.json"))));
+  if (ts) return out(buildRestoreBrief(ts, readJson(path9.join(paths.sessionDir(sessionId), "audit.json"))));
   return out(fitBrief("Context was compacted. No task-state record was found for this session.", [{ title: "Pointers", priority: 1, items: recallPointers(loadState(sessionId)) }]).text);
 }
-var out, handler;
+var out, QUESTIONS_SHOWN, handler;
 var init_session_start = __esm({
   "src/hooks/session-start.ts"() {
     "use strict";
     init_paths();
     init_budget();
     init_atomic();
+    init_log();
     init_session_state();
     init_task_state();
     init_restore_brief();
+    init_db();
+    init_project();
+    init_brief();
     out = (additionalContext) => ({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } });
+    QUESTIONS_SHOWN = "concept-questions";
     handler = sessionStart;
   }
 });
 
 // src/offload/blobs.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync4, readFileSync as readFileSync4, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
-import path7 from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync5, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import path10 from "node:path";
 function storeBlob(text, meta) {
   const id = createHash2("sha256").update(text, "utf8").digest("hex");
-  const file = path7.join(paths.blobsDir(), id);
-  const created = !existsSync4(file);
+  const file = path10.join(paths.blobsDir(), id);
+  const created = !existsSync5(file);
   const lines = text.split("\n").length;
   if (created) {
     writeFileAtomic(file, text);
     const m = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, " "), sessionId: meta.sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), command: meta.command === void 0 ? void 0 : redactSensitive(meta.command).text.slice(0, 120) };
-    appendFileSync2(path7.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
+    appendFileSync2(path10.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
   }
   return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
 }
@@ -495,22 +862,22 @@ function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024) {
   const dir = paths.blobsDir();
   const now = Date.now();
   const gone = /* @__PURE__ */ new Set();
-  const files = readdirSync(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path7.join(dir, f)) }));
+  const files = readdirSync(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path10.join(dir, f)) }));
   const kept = files.filter(({ f, st }) => {
     if (now - st.mtimeMs <= maxAgeDays * 864e5) return true;
-    unlinkSync2(path7.join(dir, f));
+    unlinkSync2(path10.join(dir, f));
     gone.add(f);
     return false;
   });
   let total = kept.reduce((n, x) => n + x.st.size, 0);
   for (const { f, st } of kept.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs)) {
     if (total <= maxBytes) break;
-    unlinkSync2(path7.join(dir, f));
+    unlinkSync2(path10.join(dir, f));
     total -= st.size;
     gone.add(f);
   }
-  const index = path7.join(dir, "index.jsonl");
-  if (gone.size && existsSync4(index)) writeFileAtomic(index, readFileSync4(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
+  const index = path10.join(dir, "index.jsonl");
+  if (gone.size && existsSync5(index)) writeFileAtomic(index, readFileSync5(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
   return { removed: gone.size };
 }
 var init_blobs = __esm({
@@ -548,13 +915,38 @@ __export(user_prompt_exports, {
   handler: () => handler3,
   userPrompt: () => userPrompt
 });
-async function userPrompt(_input) {
-  return void 0;
+async function userPrompt(input) {
+  const prompt = String(input.prompt ?? ""), cfg = prompt.trim() ? loadProjectConfig(String(input.cwd ?? "")) : null;
+  if (!cfg) return void 0;
+  const sessionId = String(input.session_id ?? "unknown"), agentId = input.agent_id ? String(input.agent_id) : "main";
+  const state = loadState(sessionId, agentId);
+  let text = null;
+  try {
+    const db = openDb();
+    try {
+      text = buildRecallBrief(db, cfg, prompt, state);
+    } finally {
+      db.sql.close();
+    }
+    if (text) {
+      state.lastBrief = text;
+      saveState(sessionId, state, agentId);
+    }
+  } catch (e) {
+    log("warn", "recall brief failed; injecting the cached brief", String(e));
+    text = state.lastBrief ?? null;
+  }
+  return text ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } } : void 0;
 }
 var handler3;
 var init_user_prompt = __esm({
   "src/hooks/user-prompt.ts"() {
     "use strict";
+    init_log();
+    init_session_state();
+    init_db();
+    init_project();
+    init_brief();
     handler3 = userPrompt;
   }
 });
@@ -659,7 +1051,7 @@ __export(pre_compact_exports, {
   preCompact: () => preCompact
 });
 import { rmSync as rmSync2 } from "node:fs";
-import path8 from "node:path";
+import path11 from "node:path";
 async function preCompact(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
@@ -675,9 +1067,9 @@ async function preCompact(input) {
   }
   const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
-  rmSync2(path8.join(dir, "audit.json"), { force: true });
-  writeFileAtomic(path8.join(dir, "task-state.md"), renderTaskState(ts));
-  writeFileAtomic(path8.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
+  rmSync2(path11.join(dir, "audit.json"), { force: true });
+  writeFileAtomic(path11.join(dir, "task-state.md"), renderTaskState(ts));
+  writeFileAtomic(path11.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
   saveState(sessionId, state);
   log("info", "pre-compact snapshot written", { sessionId, trigger: input.trigger, snapshots: state.snapshots.length });
   return void 0;
@@ -699,14 +1091,14 @@ var init_pre_compact = __esm({
 });
 
 // src/compaction/audit.ts
-import path9 from "node:path";
+import path12 from "node:path";
 function auditSummary(summary, ts) {
   const s = summary.toLowerCase();
   const present = [], missing = [];
   const check = (label, key) => {
     (key && s.includes(key.toLowerCase()) ? present : missing).push(label);
   };
-  for (const f of ts.files) check(path9.basename(f.path), path9.basename(f.path));
+  for (const f of ts.files) check(path12.basename(f.path), path12.basename(f.path));
   for (const c of ts.commands) check(c.cmd, c.cmd.split(/\s+/).slice(0, 2).join(" "));
   for (const o of ts.openItems) check(o, o.split(/\s+/).slice(0, 6).join(" "));
   for (const e of ts.errors) check(e, e.split(/\s+/).slice(0, 8).join(" "));
@@ -725,7 +1117,7 @@ __export(post_compact_exports, {
   handler: () => handler6,
   postCompact: () => postCompact
 });
-import path10 from "node:path";
+import path13 from "node:path";
 async function postCompact(input) {
   if (input.agent_id) return void 0;
   const summary = String(input.compact_summary ?? "");
@@ -734,7 +1126,7 @@ async function postCompact(input) {
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
   if (!ts) return void 0;
   const audit = auditSummary(summary, ts);
-  writeFileAtomic(path10.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
+  writeFileAtomic(path13.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
   log("info", "post-compact audit written", { sessionId, present: audit.present.length, missing: audit.missing.length });
   return void 0;
 }
@@ -757,10 +1149,10 @@ __export(subagent_start_exports, {
   handler: () => handler7,
   subagentStart: () => subagentStart
 });
-import path11 from "node:path";
+import path14 from "node:path";
 async function subagentStart(input) {
-  const proj = path11.basename(String(input.cwd ?? "")) || "this project";
-  const text = `Project memory: project ${proj}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`;
+  const cwd = String(input.cwd ?? ""), proj = loadProjectConfig(cwd)?.project_id ?? (path14.basename(cwd) || "this project");
+  const text = `Project memory: project ${proj}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). Knowledge bank at ${paths.bankDir()}: kb_brief({ project: "${proj}" }) returns the ranked findings brief for this project; kb_find searches it. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`;
   return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(text, 1500) } };
 }
 var handler7;
@@ -768,6 +1160,8 @@ var init_subagent_start = __esm({
   "src/hooks/subagent-start.ts"() {
     "use strict";
     init_budget();
+    init_paths();
+    init_project();
     handler7 = subagentStart;
   }
 });
@@ -778,22 +1172,22 @@ __export(stop_exports, {
   handler: () => handler8,
   stop: () => stop
 });
-import path12 from "node:path";
-import { appendFileSync as appendFileSync3, existsSync as existsSync5 } from "node:fs";
+import path15 from "node:path";
+import { appendFileSync as appendFileSync3, existsSync as existsSync6 } from "node:fs";
 async function stop(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const cwd = String(input.cwd ?? "");
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
-  const entries = tp && existsSync5(tp) ? readTranscript(tp, 0).entries : [];
+  const entries = tp && existsSync6(tp) ? readTranscript(tp, 0).entries : [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
     const last = { at, sessionId, cwd, taskState };
-    writeFileAtomic(path12.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
+    writeFileAtomic(path15.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
   }
   const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
-  appendFileSync3(path12.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
+  appendFileSync3(path15.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
   return void 0;
 }
 var handler8;
@@ -816,12 +1210,12 @@ __export(session_end_exports, {
   handler: () => handler9,
   sessionEnd: () => sessionEnd
 });
-import path13 from "node:path";
-import { existsSync as existsSync6, readFileSync as readFileSync5 } from "node:fs";
+import path16 from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync6 } from "node:fs";
 async function sessionEnd(input) {
   const sessionId = String(input.session_id ?? "unknown");
-  const ts = path13.join(paths.sessionDir(sessionId), "task-state.md");
-  if (existsSync6(ts)) storeBlob(readFileSync5(ts, "utf8"), { tool: "task-state", sessionId });
+  const ts = path16.join(paths.sessionDir(sessionId), "task-state.md");
+  if (existsSync7(ts)) storeBlob(readFileSync6(ts, "utf8"), { tool: "task-state", sessionId });
   deleteSession(sessionId);
   return void 0;
 }

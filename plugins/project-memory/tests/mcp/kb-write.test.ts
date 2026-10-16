@@ -21,5 +21,7 @@ test('kb_write and kb_link over MCP; a bad gate comes back as an error payload',
     assert.match((await call('kb_link', { src: f.id, type: 'about', dst: a.id, props: { facet_key: 'risk' } })).rel_id, /^l_/);
     assert.match((await call('kb_write', { kind: 'finding', title: 'x', domain: 'trading', attrs: { gate: 'mainnet' } })).error, /allowed gates/);
     assert.ok(existsSync(path.join(process.env.PROJECT_MEMORY_BANK!, 'notes', 'finding', `${f.id}.md`)));
+    const b = await call('kb_brief', { project: 'es' }); assert.ok(b.text.includes('## Project es'), b.text); assert.ok(b.text.includes('Domain trading')); assert.deepEqual(b.items, []);
+    assert.match((await call('kb_brief', {})).error, /no \.kb\.json/);
   } finally { await client.close(); }
 });

@@ -8284,11 +8284,6 @@ function createConcept(db, name, now) {
   db.sql.prepare("INSERT OR REPLACE INTO alias(name_norm, concept_id) VALUES(?,?)").run(normalizeName(name), id);
   return id;
 }
-function pendingQuestions(db, max = 3) {
-  const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
-    WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max);
-  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
-}
 function openPending(db, id) {
   const p = db.sql.prepare("SELECT * FROM pending_merge WHERE id=?").get(id);
   if (!p) throw new Error(`no pending merge ${id}`);
@@ -8328,6 +8323,17 @@ function splitAlias(db, bankDir, nameNorm, now = (/* @__PURE__ */ new Date()).to
   exportNote(db, bankDir, id);
   log(bankDir, `- ${now.slice(0, 10)} split "${name}" out of ${owner.title} into ${id}`);
   return id;
+}
+
+// src/kb/rank.ts
+var NOT_SUPERSEDED = `NOT EXISTS (SELECT 1 FROM rel s JOIN note m ON m.id=s.src AND m.deleted_at IS NULL WHERE s.type='supersedes' AND s.dst=n.id AND s.deleted_at IS NULL)`;
+var LIVE_FINDING = `n.kind='finding' AND n.deleted_at IS NULL AND ${NOT_SUPERSEDED}`;
+
+// src/kb/brief.ts
+function pendingQuestions(db, max = 3) {
+  const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
+    WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max);
+  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
 }
 
 // src/kb/write.ts

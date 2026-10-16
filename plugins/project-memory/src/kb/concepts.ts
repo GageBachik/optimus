@@ -61,11 +61,7 @@ export function resolveConcept(db: Db, bankDir: string, tag: string, now: string
   return { conceptId: id, how: 'new' };
 }
 
-export function pendingQuestions(db: Db, max = 3): string[] {
-  const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
-    WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max) as { id: string; at: string; bt: string }[];
-  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
-}
+// pendingQuestions lives in brief.ts: the startup hook needs it, and this module reaches `yaml` through export.ts.
 
 function openPending(db: Db, id: string): PendingRow {
   const p = db.sql.prepare('SELECT * FROM pending_merge WHERE id=?').get(id) as PendingRow | undefined;

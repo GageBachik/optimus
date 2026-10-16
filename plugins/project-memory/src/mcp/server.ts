@@ -5,6 +5,8 @@ import { readBlob } from '../offload/blobs.js';
 import { openDb, type Db } from '../kb/db.js';
 import { kbWrite, kbLink, WRITABLE_KINDS } from '../kb/write.js';
 import { kbFind } from '../kb/find.js';
+import { projectBrief } from '../kb/brief.js';
+import { loadProjectConfig, type ProjectConfig } from '../kb/project.js';
 import { KINDS } from '../kb/ids.js';
 import { paths } from '../lib/paths.js';
 const server = new McpServer({ name: 'project-memory', version: '0.1.0' });
@@ -38,5 +40,19 @@ server.registerTool('kb_find', {
   description: 'Plain full-text search over knowledge-bank notes plus filters. Each word of text is quoted, so punctuation is safe; words are ANDed (max 40). kind/project/domain filter exactly; concept is a concept id, title or alias and keeps notes `about` it. Newest first; limit default 20, max 100. Returns [{id, kind, title, snippet}].',
   inputSchema: { text: z.string().optional(), kind: z.enum(KINDS).optional(), project: z.string().optional(), domain: z.string().optional(), concept: z.string().optional(), limit: z.number().int().min(1).max(100).optional() },
 }, async (a) => { try { return json(kbFind(db(), a)); } catch (e) { return fail(e); } });
+/** The project's `.kb.json` (the server runs in the session's directory); another project id gets a config from the id and the domain its notes carry. */
+function briefConfig(project?: string): ProjectConfig {
+  const local = loadProjectConfig(process.cwd());
+  if (!project || project === local?.project_id) { if (local) return local; throw new Error(`no .kb.json in ${process.cwd()}; pass project`); }
+  const row = db().sql.prepare('SELECT domain FROM note WHERE project=? AND domain IS NOT NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1').get(project) as { domain: string } | undefined;
+  return { project_id: project, domain: row?.domain ?? 'unknown' };
+}
+server.registerTool('kb_brief', {
+  description: 'The ranked knowledge-bank brief for a project (DESIGN §4.6): last session here, project card, relevant findings (each line ends with [id] and its evidence), imported memory titles. project defaults to the .kb.json of the working directory; another project id is briefed from its notes alone (no facets, target or relies_on to rank by). limit is the character budget, default 9000. Returns {text, items:[{id, title, project, score, demoted}]}.',
+  inputSchema: { project: z.string().min(1).optional(), limit: z.number().int().min(500).max(32768).optional() },
+}, async ({ project, limit }) => {
+  try { const { text, findings } = projectBrief(db(), briefConfig(project), [], limit); return json({ text, items: findings.map(({ id, title, project, score, demoted }) => ({ id, title, project, score, demoted })) }); }
+  catch (e) { return fail(e); }
+});
 process.stdin.on('end', () => process.exit(0));
 await server.connect(new StdioServerTransport());

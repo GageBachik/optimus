@@ -10,6 +10,7 @@ const { handler: end } = await import('../../src/hooks/session-end.js');
 test('subagent pointer is short and names recall', async () => {
   const r: any = await sub({ session_id: 's', cwd: '/w/genibook', agent_id: 'a1', agent_type: 'general-purpose' });
   assert.ok(r.hookSpecificOutput.additionalContext.length <= 1500); assert.match(r.hookSpecificOutput.additionalContext, /recall\(id\)/); assert.match(r.hookSpecificOutput.additionalContext, /genibook/);
+  assert.match(r.hookSpecificOutput.additionalContext, /kb_brief\(\{ project: "genibook" \}\)/); assert.ok(r.hookSpecificOutput.additionalContext.includes(process.env.PROJECT_MEMORY_BANK ?? 'knowledge-bank'));
 });
 test('stop appends a metrics line (main only); session-end removes the session dir', async () => {
   await stop({ session_id: 's2', cwd: '/w', transcript_path: 'tests/fixtures/transcript-small.jsonl', last_assistant_message: 'done' });

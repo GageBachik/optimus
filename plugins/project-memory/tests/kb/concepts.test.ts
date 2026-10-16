@@ -7,7 +7,8 @@ process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); proce
 const { openDb, upsertNote, addRel, getRels, getNote, getAttrs } = await import('../../src/kb/db.js');
 const { installTemplate, conceptNoteId } = await import('../../src/kb/templates.js');
 const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
-const { resolveConcept, pendingQuestions, acceptMerge, rejectMerge, splitAlias } = await import('../../src/kb/concepts.js');
+const { resolveConcept, acceptMerge, rejectMerge, splitAlias } = await import('../../src/kb/concepts.js');
+const { pendingQuestions } = await import('../../src/kb/brief.js');
 const bank = process.env.PROJECT_MEMORY_BANK!, now = '2026-10-16T00:00:00Z';
 test('alias → silent; exact → silent; strong overlap → auto-alias; weak → pending; else new (review focus 1, 6)', () => {
   const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml'));

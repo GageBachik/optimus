@@ -858,8 +858,8 @@ var require_uri_all = __commonJS({
             wsComponents.secure = void 0;
           }
           if (wsComponents.resourceName) {
-            var _wsComponents$resourc = wsComponents.resourceName.split("?"), _wsComponents$resourc2 = slicedToArray(_wsComponents$resourc, 2), path7 = _wsComponents$resourc2[0], query = _wsComponents$resourc2[1];
-            wsComponents.path = path7 && path7 !== "/" ? path7 : void 0;
+            var _wsComponents$resourc = wsComponents.resourceName.split("?"), _wsComponents$resourc2 = slicedToArray(_wsComponents$resourc, 2), path10 = _wsComponents$resourc2[0], query = _wsComponents$resourc2[1];
+            wsComponents.path = path10 && path10 !== "/" ? path10 : void 0;
             wsComponents.query = query;
             wsComponents.resourceName = void 0;
           }
@@ -1232,12 +1232,12 @@ var require_util = __commonJS({
       return "'" + escapeQuotes(str) + "'";
     }
     function getPathExpr(currentPath, expr, jsonPointers, isNumber) {
-      var path7 = jsonPointers ? "'/' + " + expr + (isNumber ? "" : ".replace(/~/g, '~0').replace(/\\//g, '~1')") : isNumber ? "'[' + " + expr + " + ']'" : "'[\\'' + " + expr + " + '\\']'";
-      return joinPaths(currentPath, path7);
+      var path10 = jsonPointers ? "'/' + " + expr + (isNumber ? "" : ".replace(/~/g, '~0').replace(/\\//g, '~1')") : isNumber ? "'[' + " + expr + " + ']'" : "'[\\'' + " + expr + " + '\\']'";
+      return joinPaths(currentPath, path10);
     }
     function getPath(currentPath, prop, jsonPointers) {
-      var path7 = jsonPointers ? toQuotedString("/" + escapeJsonPointer(prop)) : toQuotedString(getProperty(prop));
-      return joinPaths(currentPath, path7);
+      var path10 = jsonPointers ? toQuotedString("/" + escapeJsonPointer(prop)) : toQuotedString(getProperty(prop));
+      return joinPaths(currentPath, path10);
     }
     var JSON_POINTER = /^\/(?:[^~]|~0|~1)*$/;
     var RELATIVE_JSON_POINTER = /^([0-9]+)(#|\/(?:[^~]|~0|~1)*)?$/;
@@ -1646,7 +1646,7 @@ var require_fast_json_stable_stringify = __commonJS({
       if (!opts) opts = {};
       if (typeof opts === "function") opts = { cmp: opts };
       var cycles = typeof opts.cycles === "boolean" ? opts.cycles : false;
-      var cmp2 = opts.cmp && /* @__PURE__ */ (function(f) {
+      var cmp3 = opts.cmp && /* @__PURE__ */ (function(f) {
         return function(node) {
           return function(a, b) {
             var aobj = { key: a, value: node[a] };
@@ -1678,7 +1678,7 @@ var require_fast_json_stable_stringify = __commonJS({
           throw new TypeError("Converting circular structure to JSON");
         }
         var seenIndex = seen.push(node) - 1;
-        var keys = Object.keys(node).sort(cmp2 && cmp2(node));
+        var keys = Object.keys(node).sort(cmp3 && cmp3(node));
         out = "";
         for (i = 0; i < keys.length; i++) {
           var key = keys[i];
@@ -6342,17 +6342,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path7) {
-      const ctrl = callVisitor(key, node, visitor, path7);
+    function visit_(key, node, visitor, path10) {
+      const ctrl = callVisitor(key, node, visitor, path10);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path7, ctrl);
-        return visit_(key, ctrl, visitor, path7);
+        replaceNode(key, path10, ctrl);
+        return visit_(key, ctrl, visitor, path10);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path7 = Object.freeze(path7.concat(node));
+          path10 = Object.freeze(path10.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path7);
+            const ci = visit_(i, node.items[i], visitor, path10);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -6363,13 +6363,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path7 = Object.freeze(path7.concat(node));
-          const ck = visit_("key", node.key, visitor, path7);
+          path10 = Object.freeze(path10.concat(node));
+          const ck = visit_("key", node.key, visitor, path10);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path7);
+          const cv = visit_("value", node.value, visitor, path10);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -6390,17 +6390,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path7) {
-      const ctrl = await callVisitor(key, node, visitor, path7);
+    async function visitAsync_(key, node, visitor, path10) {
+      const ctrl = await callVisitor(key, node, visitor, path10);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path7, ctrl);
-        return visitAsync_(key, ctrl, visitor, path7);
+        replaceNode(key, path10, ctrl);
+        return visitAsync_(key, ctrl, visitor, path10);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path7 = Object.freeze(path7.concat(node));
+          path10 = Object.freeze(path10.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path7);
+            const ci = await visitAsync_(i, node.items[i], visitor, path10);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -6411,13 +6411,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path7 = Object.freeze(path7.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path7);
+          path10 = Object.freeze(path10.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path10);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path7);
+          const cv = await visitAsync_("value", node.value, visitor, path10);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -6444,23 +6444,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path7) {
+    function callVisitor(key, node, visitor, path10) {
       if (typeof visitor === "function")
-        return visitor(key, node, path7);
+        return visitor(key, node, path10);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path7);
+        return visitor.Map?.(key, node, path10);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path7);
+        return visitor.Seq?.(key, node, path10);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path7);
+        return visitor.Pair?.(key, node, path10);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path7);
+        return visitor.Scalar?.(key, node, path10);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path7);
+        return visitor.Alias?.(key, node, path10);
       return void 0;
     }
-    function replaceNode(key, path7, node) {
-      const parent = path7[path7.length - 1];
+    function replaceNode(key, path10, node) {
+      const parent = path10[path10.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -7068,10 +7068,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path7, value) {
+    function collectionFromPath(schema, path10, value) {
       let v = value;
-      for (let i = path7.length - 1; i >= 0; --i) {
-        const k = path7[i];
+      for (let i = path10.length - 1; i >= 0; --i) {
+        const k = path10[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -7090,7 +7090,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path7) => path7 == null || typeof path7 === "object" && !!path7[Symbol.iterator]().next().done;
+    var isEmptyPath = (path10) => path10 == null || typeof path10 === "object" && !!path10[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -7120,11 +7120,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path7, value) {
-        if (isEmptyPath(path7))
+      addIn(path10, value) {
+        if (isEmptyPath(path10))
           this.add(value);
         else {
-          const [key, ...rest] = path7;
+          const [key, ...rest] = path10;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -7138,8 +7138,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path7) {
-        const [key, ...rest] = path7;
+      deleteIn(path10) {
+        const [key, ...rest] = path10;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -7153,8 +7153,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path7, keepScalar) {
-        const [key, ...rest] = path7;
+      getIn(path10, keepScalar) {
+        const [key, ...rest] = path10;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -7172,8 +7172,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path7) {
-        const [key, ...rest] = path7;
+      hasIn(path10) {
+        const [key, ...rest] = path10;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -7183,8 +7183,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path7, value) {
-        const [key, ...rest] = path7;
+      setIn(path10, value) {
+        const [key, ...rest] = path10;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -7979,7 +7979,7 @@ var require_merge = __commonJS({
 var require_addPairToJSMap = __commonJS({
   "node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
     "use strict";
-    var log2 = require_log();
+    var log3 = require_log();
     var merge = require_merge();
     var stringify2 = require_stringify();
     var identity = require_identity();
@@ -8028,7 +8028,7 @@ var require_addPairToJSMap = __commonJS({
           let jsonStr = JSON.stringify(strKey);
           if (jsonStr.length > 40)
             jsonStr = jsonStr.substring(0, 36) + '..."';
-          log2.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
+          log3.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
           ctx.mapKeyWarned = true;
         }
         return strKey;
@@ -9688,9 +9688,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path7, value) {
+      addIn(path10, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path7, value);
+          this.contents.addIn(path10, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -9765,14 +9765,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path7) {
-        if (Collection.isEmptyPath(path7)) {
+      deleteIn(path10) {
+        if (Collection.isEmptyPath(path10)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path7) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path10) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -9787,10 +9787,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path7, keepScalar) {
-        if (Collection.isEmptyPath(path7))
+      getIn(path10, keepScalar) {
+        if (Collection.isEmptyPath(path10))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path7, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path10, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -9801,10 +9801,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path7) {
-        if (Collection.isEmptyPath(path7))
+      hasIn(path10) {
+        if (Collection.isEmptyPath(path10))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path7) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path10) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -9821,13 +9821,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path7, value) {
-        if (Collection.isEmptyPath(path7)) {
+      setIn(path10, value) {
+        if (Collection.isEmptyPath(path10)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path7), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path10), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path7, value);
+          this.contents.setIn(path10, value);
         }
       }
       /**
@@ -11779,9 +11779,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path7) => {
+    visit.itemAtPath = (cst, path10) => {
       let item = cst;
-      for (const [field, index] of path7) {
+      for (const [field, index] of path10) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -11790,23 +11790,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path7) => {
-      const parent = visit.itemAtPath(cst, path7.slice(0, -1));
-      const field = path7[path7.length - 1][0];
+    visit.parentCollection = (cst, path10) => {
+      const parent = visit.itemAtPath(cst, path10.slice(0, -1));
+      const field = path10[path10.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path7, item, visitor) {
-      let ctrl = visitor(item, path7);
+    function _visit(path10, item, visitor) {
+      let ctrl = visitor(item, path10);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path7.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path10.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -11817,10 +11817,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path7);
+            ctrl = ctrl(item, path10);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path7) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path10) : ctrl;
     }
     exports.visit = visit;
   }
@@ -13412,7 +13412,7 @@ var require_public_api = __commonJS({
     var composer = require_composer();
     var Document = require_Document();
     var errors = require_errors();
-    var log2 = require_log();
+    var log3 = require_log();
     var identity = require_identity();
     var lineCounter = require_line_counter();
     var parser = require_parser();
@@ -13464,7 +13464,7 @@ var require_public_api = __commonJS({
       const doc = parseDocument(src, options);
       if (!doc)
         return null;
-      doc.warnings.forEach((warning) => log2.warn(doc.options.logLevel, warning));
+      doc.warnings.forEach((warning) => log3.warn(doc.options.logLevel, warning));
       if (doc.errors.length > 0) {
         if (doc.options.logLevel !== "silent")
           throw doc.errors[0];
@@ -14032,8 +14032,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path7, errorMaps, issueData } = params;
-  const fullPath = [...path7, ...issueData.path || []];
+  const { data, path: path10, errorMaps, issueData } = params;
+  const fullPath = [...path10, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14149,11 +14149,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path7, key) {
+  constructor(parent, value, path10, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path7;
+    this._path = path10;
     this._key = key;
   }
   get path() {
@@ -21252,6 +21252,13 @@ var paths = {
 import { writeFileSync as writeFileSync2, readFileSync as readFileSync2, renameSync as renameSync2, realpathSync, existsSync as existsSync2, statSync, chmodSync, unlinkSync } from "node:fs";
 import path2 from "node:path";
 import { randomBytes } from "node:crypto";
+function readJson(filePath) {
+  try {
+    return JSON.parse(readFileSync2(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
 function writeFileAtomic(filePath, data) {
   const dir = realpathSync(path2.dirname(filePath));
   const target = path2.join(dir, path2.basename(filePath));
@@ -21816,6 +21823,228 @@ function kbFind(db2, a) {
   return db2.sql.prepare(`SELECT n.id, n.kind, n.title, ${snippet} AS snippet FROM ${from} WHERE ${where.join(" AND ")} ORDER BY n.updated_at DESC, n.id LIMIT ?`).all(...params);
 }
 
+// src/kb/brief.ts
+import path7 from "node:path";
+
+// src/kb/rank.ts
+var NOT_SUPERSEDED = `NOT EXISTS (SELECT 1 FROM rel s JOIN note m ON m.id=s.src AND m.deleted_at IS NULL WHERE s.type='supersedes' AND s.dst=n.id AND s.deleted_at IS NULL)`;
+var LIVE_FINDING = `n.kind='finding' AND n.deleted_at IS NULL AND ${NOT_SUPERSEDED}`;
+var marks = (xs) => xs.map(() => "?").join(",");
+var ids = (rows) => rows.map((r) => r.id);
+var cmp2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+function conceptIds(db2, names) {
+  const q = db2.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
+  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
+}
+function findingsAbout(db2, concepts2) {
+  if (!concepts2.length) return [];
+  return ids(db2.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts2)}) AND ${LIVE_FINDING}`).all(...concepts2));
+}
+function candidateIds(db2, cfg) {
+  const out = new Set(findingsAbout(db2, conceptIds(db2, cfg.relies_on ?? [])));
+  const keys = Object.keys(cfg.facets ?? {}).map((k) => `facet:${k}`);
+  if (keys.length) for (const id of ids(db2.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src JOIN note ap ON ap.id=r.dst AND ap.kind='approach' AND ap.deleted_at IS NULL
+    JOIN attr a ON a.note_id=ap.id AND a.key IN (${marks(keys)}) WHERE r.type='about' AND r.deleted_at IS NULL AND ${LIVE_FINDING}`).all(...keys))) out.add(id);
+  const want = { environment: cfg.target?.environment, subject: cfg.target?.subject };
+  if (want.environment || want.subject) {
+    const axes = db2.sql.prepare(`SELECT a.note_id AS id, a.key, a.value FROM attr a JOIN note t ON t.id=a.note_id AND t.kind='target' AND t.deleted_at IS NULL WHERE a.key IN ('facet:environment','facet:subject')`).all();
+    const targets = [...new Set(axes.filter((r) => {
+      const w = want[r.key.slice(6)];
+      return w && normalizeName(w) === normalizeName(r.value);
+    }).map((r) => r.id))];
+    if (targets.length) for (const id of ids(db2.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='validated_in' AND r.deleted_at IS NULL AND r.dst IN (${marks(targets)}) AND ${LIVE_FINDING}`).all(...targets))) out.add(id);
+  }
+  return [...out];
+}
+function loadCandidates(db2, findingIds) {
+  const note = db2.sql.prepare("SELECT id, title, project, updated_at FROM note WHERE id=? AND deleted_at IS NULL");
+  const out = [];
+  for (const id of new Set(findingIds)) {
+    const n = note.get(id);
+    if (!n) continue;
+    const rels = getRels(db2, id, "both");
+    const c = { ...n, attrs: getAttrs(db2, id), facets: {}, target: { environment: [], subject: [] }, transfers: { confirmed: 0, refuted: 0 }, conflicts: 0, evidence: [] };
+    for (const r of rels) {
+      if (r.type === "conflicts_with") {
+        c.conflicts++;
+        continue;
+      }
+      if (r.src !== id) continue;
+      if (r.type === "transfer") {
+        if (r.props.state === "confirmed") c.transfers.confirmed++;
+        else if (r.props.state === "refuted") c.transfers.refuted++;
+      } else if (r.type === "about" && r.dst.startsWith("a_")) {
+        for (const [k, v] of Object.entries(getAttrs(db2, r.dst))) if (k.startsWith("facet:")) (c.facets[k.slice(6)] ??= []).push(...v);
+      } else if (r.type === "validated_in") {
+        const a = getAttrs(db2, r.dst);
+        c.target.environment.push(...a["facet:environment"] ?? []);
+        c.target.subject.push(...a["facet:subject"] ?? []);
+      } else if (r.type === "backed_by") c.evidence.push(getNote(db2, r.dst)?.title ?? r.dst);
+    }
+    out.push(c);
+  }
+  return out;
+}
+function recency(validFrom, today) {
+  const days = (today.getTime() - Date.parse(validFrom ?? "")) / 864e5;
+  if (Number.isNaN(days)) return 0;
+  return days <= 90 ? 1 : days >= 365 ? 0 : (365 - days) / 275;
+}
+var expired = (c, today) => {
+  const to = c.attrs.valid_to?.[0];
+  return !!to && Date.parse(to) < today.getTime();
+};
+function loadWeights(db2) {
+  return Object.fromEntries(db2.sql.prepare("SELECT key, value FROM rank_weights").all().map((r) => [r.key, r.value]));
+}
+function scoreFinding(c, cfg, w, today) {
+  let s = 0;
+  for (const [k, v] of Object.entries(cfg.facets ?? {})) {
+    const have = c.facets[k];
+    if (have) s += have.includes(v) ? w.facet_value : w.facet_key;
+  }
+  for (const axis of ["environment", "subject"]) {
+    const want = cfg.target?.[axis];
+    if (want && c.target[axis].some((x) => normalizeName(x) === normalizeName(want))) s += w[axis];
+  }
+  s += w.gate_rank * Number(c.attrs.gate_rank?.[0] ?? 0);
+  s += w.recency * recency(c.attrs.valid_from?.[0], today);
+  s += w.transfer_confirmed * c.transfers.confirmed + w.transfer_refuted * c.transfers.refuted;
+  if (c.conflicts) s += w.conflict;
+  return expired(c, today) ? s * w.expired_factor : s;
+}
+function rankCandidates(db2, cands, cfg, today = /* @__PURE__ */ new Date()) {
+  const w = loadWeights(db2);
+  return cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) })).sort((a, b) => b.score - a.score || cmp2(b.updated_at, a.updated_at) || cmp2(a.id, b.id));
+}
+var candidateFindings = (db2, cfg) => loadCandidates(db2, candidateIds(db2, cfg));
+var rankFindings = (db2, cfg, limit, today = /* @__PURE__ */ new Date()) => rankCandidates(db2, candidateFindings(db2, cfg), cfg, today).slice(0, limit);
+
+// src/lib/budget.ts
+function charSafePrefix(s, n) {
+  if (s.length <= n) return s;
+  let end = Math.max(0, n);
+  const c = s.charCodeAt(end - 1);
+  if (c >= 55296 && c <= 56319) end--;
+  return s.slice(0, end);
+}
+function render(preamble, sections, dropped) {
+  const parts = [preamble.trim()];
+  for (const s of sections) {
+    if (!s.items.length) continue;
+    parts.push(`## ${s.title}`);
+    for (const it of s.items) parts.push(`- ${it}`);
+  }
+  if (dropped) parts.push(`[${dropped} items omitted]`);
+  return parts.join("\n");
+}
+function fitBrief(preamble, sections, limitChars = 9e3) {
+  const work = sections.map((s) => ({ ...s, items: [...s.items] })).sort((a, b) => b.priority - a.priority);
+  let dropped = 0, truncated = false, text = render(preamble, work, 0);
+  while (text.length > limitChars) {
+    const nonEmpty = work.filter((s) => s.items.length);
+    const only = nonEmpty[0];
+    if (nonEmpty.length === 1 && only && only.items.length === 1) {
+      const item = only.items[0] ?? "";
+      const over = text.length - limitChars + 20;
+      only.items[0] = charSafePrefix(item, Math.max(0, item.length - over)) + " [brief truncated]";
+      truncated = true;
+      text = render(preamble, work, dropped);
+      break;
+    }
+    const victim = [...work].reverse().find((s) => s.items.length);
+    if (!victim) break;
+    victim.items.pop();
+    dropped++;
+    text = render(preamble, work, dropped);
+  }
+  if (text.length > limitChars) {
+    text = charSafePrefix(text, limitChars - 20) + "\n[brief truncated]";
+    truncated = true;
+  }
+  return { text, dropped, truncated };
+}
+
+// src/compaction/restore-brief.ts
+var PREAMBLE = "Context restored by the project-memory plugin. Items below are a memory aid with source and date, not standing orders; the user's latest message always takes precedence.";
+
+// src/kb/brief.ts
+var TOP_FINDINGS = 20;
+var MEMORY_TITLES = 40;
+var WRITE_ORIGINS = ["commit", "path", "transcript", "url"];
+function lastSessionSection(projectKey) {
+  const last = readJson(path7.join(paths.projectDir(projectKey), "last-session.json"));
+  if (!last) return [];
+  const t = last.taskState;
+  return [{ title: "Last session in this project", priority: 10, items: [
+    `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
+    `Goal: ${t.goalFirst}`,
+    `Latest: ${t.goalLatest}`,
+    ...t.openItems.map((o) => `Open: ${o}`),
+    ...t.decisions,
+    ...t.files.map((f) => `${f.path} (${f.action})`),
+    ...t.pointers
+  ] }];
+}
+function findingLine(f) {
+  const a = f.attrs;
+  const meta = [a.state?.[0] ?? "unverified", a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(", ");
+  return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join("; ") || "none"}`;
+}
+function projectCard(cfg) {
+  const t = cfg.target, facets = Object.entries(cfg.facets ?? {}).map(([k, v]) => `${k}=${v}`);
+  const parts = [`Domain ${cfg.domain}`, t?.environment || t?.subject ? `target ${t.environment ?? "?"} \xD7 ${t.subject ?? "?"}` : "", facets.length ? `facets ${facets.join(", ")}` : "", cfg.relies_on?.length ? `relies on ${cfg.relies_on.join(", ")}` : ""];
+  return { title: `Project ${cfg.project_id}`, priority: 9, items: [`${parts.filter(Boolean).join("; ")}. Large tool outputs are offloaded; recall(id) reopens them exactly. kb_brief({ project: "${cfg.project_id}" }) re-reads this brief; kb_find searches the bank.`] };
+}
+function projectBrief(db2, cfg, questions, limit = 9e3, today = /* @__PURE__ */ new Date()) {
+  const findings = rankFindings(db2, cfg, TOP_FINDINGS, today);
+  const memories = db2.sql.prepare(`SELECT n.title FROM note n WHERE n.kind='evidence' AND n.project=? AND n.deleted_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM attr a WHERE a.note_id=n.id AND a.key='origin' AND a.value IN (${WRITE_ORIGINS.map(() => "?").join(",")}))
+    ORDER BY n.updated_at DESC, n.id LIMIT ?`).all(cfg.project_id, ...WRITE_ORIGINS, MEMORY_TITLES).map((m) => m.title);
+  const sections = [
+    ...lastSessionSection(cfg.project_id),
+    projectCard(cfg),
+    { title: "Pending concept questions", priority: 8, items: questions.slice(0, 3) },
+    { title: "Relevant findings", priority: 7, items: findings.map(findingLine) },
+    { title: "Imported memories for this project", priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "\u2026" }) opens any of them`, ...memories] : [] }
+  ];
+  return { text: fitBrief(PREAMBLE, sections, limit).text, findings };
+}
+
+// src/kb/project.ts
+import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
+import path9 from "node:path";
+
+// src/lib/log.ts
+import { appendFileSync as appendFileSync3 } from "node:fs";
+import path8 from "node:path";
+function log2(level, msg, data) {
+  try {
+    appendFileSync3(path8.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+  } catch {
+  }
+}
+
+// src/kb/project.ts
+function loadProjectConfig(cwd) {
+  let dir = path9.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    const f = path9.join(dir, ".kb.json");
+    if (existsSync5(f)) {
+      const c = JSON.parse(readFileSync5(f, "utf8"));
+      if (!c.project_id || !c.domain) {
+        log2("warn", `.kb.json at ${f} lacks project_id or domain; ignored`);
+        return null;
+      }
+      return c;
+    }
+    const up = path9.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
 // src/mcp/server.ts
 var server = new McpServer({ name: "project-memory", version: "0.1.0" });
 var _db;
@@ -21877,6 +22106,26 @@ server.registerTool("kb_find", {
 }, async (a) => {
   try {
     return json(kbFind(db(), a));
+  } catch (e) {
+    return fail(e);
+  }
+});
+function briefConfig(project) {
+  const local = loadProjectConfig(process.cwd());
+  if (!project || project === local?.project_id) {
+    if (local) return local;
+    throw new Error(`no .kb.json in ${process.cwd()}; pass project`);
+  }
+  const row = db().sql.prepare("SELECT domain FROM note WHERE project=? AND domain IS NOT NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1").get(project);
+  return { project_id: project, domain: row?.domain ?? "unknown" };
+}
+server.registerTool("kb_brief", {
+  description: "The ranked knowledge-bank brief for a project (DESIGN \xA74.6): last session here, project card, relevant findings (each line ends with [id] and its evidence), imported memory titles. project defaults to the .kb.json of the working directory; another project id is briefed from its notes alone (no facets, target or relies_on to rank by). limit is the character budget, default 9000. Returns {text, items:[{id, title, project, score, demoted}]}.",
+  inputSchema: { project: external_exports.string().min(1).optional(), limit: external_exports.number().int().min(500).max(32768).optional() }
+}, async ({ project, limit }) => {
+  try {
+    const { text, findings } = projectBrief(db(), briefConfig(project), [], limit);
+    return json({ text, items: findings.map(({ id, title, project: project2, score, demoted }) => ({ id, title, project: project2, score, demoted })) });
   } catch (e) {
     return fail(e);
   }
