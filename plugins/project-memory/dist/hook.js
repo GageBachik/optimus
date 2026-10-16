@@ -355,19 +355,165 @@ var init_post_tool_use = __esm({
   }
 });
 
+// src/lib/transcript.ts
+import { openSync, readSync, fstatSync, closeSync } from "node:fs";
+function readTranscript(path7, fromOffset = 0) {
+  const fd = openSync(path7, "r");
+  try {
+    const size = fstatSync(fd).size;
+    if (fromOffset >= size) return { entries: [], toOffset: size };
+    const buf = Buffer.alloc(size - fromOffset);
+    readSync(fd, buf, 0, buf.length, fromOffset);
+    const lastNl = buf.lastIndexOf(10);
+    const complete = lastNl >= 0 ? buf.subarray(0, lastNl + 1) : buf.subarray(0, 0);
+    const entries = [];
+    for (const line of complete.toString("utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+      }
+    }
+    return { entries, toOffset: fromOffset + complete.length };
+  } finally {
+    closeSync(fd);
+  }
+}
+function blocks(e) {
+  const c = e.message?.content;
+  return Array.isArray(c) ? c : typeof c === "string" ? [{ type: "text", text: c }] : [];
+}
+function textOf(e) {
+  return blocks(e).filter((b) => b?.type === "text").map((b) => String(b.text)).join("\n").replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+}
+var init_transcript = __esm({
+  "src/lib/transcript.ts"() {
+    "use strict";
+  }
+});
+
+// src/compaction/task-state.ts
+function extractTaskState(entries, pointers) {
+  const users = entries.filter((e) => e.type === "user" && textOf(e));
+  const assistants = entries.filter((e) => e.type === "assistant");
+  const constraints = [], decisions = [], files = /* @__PURE__ */ new Map(), commands = [], tests = [], errors = [], values = [];
+  let openItems = [];
+  for (const u of users) for (const line of textOf(u).split("\n")) if (/\b(must|never|always|only|don't|do not)\b/i.test(line)) constraints.push(cap(line.trim(), 200));
+  for (const a of assistants) for (const line of textOf(a).split("\n")) if (/^(Decision|Decided|We will|Chosen|Verdict)\b/i.test(line.trim())) decisions.push(cap(line.trim(), 240));
+  const results = /* @__PURE__ */ new Map();
+  for (const e of entries) for (const b of blocks(e)) if (b?.type === "tool_result") results.set(String(b.tool_use_id), typeof b.content === "string" ? b.content : JSON.stringify(b.content));
+  for (const e of entries) for (const b of blocks(e)) {
+    if (b?.type !== "tool_use") continue;
+    const at = String(e.timestamp ?? "");
+    const inp = b.input ?? {};
+    if (["Write", "Edit", "NotebookEdit", "MultiEdit"].includes(b.name) && inp.file_path) {
+      const p = String(inp.file_path);
+      files.delete(p);
+      files.set(p, { action: b.name, at });
+    }
+    if (b.name === "Bash" && inp.command) {
+      const cmd = cap(String(inp.command), 120);
+      commands.push({ cmd, at });
+      if (TEST_RE.test(cmd)) {
+        const out = results.get(String(b.id)) ?? "";
+        const last = out.trim().split("\n").filter(Boolean).pop() ?? "";
+        tests.push({ cmd, lastLine: cap(last, 160) });
+      }
+    }
+    if ((b.name === "TodoWrite" || b.name === "TaskCreate") && Array.isArray(inp.todos)) openItems = inp.todos.filter((t) => t.status !== "completed").map((t) => cap(String(t.content ?? t.subject ?? ""), 160));
+  }
+  const recent = assistants.slice(-20).map(textOf).join("\n");
+  for (const line of recent.split("\n")) if (/(Error|error:|Traceback|panic|FAIL)/.test(line)) errors.push(cap(line.trim(), 200));
+  for (const m of recent.matchAll(VALUE_RE)) values.push(m[0]);
+  const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
+  return {
+    goalFirst: cap(users[0] ? textOf(users[0]) : "", 600),
+    goalLatest: cap(users.at(-1) ? textOf(users.at(-1)) : "", 600),
+    constraints: uniq(constraints).slice(0, 12),
+    decisions: uniq(decisions).slice(0, 12),
+    files: [...files.entries()].map(([path7, v]) => ({ path: path7, ...v })).slice(-40),
+    commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
+    tests: tests.slice(-10),
+    openItems: openItems.slice(0, 20),
+    errors: uniq(errors).slice(-10),
+    exactValues: uniq(values).slice(-40),
+    pointers
+  };
+}
+function renderTaskState(ts) {
+  const sec = (t, items) => items.length ? `## ${t}
+${items.map((i) => `- ${i}`).join("\n")}
+` : "";
+  return [
+    `## Goal
+- First: ${ts.goalFirst}
+- Latest: ${ts.goalLatest}
+`,
+    sec("Open items", ts.openItems),
+    sec("Constraints", ts.constraints),
+    sec("Decisions", ts.decisions),
+    sec("Files", ts.files.map((f) => `${f.path} (${f.action} ${f.at})`)),
+    sec("Exact values", ts.exactValues),
+    sec("Tests", ts.tests.map((t) => `${t.cmd} \u2192 ${t.lastLine}`)),
+    sec("Commands", ts.commands.map((c) => c.cmd)),
+    sec("Errors", ts.errors),
+    sec("Pointers", ts.pointers)
+  ].filter(Boolean).join("\n");
+}
+var cap, uniq, TEST_RE, VALUE_RE;
+var init_task_state = __esm({
+  "src/compaction/task-state.ts"() {
+    "use strict";
+    init_transcript();
+    cap = (s, n) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
+    uniq = (a) => [...new Set(a)];
+    TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test|go test|bun test)\b/;
+    VALUE_RE = /\b\d+(?:\.\d+)?\s?(?:%|(?:ms|s|K|M|GB|MB|KB|tokens|bps)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
+  }
+});
+
 // src/hooks/pre-compact.ts
 var pre_compact_exports = {};
 __export(pre_compact_exports, {
   handler: () => handler5,
   preCompact: () => preCompact
 });
-async function preCompact(_input) {
+import path6 from "node:path";
+async function preCompact(input) {
+  if (input.agent_id) return void 0;
+  const sessionId = String(input.session_id ?? "unknown");
+  const tp = String(input.transcript_path ?? "");
+  if (!tp) return void 0;
+  const state = loadState(sessionId);
+  const delta = readTranscript(tp, state.lastSnapshotOffset);
+  const text = delta.entries.map((e) => JSON.stringify(e, redact)).join("\n");
+  if (text) {
+    const blob = storeBlob(text, { tool: "snapshot", sessionId });
+    state.snapshots.push({ id: blob.id16, from: state.lastSnapshotOffset, to: delta.toOffset, at: (/* @__PURE__ */ new Date()).toISOString() });
+    state.lastSnapshotOffset = delta.toOffset;
+  }
+  const pointers = state.snapshots.map((s) => `snapshot ${s.id} (${s.at}) \u2192 recall(id="${s.id}")`).concat(state.seenBlobs.slice(-3).map((b) => `recent offloaded output \u2192 recall(id="${b.slice(0, 16)}")`));
+  const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, pointers), redact));
+  const dir = paths.sessionDir(sessionId);
+  writeFileAtomic(path6.join(dir, "task-state.md"), renderTaskState(ts));
+  writeFileAtomic(path6.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
+  saveState(sessionId, state);
+  log("info", "pre-compact snapshot written", { sessionId, trigger: input.trigger, snapshots: state.snapshots.length });
   return void 0;
 }
-var handler5;
+var redact, handler5;
 var init_pre_compact = __esm({
   "src/hooks/pre-compact.ts"() {
     "use strict";
+    init_transcript();
+    init_task_state();
+    init_blobs();
+    init_session_state();
+    init_atomic();
+    init_redaction();
+    init_paths();
+    init_log();
+    redact = (_k, v) => typeof v === "string" ? redactSensitive(v).text : v;
     handler5 = preCompact;
   }
 });
