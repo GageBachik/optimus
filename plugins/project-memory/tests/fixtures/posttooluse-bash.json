@@ -1,0 +1,1 @@
+{ "session_id": "s-fixture", "transcript_path": "/dev/null", "cwd": "/tmp", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": { "command": "cat big.log" }, "tool_response": { "stdout": "@@BIG@@", "stderr": "", "interrupted": false, "isImage": false, "noOutputExpected": false } }
