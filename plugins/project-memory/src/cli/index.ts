@@ -13,11 +13,13 @@ import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js
 import { setTransfer, retractNote, setAttr } from '../kb/write.js';
 import { sync } from '../kb/sync.js';
 import { importSerena, importClaudeMemory } from '../kb/import.js';
+import { generateMap } from '../kb/map.js';
+import { spawn } from 'node:child_process';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${paths.logsDir()}/hooks.log)\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -77,6 +79,12 @@ else if (cmd === 'cleanup') {
       if (args[0] !== 'serena') line('claude-memory', importClaudeMemory(db, bank));
     } catch (e) { process.stderr.write(`kb import: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
   }
+} else if (cmd === 'map') {
+  const db = openDb();
+  try {
+    const file = generateMap(db); process.stdout.write(`${file}\n`);
+    if (has('--open')) { const [bin, pre] = process.platform === 'darwin' ? ['open', []] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '']] : ['xdg-open', []]; spawn(bin, [...pre, file], { detached: true, stdio: 'ignore' }).unref(); }
+  } catch (e) { process.stderr.write(`kb map: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else if (cmd === 'compare' && args[0]) {
   const db = openDb(), name = args.join(' ');
   try { const rows = compareConcept(db, resolveConceptRef(db, name)); process.stdout.write(rows.length ? rows.map((r) => compareLine(r)).join('\n') + '\n' : `no findings about ${name}\n`); }

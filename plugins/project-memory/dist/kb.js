@@ -109,17 +109,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path17) {
-      const ctrl = callVisitor(key, node, visitor, path17);
+    function visit_(key, node, visitor, path18) {
+      const ctrl = callVisitor(key, node, visitor, path18);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path17, ctrl);
-        return visit_(key, ctrl, visitor, path17);
+        replaceNode(key, path18, ctrl);
+        return visit_(key, ctrl, visitor, path18);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path17 = Object.freeze(path17.concat(node));
+          path18 = Object.freeze(path18.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path17);
+            const ci = visit_(i, node.items[i], visitor, path18);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -130,13 +130,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path17 = Object.freeze(path17.concat(node));
-          const ck = visit_("key", node.key, visitor, path17);
+          path18 = Object.freeze(path18.concat(node));
+          const ck = visit_("key", node.key, visitor, path18);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path17);
+          const cv = visit_("value", node.value, visitor, path18);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -157,17 +157,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path17) {
-      const ctrl = await callVisitor(key, node, visitor, path17);
+    async function visitAsync_(key, node, visitor, path18) {
+      const ctrl = await callVisitor(key, node, visitor, path18);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path17, ctrl);
-        return visitAsync_(key, ctrl, visitor, path17);
+        replaceNode(key, path18, ctrl);
+        return visitAsync_(key, ctrl, visitor, path18);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path17 = Object.freeze(path17.concat(node));
+          path18 = Object.freeze(path18.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path17);
+            const ci = await visitAsync_(i, node.items[i], visitor, path18);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -178,13 +178,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path17 = Object.freeze(path17.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path17);
+          path18 = Object.freeze(path18.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path18);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path17);
+          const cv = await visitAsync_("value", node.value, visitor, path18);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -211,23 +211,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path17) {
+    function callVisitor(key, node, visitor, path18) {
       if (typeof visitor === "function")
-        return visitor(key, node, path17);
+        return visitor(key, node, path18);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path17);
+        return visitor.Map?.(key, node, path18);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path17);
+        return visitor.Seq?.(key, node, path18);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path17);
+        return visitor.Pair?.(key, node, path18);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path17);
+        return visitor.Scalar?.(key, node, path18);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path17);
+        return visitor.Alias?.(key, node, path18);
       return void 0;
     }
-    function replaceNode(key, path17, node) {
-      const parent = path17[path17.length - 1];
+    function replaceNode(key, path18, node) {
+      const parent = path18[path18.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -835,10 +835,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path17, value2) {
+    function collectionFromPath(schema, path18, value2) {
       let v = value2;
-      for (let i = path17.length - 1; i >= 0; --i) {
-        const k = path17[i];
+      for (let i = path18.length - 1; i >= 0; --i) {
+        const k = path18[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -857,7 +857,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path17) => path17 == null || typeof path17 === "object" && !!path17[Symbol.iterator]().next().done;
+    var isEmptyPath = (path18) => path18 == null || typeof path18 === "object" && !!path18[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -887,11 +887,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path17, value2) {
-        if (isEmptyPath(path17))
+      addIn(path18, value2) {
+        if (isEmptyPath(path18))
           this.add(value2);
         else {
-          const [key, ...rest] = path17;
+          const [key, ...rest] = path18;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value2);
@@ -905,8 +905,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path17) {
-        const [key, ...rest] = path17;
+      deleteIn(path18) {
+        const [key, ...rest] = path18;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -920,8 +920,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path17, keepScalar) {
-        const [key, ...rest] = path17;
+      getIn(path18, keepScalar) {
+        const [key, ...rest] = path18;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path17) {
-        const [key, ...rest] = path17;
+      hasIn(path18) {
+        const [key, ...rest] = path18;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -950,8 +950,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path17, value2) {
-        const [key, ...rest] = path17;
+      setIn(path18, value2) {
+        const [key, ...rest] = path18;
         if (rest.length === 0) {
           this.set(key, value2);
         } else {
@@ -1858,13 +1858,13 @@ var require_stringifyCollection = __commonJS({
       const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
       return stringify3(collection, ctx, options);
     }
-    function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
+    function stringifyBlockCollection({ comment, items: items2 }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
       const itemCtx = Object.assign({}, ctx, { indent: itemIndent, type: null });
       let chompKeep = false;
       const lines = [];
-      for (let i = 0; i < items.length; ++i) {
-        const item = items[i];
+      for (let i = 0; i < items2.length; ++i) {
+        const item = items2[i];
         let comment2 = null;
         if (identity.isNode(item)) {
           if (!chompKeep && item.spaceBefore)
@@ -1907,7 +1907,7 @@ ${indent}${line}` : "\n";
         onChompKeep();
       return str;
     }
-    function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
+    function stringifyFlowCollection({ items: items2 }, ctx, { flowChars, itemIndent }) {
       const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
       itemIndent += indentStep;
       const itemCtx = Object.assign({}, ctx, {
@@ -1918,8 +1918,8 @@ ${indent}${line}` : "\n";
       let reqNewline = false;
       let linesAtValue = 0;
       const lines = [];
-      for (let i = 0; i < items.length; ++i) {
-        const item = items[i];
+      for (let i = 0; i < items2.length; ++i) {
+        const item = items2[i];
         let comment = null;
         if (identity.isNode(item)) {
           if (item.spaceBefore)
@@ -1949,7 +1949,7 @@ ${indent}${line}` : "\n";
         if (comment)
           reqNewline = true;
         let str = stringify2.stringify(item, itemCtx, () => comment = null);
-        if (i < items.length - 1)
+        if (i < items2.length - 1)
           str += ",";
         if (comment)
           str += stringifyComment.lineComment(str, itemIndent, commentString(comment));
@@ -2000,9 +2000,9 @@ var require_YAMLMap = __commonJS({
     var identity = require_identity();
     var Pair = require_Pair();
     var Scalar = require_Scalar();
-    function findPair(items, key) {
+    function findPair(items2, key) {
       const k = identity.isScalar(key) ? key.value : key;
-      for (const it of items) {
+      for (const it of items2) {
         if (identity.isPair(it)) {
           if (it.key === key || it.key === k)
             return it;
@@ -3455,9 +3455,9 @@ var require_Document = __commonJS({
           this.contents.add(value2);
       }
       /** Adds a value to the document. */
-      addIn(path17, value2) {
+      addIn(path18, value2) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path17, value2);
+          this.contents.addIn(path18, value2);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3532,14 +3532,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path17) {
-        if (Collection.isEmptyPath(path17)) {
+      deleteIn(path18) {
+        if (Collection.isEmptyPath(path18)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path17) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path18) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3554,10 +3554,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path17, keepScalar) {
-        if (Collection.isEmptyPath(path17))
+      getIn(path18, keepScalar) {
+        if (Collection.isEmptyPath(path18))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path17, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path18, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3568,10 +3568,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path17) {
-        if (Collection.isEmptyPath(path17))
+      hasIn(path18) {
+        if (Collection.isEmptyPath(path18))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path17) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path18) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3588,13 +3588,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path17, value2) {
-        if (Collection.isEmptyPath(path17)) {
+      setIn(path18, value2) {
+        if (Collection.isEmptyPath(path18)) {
           this.contents = value2;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path17), value2);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path18), value2);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path17, value2);
+          this.contents.setIn(path18, value2);
         }
       }
       /**
@@ -3950,12 +3950,12 @@ var require_util_map_includes = __commonJS({
   "node_modules/yaml/dist/compose/util-map-includes.js"(exports) {
     "use strict";
     var identity = require_identity();
-    function mapIncludes(ctx, items, search) {
+    function mapIncludes(ctx, items2, search) {
       const { uniqueKeys } = ctx.options;
       if (uniqueKeys === false)
         return false;
       const isEqual = typeof uniqueKeys === "function" ? uniqueKeys : (a, b) => a === b || identity.isScalar(a) && identity.isScalar(b) && a.value === b.value;
-      return items.some((pair) => isEqual(pair.key, search));
+      return items2.some((pair) => isEqual(pair.key, search));
     }
     exports.mapIncludes = mapIncludes;
   }
@@ -5546,9 +5546,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path17) => {
+    visit.itemAtPath = (cst, path18) => {
       let item = cst;
-      for (const [field, index] of path17) {
+      for (const [field, index] of path18) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5557,23 +5557,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path17) => {
-      const parent = visit.itemAtPath(cst, path17.slice(0, -1));
-      const field = path17[path17.length - 1][0];
+    visit.parentCollection = (cst, path18) => {
+      const parent = visit.itemAtPath(cst, path18.slice(0, -1));
+      const field = path18[path18.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path17, item, visitor) {
-      let ctrl = visitor(item, path17);
+    function _visit(path18, item, visitor) {
+      let ctrl = visitor(item, path18);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path17.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path18.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5584,10 +5584,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path17);
+            ctrl = ctrl(item, path18);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path17) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path18) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6312,15 +6312,15 @@ var require_parser = __commonJS({
     var node_process = __require("process");
     var cst = require_cst();
     var lexer = require_lexer();
-    function includesToken(list, type) {
-      for (let i = 0; i < list.length; ++i)
-        if (list[i].type === type)
+    function includesToken(list2, type) {
+      for (let i = 0; i < list2.length; ++i)
+        if (list2[i].type === type)
           return true;
       return false;
     }
-    function findNonEmptyIndex(list) {
-      for (let i = 0; i < list.length; ++i) {
-        switch (list[i].type) {
+    function findNonEmptyIndex(list2) {
+      for (let i = 0; i < list2.length; ++i) {
+        switch (list2[i].type) {
           case "space":
           case "comment":
           case "newline":
@@ -7323,7 +7323,7 @@ var require_dist = __commonJS({
 
 // src/cli/index.ts
 import os4 from "node:os";
-import path16 from "node:path";
+import path17 from "node:path";
 
 // src/cli/doctor.ts
 import { existsSync as existsSync3, readFileSync as readFileSync4, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync3, unlinkSync } from "node:fs";
@@ -7520,8 +7520,8 @@ import { fileURLToPath } from "node:url";
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path17, fromOffset = 0) {
-  const fd = openSync(path17, "r");
+function readTranscript(path18, fromOffset = 0) {
+  const fd = openSync(path18, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -8725,7 +8725,310 @@ function frontmatter(text) {
   }
 }
 
+// src/kb/map.ts
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync6 } from "node:fs";
+import path16 from "node:path";
+
+// src/kb/map-template.ts
+var TEMPLATE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge bank map</title>
+<style>
+:root { --bg:#f6f6f3; --fg:#1b1b1b; --muted:#6b6b6b; --lane:#ffffff; --lane-line:#dcdcd6; --node:#eef1f5; --node-stroke:#9aa3ad; --edge:#767676; --panel:#ffffff;
+  --green:#2e9e5b; --blue:#3b7dd8; --amber:#d99a1e; --red:#d1403f; --accent:#3b7dd8; --hatch:#444; --code:#f0f0ec; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141518; --fg:#e6e6e6; --muted:#9a9a9a; --lane:#1c1e22; --lane-line:#2c2f35; --node:#262a31; --node-stroke:#5b6572; --edge:#a0a0a0; --panel:#1c1e22;
+  --green:#4cc27a; --blue:#6aa1ea; --amber:#e6b24a; --red:#e86a69; --accent:#6aa1ea; --hatch:#cfcfcf; --code:#23262c; } }
+* { box-sizing:border-box }
+body { margin:0; height:100vh; display:flex; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif }
+h1 { font-size:15px; margin:0 0 2px } h2 { font-size:14px; margin:0 0 4px; overflow-wrap:anywhere } h3 { font-size:12px; margin:12px 0 4px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
+.muted { color:var(--muted); font-size:12px; overflow-wrap:anywhere }
+#filters { width:230px; flex:none; overflow:auto; padding:14px 16px; border-right:1px solid var(--lane-line) }
+#filters fieldset { border:0; padding:0; margin:0 0 12px } #filters legend { font-weight:600; padding:0; margin-bottom:4px }
+#filters label { display:block; cursor:pointer; overflow-wrap:anywhere } #filters select { width:100%; margin-top:2px }
+main { flex:1; overflow:auto; padding:8px 16px }
+svg { display:block; font:12px system-ui, -apple-system, sans-serif }
+text.col { font-size:11px; font-weight:600; fill:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+.lane rect.bg { fill:var(--lane); stroke:var(--lane-line) } .lane text.label { font-weight:700; fill:var(--fg) }
+.node { cursor:pointer } .node rect { fill:var(--node); stroke:var(--node-stroke) } .node text { fill:var(--fg) }
+.node.selected rect, .badge.selected circle, .concept.selected circle { stroke:var(--accent); stroke-width:2.5 }
+.badge { cursor:pointer } .badge circle { stroke:var(--lane); stroke-width:1 } .badge text { fill:var(--fg) }
+.badge[data-state="reproduced"] circle.fill { fill:var(--green) } .badge[data-state="observed"] circle.fill { fill:var(--blue) }
+.badge[data-state="unverified"] circle.fill { fill:var(--amber) } .badge[data-state="conflicting"] circle.fill { fill:var(--red) }
+.badge circle.hatch { fill:url(#hatch); stroke:none } #hatch line { stroke:var(--hatch); stroke-width:1.5 }
+.concept { cursor:pointer } .concept circle { fill:var(--fg); stroke:var(--fg); stroke-width:1.5 } .concept.hollow circle { fill:var(--lane) }
+.concept text { fill:var(--fg) } .concept.multi text { font-weight:700 }
+.edge line.vis { stroke:var(--edge); stroke-width:1.2; opacity:.75 } .edge line.hit { stroke:transparent; stroke-width:10; cursor:pointer }
+.edge[data-type="discovered_in"] line.vis { stroke-dasharray:2 3 }
+.edge[data-type="transfer"] line.vis { stroke-dasharray:6 4 }
+.edge[data-type="transfer"][data-state="confirmed_provisional"] line.vis { stroke:var(--green) }
+.edge[data-type="transfer"][data-state="confirmed"] line.vis { stroke:var(--green); stroke-dasharray:none; stroke-width:2 }
+.edge[data-type="transfer"][data-state="refuted"] line.vis { stroke:var(--red) }
+.edge[data-type="supersedes"] line.vis { opacity:.3 } .edge[data-type="conflicts_with"] line.vis { stroke:var(--red); stroke-dasharray:1 3 }
+.edge text { font-size:10px; fill:var(--muted); paint-order:stroke; stroke:var(--lane); stroke-width:3px } .edge text.x { font-size:14px; font-weight:700; fill:var(--red) }
+.off { display:none }
+#panel { width:330px; flex:none; overflow:auto; padding:14px 16px; border-left:1px solid var(--lane-line); background:var(--panel) }
+#panel dl { display:grid; grid-template-columns:max-content 1fr; gap:2px 10px; margin:4px 0 } #panel dt { color:var(--muted) } #panel dd { margin:0; overflow-wrap:anywhere }
+#panel ul { margin:4px 0; padding-left:18px } #panel li.rel { cursor:pointer } #panel li.rel:hover { color:var(--accent) }
+.cmd { display:flex; gap:6px; align-items:flex-start; margin:4px 0 } .cmd code { flex:1; background:var(--code); padding:4px 6px; border-radius:4px; font-size:12px; overflow-wrap:anywhere; user-select:all }
+.cmd button { font-size:11px; cursor:pointer }
+.legend span { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle }
+</style>
+</head>
+<body>
+<aside id="filters">
+<h1>Knowledge bank map</h1>
+<div class="muted">__META__</div>
+__FILTERS__
+<fieldset class="legend"><legend>Legend</legend>
+<div><span style="background:var(--green)"></span>reproduced <span style="background:var(--blue)"></span>observed</div>
+<div><span style="background:var(--amber)"></span>unverified <span style="background:var(--red)"></span>conflicting</div>
+<div class="muted">hatched: past valid_to or superseded</div>
+<div class="muted">edges: about solid \xB7 discovered_in dotted \xB7 transfer dashed (green confirmed, red refuted) \xB7 validated_in labeled with the gate \xB7 supersedes faded</div>
+<div class="muted">concept hubs: bold when touched from two or more lanes, hollow when a merge is pending</div>
+</fieldset>
+</aside>
+<main>__SVG__</main>
+<aside id="panel"><div class="muted">Click a node, badge, concept hub or edge.</div></aside>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('data').textContent);
+  const $ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const checked = (name) => new Set($('input[data-filter="' + name + '"]:checked').map((i) => i.value));
+  function apply() {
+    const dom = checked('domain'), st = checked('state'), axes = { environment: checked('environment'), subject: checked('subject') };
+    const gateMin = Number(document.getElementById('gate-min').value), validToday = document.getElementById('valid-today').checked;
+    const hasEv = document.getElementById('has-evidence').checked, proposed = document.getElementById('show-proposed').checked;
+    const hidden = new Set();
+    const axisOk = (el) => Object.keys(axes).every((k) => { const v = el.dataset[k]; return !v || v.split('|').some((x) => axes[k].has(x)); });
+    for (const l of $('.lane')) { const off = !dom.has(l.dataset.domain); l.classList.toggle('off', off); if (off) for (const e of $('[data-id]', l)) hidden.add(e.dataset.id); }
+    for (const n of $('.node')) { const off = hidden.has(n.dataset.id) || !axisOk(n); n.classList.toggle('off', off); if (off) hidden.add(n.dataset.id); }
+    for (const b of $('.badge')) {
+      const d = b.dataset;
+      const off = hidden.has(d.id) || !dom.has(d.domain) || !st.has(d.state) || Number(d.gateRank) < gateMin || (validToday && d.validToday !== '1')
+        || (hasEv && d.evidence !== '1') || !axisOk(b) || (d.attach && hidden.has(d.attach));
+      b.classList.toggle('off', off); if (off) hidden.add(d.id);
+    }
+    for (const e of $('.edge')) { const d = e.dataset; e.classList.toggle('off', hidden.has(d.src) || hidden.has(d.dst) || (d.type === 'transfer' && d.state === 'proposed' && !proposed)); }
+  }
+  const panel = document.getElementById('panel');
+  function show(id) {
+    const it = data.items[id]; if (!it) return;
+    for (const e of $('.selected')) e.classList.remove('selected');
+    const el = document.querySelector('[data-id="' + CSS.escape(id) + '"]'); if (el) el.classList.add('selected');
+    panel.replaceChildren();
+    const add = (tag, text, cls, parent = panel) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; parent.appendChild(e); return e; };
+    add('h2', it.title); add('div', it.kind + ' \xB7 ' + it.id, 'muted');
+    const where = [it.domain && 'domain ' + it.domain, it.project && 'project ' + it.project].filter(Boolean).join(' \xB7 '); if (where) add('div', where, 'muted');
+    const attrs = Object.entries(it.attrs); if (attrs.length) { const dl = add('dl'); for (const [k, vs] of attrs) { add('dt', k, null, dl); add('dd', vs.join(', '), null, dl); } }
+    if (it.evidence.length) { add('h3', 'Evidence'); const ul = add('ul'); for (const e of it.evidence) add('li', e, null, ul); }
+    if (it.rels.length) { add('h3', 'Relations'); const ul = add('ul'); for (const r of it.rels) { const li = add('li', (r.dir === 'out' ? '\u2192 ' : '\u2190 ') + r.type + ' ' + r.other + (r.props ? ' ' + r.props : ''), 'rel', ul); li.onclick = () => show(r.otherId); } }
+    if (it.commands.length) { add('h3', 'Commands'); for (const c of it.commands) { const row = add('div', null, 'cmd'); add('code', c, null, row); const b = add('button', 'copy', null, row); b.onclick = () => { try { navigator.clipboard.writeText(c); } catch {} }; } }
+  }
+  const target = (ev) => ev.target.closest && ev.target.closest('[data-id]');
+  document.addEventListener('click', (ev) => { const t = target(ev); if (t) show(t.dataset.id); });
+  document.addEventListener('keydown', (ev) => { if (ev.key !== 'Enter' && ev.key !== ' ') return; const t = target(ev); if (t) { ev.preventDefault(); show(t.dataset.id); } });
+  for (const i of $('#filters input, #filters select')) i.addEventListener('change', apply);
+  apply();
+})();
+</script>
+</body>
+</html>
+`;
+
+// src/kb/map.ts
+var COLUMNS = ["theme", "approach", "experiment", "target"];
+var COL_W = 220;
+var ROW_H = 28;
+var NODE_W = 170;
+var BADGE_STEP = 14;
+var HEADER = 28;
+var LANE_PAD = 50;
+var LANE_GAP = 12;
+var CONCEPT_COL = 4;
+var NO_DOMAIN = "(no domain)";
+var colX = (c) => c * COL_W;
+var axes = (attrs) => ({ environment: attrs["facet:environment"] ?? [], subject: attrs["facet:subject"] ?? [] });
+var liveNotes = (db, kinds) => db.sql.prepare(`SELECT * FROM note WHERE kind IN (${kinds.map(() => "?").join(",")}) AND deleted_at IS NULL ORDER BY created_at, id`).all(...kinds);
+function graphData(db, today = /* @__PURE__ */ new Date()) {
+  const todayStr = today.toISOString().slice(0, 10);
+  const liveIds = new Set(db.sql.prepare("SELECT id FROM note WHERE deleted_at IS NULL").all().map((r) => r.id));
+  const rels = db.sql.prepare("SELECT * FROM rel WHERE deleted_at IS NULL ORDER BY created_at, id").all().map((r) => ({ ...r, props: JSON.parse(r.props) })).filter((r) => liveIds.has(r.src) && liveIds.has(r.dst));
+  const outOf = (id, type) => rels.filter((r) => r.src === id && r.type === type);
+  const laneNotes = liveNotes(db, COLUMNS), findingNotes = liveNotes(db, ["finding"]), conceptNotes = liveNotes(db, ["concept"]);
+  const laneNoteIds = new Set(laneNotes.map((n) => n.id)), conceptIds2 = new Set(conceptNotes.map((n) => n.id));
+  const attachOf = (f) => {
+    const about = outOf(f.id, "about").map((r) => r.dst);
+    return about.find((d) => laneNoteIds.has(d)) ?? about.find((d) => conceptIds2.has(d)) ?? null;
+  };
+  const laneOf = (n) => n.domain ?? NO_DOMAIN;
+  const loose = /* @__PURE__ */ new Map();
+  for (const f of findingNotes) if (!attachOf(f)) (loose.get(laneOf(f)) ?? loose.set(laneOf(f), []).get(laneOf(f))).push(f);
+  const domains = [.../* @__PURE__ */ new Set([...liveNotes(db, ["domain"]).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...loose.keys()])].sort();
+  const node = (n, x, y) => {
+    const attrs = getAttrs(db, n.id);
+    return { id: n.id, kind: n.kind, title: n.title, domain: n.domain, project: n.project, attrs, x, y, ...axes(attrs) };
+  };
+  const nodeById = /* @__PURE__ */ new Map(), looseRow = /* @__PURE__ */ new Map();
+  const lanes = [];
+  let top = HEADER;
+  for (const domain of domains) {
+    const columns = { theme: [], approach: [], experiment: [], target: [] }, offset = top + LANE_PAD;
+    for (const n of laneNotes.filter((n2) => laneOf(n2) === domain)) {
+      const col = columns[n.kind];
+      const nd = node(n, colX(COLUMNS.indexOf(n.kind)), offset + col.length * ROW_H);
+      col.push(nd);
+      nodeById.set(nd.id, nd);
+    }
+    const nodeRows = Math.max(1, ...COLUMNS.map((c) => columns[c].length)), rows = nodeRows + (loose.get(domain)?.length ?? 0);
+    looseRow.set(domain, offset + nodeRows * ROW_H);
+    const height = LANE_PAD + rows * ROW_H;
+    lanes.push({ domain, columns, top, height });
+    top += height + LANE_GAP;
+  }
+  const pending = db.sql.prepare("SELECT id FROM pending_merge WHERE resolved IS NULL AND (a=? OR b=?) ORDER BY created_at, id");
+  const concepts = conceptNotes.map((c, i) => {
+    const touching = rels.filter((r) => r.dst === c.id && (r.type === "about" || r.type === "relies_on")).map((r) => getNote(db, r.src)?.domain ?? NO_DOMAIN);
+    return { ...node(c, colX(CONCEPT_COL), HEADER + LANE_PAD + i * ROW_H), lanes: new Set(touching).size, pending: pending.get(c.id, c.id)?.id ?? null };
+  });
+  const conceptById = new Map(concepts.map((c) => [c.id, c]));
+  const perAnchor = /* @__PURE__ */ new Map(), looseUsed = /* @__PURE__ */ new Map();
+  const findings = findingNotes.map((f) => {
+    const attach = attachOf(f), attrs = getAttrs(db, f.id), from = attrs.valid_from?.[0]?.slice(0, 10), to = attrs.valid_to?.[0]?.slice(0, 10);
+    let x, y;
+    if (attach) {
+      const a = nodeById.get(attach) ?? conceptById.get(attach), k = perAnchor.get(attach) ?? 0;
+      perAnchor.set(attach, k + 1);
+      x = conceptById.has(attach) ? a.x - 10 - k * BADGE_STEP : a.x + NODE_W + 8 + k * BADGE_STEP;
+      y = a.y;
+    } else {
+      const d = laneOf(f), k = looseUsed.get(d) ?? 0;
+      looseUsed.set(d, k + 1);
+      x = colX(1) + 8;
+      y = looseRow.get(d) + k * ROW_H;
+    }
+    const targets = outOf(f.id, "validated_in").map((r) => nodeById.get(r.dst)).filter((t) => !!t);
+    return {
+      id: f.id,
+      kind: f.kind,
+      title: f.title,
+      domain: f.domain,
+      project: f.project,
+      attrs,
+      x,
+      y,
+      attach,
+      environment: [...new Set(targets.flatMap((t) => t.environment))],
+      subject: [...new Set(targets.flatMap((t) => t.subject))],
+      state: attrs.state?.[0] ?? "unverified",
+      gateRank: Number(attrs.gate_rank?.[0] ?? -1),
+      validToday: (!from || from <= todayStr) && (!to || to >= todayStr),
+      expired: !!to && to < todayStr,
+      superseded: rels.some((r) => r.type === "supersedes" && r.dst === f.id),
+      evidence: outOf(f.id, "backed_by").map((r) => getNote(db, r.dst)?.title ?? r.dst)
+    };
+  });
+  const drawn = /* @__PURE__ */ new Set([...nodeById.keys(), ...conceptById.keys(), ...findings.map((b) => b.id)]);
+  const edges = rels.filter((r) => drawn.has(r.src) && drawn.has(r.dst)).map(({ id, type, src, dst, props }) => ({ id, type, src, dst, props }));
+  const gates = [];
+  for (const r of db.sql.prepare(`SELECT DISTINCT key, value FROM attr WHERE key LIKE 'gate:%'`).all()) {
+    const i = Number(r.key.slice(5));
+    if (!Number.isInteger(i)) continue;
+    gates[i] = gates[i] ? gates[i].split(" / ").includes(r.value) ? gates[i] : `${gates[i]} / ${r.value}` : r.value;
+  }
+  return { lanes, concepts, findings, edges, gates: Array.from(gates, (g) => g ?? "") };
+}
+var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+var clip = (s, n = 26) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
+var attr = (k, v) => ` ${k}="${esc(v)}"`;
+var list = (k, vs) => vs.length ? attr(k, vs.join("|")) : "";
+var flag2 = (b) => b ? "1" : "0";
+function renderSvg(g) {
+  const all = /* @__PURE__ */ new Map();
+  for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) all.set(n.id, { l: [n.x, n.y], r: [n.x + NODE_W, n.y], title: n.title });
+  for (const c of g.concepts) all.set(c.id, { l: [c.x + 1, c.y], r: [c.x + 15, c.y], title: c.title });
+  for (const b of g.findings) all.set(b.id, { l: [b.x - 6, b.y], r: [b.x + 6, b.y], title: b.title });
+  const width = colX(CONCEPT_COL) + 260, height = Math.max(g.lanes.at(-1) ? g.lanes.at(-1).top + g.lanes.at(-1).height : HEADER, HEADER + LANE_PAD + g.concepts.length * ROW_H) + 16;
+  const out = [`<svg width="${width + 32}" height="${height}"><defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4"></line></pattern></defs><g transform="translate(16,0)">`];
+  for (const [i, label] of ["Theme", "Approach", "Experiment", "Target", "Concept"].entries()) out.push(`<text class="col" x="${colX(i)}" y="18">${label}</text>`);
+  for (const l of g.lanes) {
+    out.push(`<g class="lane"${attr("data-domain", l.domain)}><rect class="bg" x="-12" y="${l.top}" width="${width + 8}" height="${l.height}" rx="6"></rect><text class="label" x="0" y="${l.top + 20}">${esc(l.domain)}</text>`);
+    for (const c of COLUMNS) for (const n of l.columns[c])
+      out.push(`<g class="node"${attr("data-id", n.id)}${attr("data-kind", n.kind)}${list("data-environment", n.environment)}${list("data-subject", n.subject)} tabindex="0" role="button"><rect x="${n.x}" y="${n.y - 11}" width="${NODE_W}" height="22" rx="4"></rect><text x="${n.x + 6}" y="${n.y + 4}">${esc(clip(n.title))}</text><title>${esc(n.title)}</title></g>`);
+    out.push("</g>");
+  }
+  for (const e of g.edges) {
+    const a = all.get(e.src), b = all.get(e.dst), [p, q] = a.l[0] < b.l[0] ? [a.r, b.l] : a.l[0] > b.l[0] ? [a.l, b.r] : [a.r, b.r];
+    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, state = typeof e.props.state === "string" ? e.props.state : "", gate = typeof e.props.gate === "string" ? e.props.gate : "";
+    const line = (cls) => `<line class="${cls}" x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}"></line>`;
+    out.push(`<g class="edge"${attr("data-id", e.id)}${attr("data-type", e.type)}${attr("data-src", e.src)}${attr("data-dst", e.dst)}${state ? attr("data-state", state) : ""}${gate ? attr("data-gate", gate) : ""} tabindex="0" role="button">${line("vis")}${line("hit")}` + (e.type === "validated_in" && gate ? `<text x="${q[0] - 6}" y="${q[1] - 12}" text-anchor="end">${esc(gate)}</text>` : "") + (e.type === "transfer" && state === "refuted" ? `<text class="x" x="${mx}" y="${my + 5}" text-anchor="middle">\xD7</text>` : "") + `<title>${esc(`${e.type}: ${a.title} \u2192 ${b.title}`)}</title></g>`);
+  }
+  for (const b of g.findings) {
+    const hatched = b.expired || b.superseded;
+    out.push(`<g class="badge"${attr("data-id", b.id)}${attr("data-state", b.state)}${attr("data-domain", b.domain ?? NO_DOMAIN)}${attr("data-gate-rank", b.gateRank)}${attr("data-valid-today", flag2(b.validToday))}${attr("data-evidence", flag2(b.evidence.length > 0))}${attr("data-expired", flag2(b.expired))}${attr("data-superseded", flag2(b.superseded))}${b.attach ? attr("data-attach", b.attach) : ""}${list("data-environment", b.environment)}${list("data-subject", b.subject)} tabindex="0" role="button"><circle class="fill" cx="${b.x}" cy="${b.y}" r="6"></circle>${hatched ? `<circle class="hatch" cx="${b.x}" cy="${b.y}" r="6"></circle>` : ""}` + (b.attach ? "" : `<text x="${b.x + 12}" y="${b.y + 4}">${esc(clip(b.title, 40))}</text>`) + `<title>${esc(`${b.title} (${b.state})`)}</title></g>`);
+  }
+  for (const c of g.concepts)
+    out.push(`<g class="concept${c.lanes >= 2 ? " multi" : ""}${c.pending ? " hollow" : ""}"${attr("data-id", c.id)}${attr("data-lanes", c.lanes)}${attr("data-pending", flag2(!!c.pending))} tabindex="0" role="button"><circle cx="${c.x + 8}" cy="${c.y}" r="7"></circle><text x="${c.x + 22}" y="${c.y + 4}">${esc(clip(c.title, 30))}</text><title>${esc(c.title)}</title></g>`);
+  out.push("</g></svg>");
+  return out.join("\n");
+}
+function renderFilters(g) {
+  const box = (name, v, label = v, checked = true) => `<label><input type="checkbox"${attr("data-filter", name)}${attr("value", v)}${checked ? " checked" : ""}> ${esc(label)}</label>`;
+  const group = (legend, name, values) => `<fieldset><legend>${legend}</legend>${values.length ? values.map((v) => box(name, v)).join("") : '<div class="muted">none</div>'}</fieldset>`;
+  const targets = g.lanes.flatMap((l) => l.columns.target);
+  const distinct = (xs) => [...new Set(xs)].sort();
+  const states = distinct(["unverified", "observed", "reproduced", "conflicting", ...g.findings.map((b) => b.state)]);
+  return [
+    group("Domain", "domain", g.lanes.map((l) => l.domain)),
+    group("Environment", "environment", distinct(targets.flatMap((t) => t.environment))),
+    group("Subject", "subject", distinct(targets.flatMap((t) => t.subject))),
+    group("State", "state", states),
+    `<fieldset><legend>Gate \u2265</legend><select id="gate-min"><option value="-1">any</option>${g.gates.map((name, i) => `<option value="${i}">${esc(`${i}: ${name}`)}</option>`).join("")}</select></fieldset>`,
+    `<fieldset><legend>Findings</legend><label><input type="checkbox" id="valid-today"> valid today</label><label><input type="checkbox" id="has-evidence"> has evidence</label><label><input type="checkbox" id="show-proposed" checked> show proposed transfers</label></fieldset>`
+  ].join("\n");
+}
+function items(db, g) {
+  const titles = /* @__PURE__ */ new Map();
+  for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) titles.set(n.id, n.title);
+  for (const n of [...g.concepts, ...g.findings]) titles.set(n.id, n.title);
+  const relsOf = (id) => g.edges.filter((e) => e.src === id || e.dst === id).map((e) => {
+    const dir = e.src === id ? "out" : "in", otherId = dir === "out" ? e.dst : e.src;
+    return { dir, type: e.type, other: titles.get(otherId) ?? otherId, otherId, props: Object.keys(e.props).length ? JSON.stringify(e.props) : "" };
+  });
+  const transferCommands = (relId2) => [`kb transfer ${relId2} confirm`, `kb transfer ${relId2} refute`];
+  const out = {};
+  const put = (n, evidence, commands) => {
+    out[n.id] = { id: n.id, kind: n.kind, title: n.title, domain: n.domain, project: n.project, attrs: n.attrs, evidence, rels: relsOf(n.id), commands };
+  };
+  for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) put(n, [], [`kb retract ${n.id}`]);
+  for (const c of g.concepts) put(c, [], [...c.pending ? [`kb concepts accept ${c.pending}`, `kb concepts reject ${c.pending}`] : [], `kb retract ${c.id}`]);
+  for (const b of g.findings) put(b, b.evidence, [...g.edges.filter((e) => e.type === "transfer" && e.src === b.id).flatMap((e) => transferCommands(e.id)), `kb retract ${b.id}`, `kb set ${b.id} valid_to <date>`]);
+  for (const e of g.edges) {
+    const title = `${e.type}: ${titles.get(e.src) ?? e.src} \u2192 ${titles.get(e.dst) ?? e.dst}`, attrs = Object.fromEntries(Object.entries(e.props).map(([k, v]) => [k, [String(v)]]));
+    out[e.id] = { id: e.id, kind: "relation", title, domain: getNote(db, e.src)?.domain ?? null, project: null, attrs, evidence: [], rels: [{ dir: "out", type: "src", other: titles.get(e.src) ?? e.src, otherId: e.src, props: "" }, { dir: "out", type: "dst", other: titles.get(e.dst) ?? e.dst, otherId: e.dst, props: "" }], commands: e.type === "transfer" ? transferCommands(e.id) : [] };
+  }
+  return out;
+}
+function generateMap(db, outFile = path16.join(paths.stateDir(), "map.html"), today = /* @__PURE__ */ new Date()) {
+  const g = graphData(db, today);
+  const parts = {
+    META: esc(`generated ${today.toISOString().slice(0, 10)} \xB7 ${g.lanes.length} lanes \xB7 ${g.concepts.length} concepts \xB7 ${g.findings.length} findings \xB7 ${g.edges.length} edges`),
+    FILTERS: renderFilters(g),
+    SVG: renderSvg(g),
+    DATA: JSON.stringify({ items: items(db, g) }).replace(/</g, "\\u003c")
+    // `</script>` can never close the data block
+  };
+  const html = TEMPLATE.replace(/__(META|FILTERS|SVG|DATA)__/g, (_, k) => parts[k]);
+  mkdirSync8(path16.dirname(outFile), { recursive: true });
+  writeFileSync6(outFile, html);
+  return outFile;
+}
+
 // src/cli/index.ts
+import { spawn } from "node:child_process";
 var [cmd, ...args] = process.argv.slice(2);
 var has = (f) => args.includes(f);
 var value = (f) => {
@@ -8733,7 +9036,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
@@ -8854,7 +9157,7 @@ else if (cmd === "sync") {
     process.stderr.write("--root needs a directory\n");
     process.exitCode = 2;
   } else {
-    const db = openDb(), bank = paths.bankDir(), roots = [root ?? path16.join(home, "projects")];
+    const db = openDb(), bank = paths.bankDir(), roots = [root ?? path17.join(home, "projects")];
     const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
 `);
     try {
@@ -8867,6 +9170,23 @@ else if (cmd === "sync") {
     } finally {
       db.sql.close();
     }
+  }
+} else if (cmd === "map") {
+  const db = openDb();
+  try {
+    const file = generateMap(db);
+    process.stdout.write(`${file}
+`);
+    if (has("--open")) {
+      const [bin, pre] = process.platform === "darwin" ? ["open", []] : process.platform === "win32" ? ["cmd", ["/c", "start", ""]] : ["xdg-open", []];
+      spawn(bin, [...pre, file], { detached: true, stdio: "ignore" }).unref();
+    }
+  } catch (e) {
+    process.stderr.write(`kb map: ${e.message}
+`);
+    process.exitCode = 1;
+  } finally {
+    db.sql.close();
   }
 } else if (cmd === "compare" && args[0]) {
   const db = openDb(), name = args.join(" ");
