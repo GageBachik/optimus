@@ -1,0 +1,32 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { planCleanup } from '../../src/cli/cleanup.js';
+test('cleanup plans agentmemory removal and broken MCP flags, applies with backups', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')); mkdirSync(path.join(home, '.claude'));
+  writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'agentmemory@agentmemory': true, 'context-mode@context-mode': true } }));
+  writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ mcpServers: { agentmemory: { command: 'npx', args: ['-y', '@agentmemory/mcp'] }, broken: { command: 'npx', args: ['tool', '/definitely/not/here/'] } } }));
+  const actions = planCleanup(home);
+  assert.ok(actions.some((a) => a.kind === 'disable-plugin' && a.target === 'agentmemory@agentmemory'));
+  assert.ok(actions.some((a) => a.kind === 'remove-mcp' && a.target === 'agentmemory'));
+  assert.ok(actions.some((a) => a.kind === 'flag' && a.target === 'broken'));
+  assert.ok(actions.some((a) => a.kind === 'flag' && a.target === 'context-mode@context-mode'));
+  for (const a of actions) if (a.kind !== 'flag') a.apply();
+  const settings = JSON.parse(readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8'));
+  assert.equal(settings.enabledPlugins['agentmemory@agentmemory'], false);
+  assert.ok(readdirSync(path.join(home, '.claude')).some((f) => f.startsWith('settings.json.bak-')));
+  assert.ok(!('agentmemory' in JSON.parse(readFileSync(path.join(home, '.claude.json'), 'utf8')).mcpServers));
+});
+test('cleanup copies the agentmemory backups before removing ~/.agentmemory; flags serena and missing commands', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')); mkdirSync(path.join(home, '.agentmemory', 'backups'), { recursive: true });
+  writeFileSync(path.join(home, '.agentmemory', 'backups', 'claude-code-1.json'), '{"m":1}');
+  writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ mcpServers: { serena: { command: 'uvx', args: [] }, ghost: { command: 'no-such-cmd-pm-test', args: [] } } }));
+  const actions = planCleanup(home);
+  assert.ok(actions.some((a) => a.kind === 'flag' && a.target === 'serena'));
+  assert.ok(actions.some((a) => a.kind === 'flag' && a.target === 'ghost' && /not on PATH/.test(a.reason)));
+  actions.find((a) => a.kind === 'remove-dir')!.apply();
+  assert.ok(!existsSync(path.join(home, '.agentmemory')));
+  assert.equal(readFileSync(path.join(home, '.project-memory', 'imports', 'agentmemory', 'backups', 'claude-code-1.json'), 'utf8'), '{"m":1}');
+});
