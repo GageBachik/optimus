@@ -109,17 +109,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path10) {
-      const ctrl = callVisitor(key, node, visitor, path10);
+    function visit_(key, node, visitor, path11) {
+      const ctrl = callVisitor(key, node, visitor, path11);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path10, ctrl);
-        return visit_(key, ctrl, visitor, path10);
+        replaceNode(key, path11, ctrl);
+        return visit_(key, ctrl, visitor, path11);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path10 = Object.freeze(path10.concat(node));
+          path11 = Object.freeze(path11.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path10);
+            const ci = visit_(i, node.items[i], visitor, path11);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -130,13 +130,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path10 = Object.freeze(path10.concat(node));
-          const ck = visit_("key", node.key, visitor, path10);
+          path11 = Object.freeze(path11.concat(node));
+          const ck = visit_("key", node.key, visitor, path11);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path10);
+          const cv = visit_("value", node.value, visitor, path11);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -157,17 +157,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path10) {
-      const ctrl = await callVisitor(key, node, visitor, path10);
+    async function visitAsync_(key, node, visitor, path11) {
+      const ctrl = await callVisitor(key, node, visitor, path11);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path10, ctrl);
-        return visitAsync_(key, ctrl, visitor, path10);
+        replaceNode(key, path11, ctrl);
+        return visitAsync_(key, ctrl, visitor, path11);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path10 = Object.freeze(path10.concat(node));
+          path11 = Object.freeze(path11.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path10);
+            const ci = await visitAsync_(i, node.items[i], visitor, path11);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -178,13 +178,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path10 = Object.freeze(path10.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path10);
+          path11 = Object.freeze(path11.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path11);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path10);
+          const cv = await visitAsync_("value", node.value, visitor, path11);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -211,23 +211,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path10) {
+    function callVisitor(key, node, visitor, path11) {
       if (typeof visitor === "function")
-        return visitor(key, node, path10);
+        return visitor(key, node, path11);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path10);
+        return visitor.Map?.(key, node, path11);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path10);
+        return visitor.Seq?.(key, node, path11);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path10);
+        return visitor.Pair?.(key, node, path11);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path10);
+        return visitor.Scalar?.(key, node, path11);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path10);
+        return visitor.Alias?.(key, node, path11);
       return void 0;
     }
-    function replaceNode(key, path10, node) {
-      const parent = path10[path10.length - 1];
+    function replaceNode(key, path11, node) {
+      const parent = path11[path11.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -835,10 +835,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path10, value2) {
+    function collectionFromPath(schema, path11, value2) {
       let v = value2;
-      for (let i = path10.length - 1; i >= 0; --i) {
-        const k = path10[i];
+      for (let i = path11.length - 1; i >= 0; --i) {
+        const k = path11[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -857,7 +857,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path10) => path10 == null || typeof path10 === "object" && !!path10[Symbol.iterator]().next().done;
+    var isEmptyPath = (path11) => path11 == null || typeof path11 === "object" && !!path11[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -887,11 +887,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path10, value2) {
-        if (isEmptyPath(path10))
+      addIn(path11, value2) {
+        if (isEmptyPath(path11))
           this.add(value2);
         else {
-          const [key, ...rest] = path10;
+          const [key, ...rest] = path11;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value2);
@@ -905,8 +905,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path10) {
-        const [key, ...rest] = path10;
+      deleteIn(path11) {
+        const [key, ...rest] = path11;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -920,8 +920,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path10, keepScalar) {
-        const [key, ...rest] = path10;
+      getIn(path11, keepScalar) {
+        const [key, ...rest] = path11;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path10) {
-        const [key, ...rest] = path10;
+      hasIn(path11) {
+        const [key, ...rest] = path11;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -950,8 +950,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path10, value2) {
-        const [key, ...rest] = path10;
+      setIn(path11, value2) {
+        const [key, ...rest] = path11;
         if (rest.length === 0) {
           this.set(key, value2);
         } else {
@@ -1497,7 +1497,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify(item, ctx, onComment, onChompKeep) {
+    function stringify2(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1526,7 +1526,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -1536,7 +1536,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value: value2 }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1558,7 +1558,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify2.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1610,7 +1610,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify.stringify(value2, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify2.stringify(value2, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1748,7 +1748,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value: value2 }) {
@@ -1784,7 +1784,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify2.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1851,12 +1851,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify2 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify2(collection, ctx, options);
+      const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify3(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1881,7 +1881,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1948,7 +1948,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify.stringify(item, itemCtx, () => comment = null);
+        let str = stringify2.stringify(item, itemCtx, () => comment = null);
         if (i < items.length - 1)
           str += ",";
         if (comment)
@@ -3302,7 +3302,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -3317,7 +3317,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify.createStringifyContext(doc, options);
+      const ctx = stringify2.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3339,7 +3339,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3347,7 +3347,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify.stringify(doc.contents, ctx));
+        lines.push(stringify2.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -3455,9 +3455,9 @@ var require_Document = __commonJS({
           this.contents.add(value2);
       }
       /** Adds a value to the document. */
-      addIn(path10, value2) {
+      addIn(path11, value2) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path10, value2);
+          this.contents.addIn(path11, value2);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3532,14 +3532,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path10) {
-        if (Collection.isEmptyPath(path10)) {
+      deleteIn(path11) {
+        if (Collection.isEmptyPath(path11)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path10) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path11) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3554,10 +3554,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path10, keepScalar) {
-        if (Collection.isEmptyPath(path10))
+      getIn(path11, keepScalar) {
+        if (Collection.isEmptyPath(path11))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path10, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path11, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3568,10 +3568,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path10) {
-        if (Collection.isEmptyPath(path10))
+      hasIn(path11) {
+        if (Collection.isEmptyPath(path11))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path10) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path11) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3588,13 +3588,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path10, value2) {
-        if (Collection.isEmptyPath(path10)) {
+      setIn(path11, value2) {
+        if (Collection.isEmptyPath(path11)) {
           this.contents = value2;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path10), value2);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path11), value2);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path10, value2);
+          this.contents.setIn(path11, value2);
         }
       }
       /**
@@ -5474,7 +5474,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify2 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5527,7 +5527,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value2);
       return res;
     }
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -5546,9 +5546,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path10) => {
+    visit.itemAtPath = (cst, path11) => {
       let item = cst;
-      for (const [field, index] of path10) {
+      for (const [field, index] of path11) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5557,23 +5557,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path10) => {
-      const parent = visit.itemAtPath(cst, path10.slice(0, -1));
-      const field = path10[path10.length - 1][0];
+    visit.parentCollection = (cst, path11) => {
+      const parent = visit.itemAtPath(cst, path11.slice(0, -1));
+      const field = path11[path11.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path10, item, visitor) {
-      let ctrl = visitor(item, path10);
+    function _visit(path11, item, visitor) {
+      let ctrl = visitor(item, path11);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path10.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path11.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5584,10 +5584,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path10);
+            ctrl = ctrl(item, path11);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path10) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path11) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7221,7 +7221,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse3(src, reviver, options) {
+    function parse4(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7240,7 +7240,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify(value2, replacer, options) {
+    function stringify2(value2, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7262,10 +7262,10 @@ var require_public_api = __commonJS({
         return value2.toString(options);
       return new Document.Document(value2, _replacer, options).toString(options);
     }
-    exports.parse = parse3;
+    exports.parse = parse4;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -7447,6 +7447,11 @@ function getAttrs(db, id) {
   for (const r of db.sql.prepare("SELECT key, value FROM attr WHERE note_id=? ORDER BY key, value").all(id)) (out[r.key] ??= []).push(r.value);
   return out;
 }
+function getRels(db, id, dir = "out") {
+  const where = dir === "out" ? "src=?" : dir === "in" ? "dst=?" : "(src=? OR dst=?)";
+  const args2 = dir === "both" ? [id, id] : [id];
+  return db.sql.prepare(`SELECT * FROM rel WHERE ${where} AND deleted_at IS NULL ORDER BY created_at`).all(...args2).map((r) => ({ ...r, props: JSON.parse(r.props) }));
+}
 function reindexFts(db, noteId) {
   const n = getNote(db, noteId);
   db.sql.prepare("DELETE FROM note_fts WHERE note_id=?").run(noteId);
@@ -7507,8 +7512,8 @@ import { fileURLToPath } from "node:url";
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path10, fromOffset = 0) {
-  const fd = openSync(path10, "r");
+function readTranscript(path11, fromOffset = 0) {
+  const fd = openSync(path11, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -8078,6 +8083,117 @@ function projectInit(cwd, opts) {
   return c;
 }
 
+// src/kb/export.ts
+var import_yaml2 = __toESM(require_dist(), 1);
+import { createHash as createHash2 } from "node:crypto";
+import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync11, readdirSync as readdirSync5 } from "node:fs";
+import path10 from "node:path";
+var sha256 = (s) => createHash2("sha256").update(s).digest("hex");
+var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(props)}`).slice(0, 26)}`;
+function renderNoteFile(n, attrs, rels) {
+  const fm = {
+    id: n.id,
+    kind: n.kind,
+    domain: n.domain,
+    project: n.project,
+    title: n.title,
+    created_at: n.created_at,
+    updated_at: n.updated_at,
+    device_id: n.device_id,
+    ...n.deleted_at ? { deleted_at: n.deleted_at } : {},
+    attrs: Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, v.length === 1 ? v[0] : v])),
+    rels: [...rels].sort((a, b) => a.type.localeCompare(b.type) || a.dst.localeCompare(b.dst)).map((r) => ({ type: r.type, dst: r.dst, ...Object.keys(r.props ?? {}).length ? { props: r.props } : {} }))
+  };
+  return `---
+${(0, import_yaml2.stringify)(fm, { sortMapEntries: true, lineWidth: 0 })}---
+${n.body.replace(/\r\n?/g, "\n")}`;
+}
+function parseNoteFile(text) {
+  const end = text.indexOf("\n---\n", 3);
+  if (!text.startsWith("---\n") || end < 0) throw new Error("note file has no frontmatter");
+  const fm = (0, import_yaml2.parse)(text.slice(4, end + 1)) ?? {};
+  const note = {
+    id: fm.id,
+    kind: fm.kind,
+    domain: fm.domain ?? null,
+    project: fm.project ?? null,
+    title: fm.title,
+    body: text.slice(end + 5),
+    created_at: fm.created_at,
+    updated_at: fm.updated_at,
+    deleted_at: fm.deleted_at ?? null,
+    device_id: fm.device_id
+  };
+  if (typeof note.id !== "string" || typeof note.kind !== "string" || typeof note.title !== "string") throw new Error("note frontmatter needs id, kind and title");
+  const attrs = Object.fromEntries(Object.entries(fm.attrs ?? {}).map(([k, v]) => [k, (Array.isArray(v) ? v : [v]).map(String)]));
+  const rels = (fm.rels ?? []).map((r) => {
+    const props = r.props ?? {};
+    return { id: relId(note.id, r.type, r.dst, props), src: note.id, type: r.type, dst: r.dst, props, created_at: note.created_at, deleted_at: null };
+  });
+  return { note, attrs, rels };
+}
+var noteFile = (bankDir, n) => path10.join(bankDir, "notes", n.kind, `${n.id}.md`);
+function exportNote(db, bankDir, id) {
+  const n = getNote(db, id);
+  if (!n) throw new Error(`no note ${id}`);
+  const file = noteFile(bankDir, n);
+  mkdirSync5(path10.dirname(file), { recursive: true });
+  writeFileAtomic(file, renderNoteFile(n, getAttrs(db, id), getRels(db, id, "out")));
+  return file;
+}
+function exportAll(db, bankDir) {
+  const ids = db.sql.prepare("SELECT id FROM note ORDER BY id").all().map((r) => r.id);
+  for (const id of ids) exportNote(db, bankDir, id);
+  return ids.length;
+}
+function importFile(db, file) {
+  const { note, attrs, rels } = parseNoteFile(readFileSync11(file, "utf8"));
+  upsertNote(db, note);
+  db.sql.prepare("UPDATE note SET created_at=? WHERE id=?").run(note.created_at, note.id);
+  setAttrs(db, note.id, attrs);
+  db.sql.prepare("DELETE FROM rel WHERE src=?").run(note.id);
+  const ins = db.sql.prepare("INSERT OR REPLACE INTO rel(id,src,type,dst,props,created_at,deleted_at) VALUES(?,?,?,?,?,?,?)");
+  for (const r of rels) ins.run(r.id, r.src, r.type, r.dst, JSON.stringify(r.props), r.created_at, null);
+  if (note.kind === "concept") {
+    const alias = db.sql.prepare("INSERT OR IGNORE INTO alias(name_norm, concept_id) VALUES(?,?)");
+    for (const a of [note.title, ...attrs.alias ?? []]) alias.run(normalizeName(a), note.id);
+  }
+  return note;
+}
+function importAll(db, bankDir) {
+  const notes = path10.join(bankDir, "notes");
+  let imported = 0, unchanged = 0;
+  if (!existsSync9(notes)) return { imported, unchanged };
+  const getMeta = db.sql.prepare("SELECT value FROM meta WHERE key=?");
+  const setMeta = db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)");
+  db.sql.exec("BEGIN");
+  try {
+    for (const kind of readdirSync5(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
+      for (const f of readdirSync5(path10.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
+        const file = path10.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync11(file, "utf8"));
+        if (getMeta.get(key)?.value === hash) {
+          unchanged++;
+          continue;
+        }
+        importFile(db, file);
+        setMeta.run(key, hash);
+        imported++;
+      }
+    }
+    db.sql.exec("COMMIT");
+  } catch (e) {
+    db.sql.exec("ROLLBACK");
+    throw e;
+  }
+  return { imported, unchanged };
+}
+function rebuild(db, bankDir) {
+  db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
+  const templates = path10.join(bankDir, "templates");
+  if (existsSync9(templates)) for (const f of readdirSync5(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path10.join(templates, f)));
+  return importAll(db, bankDir);
+}
+
 // src/cli/index.ts
 var [cmd, ...args] = process.argv.slice(2);
 var has = (f) => args.includes(f);
@@ -8086,7 +8202,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os3.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "cleanup") {
   const actions = planCleanup(home);
@@ -8125,6 +8241,23 @@ else if (cmd === "cleanup") {
     process.stderr.write("usage: kb project init --domain <d> [--id <id>]\n");
     process.exitCode = 2;
   } else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + "\n");
+} else if (cmd === "export" || cmd === "rebuild") {
+  const db = openDb(), bank = paths.bankDir();
+  try {
+    if (cmd === "export") process.stdout.write(`exported ${exportAll(db, bank)} notes to ${bank}
+`);
+    else {
+      const r = rebuild(db, bank);
+      process.stdout.write(`rebuilt index from ${bank}: ${r.imported} notes imported
+`);
+    }
+  } catch (e) {
+    process.stderr.write(`kb ${cmd}: ${e.message}
+`);
+    process.exitCode = 1;
+  } finally {
+    db.sql.close();
+  }
 } else {
   process.stdout.write(usage);
   if (cmd && cmd !== "help" && cmd !== "--help") process.exitCode = 2;

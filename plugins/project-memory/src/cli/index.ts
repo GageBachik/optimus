@@ -3,11 +3,14 @@ import { doctor } from './doctor.js';
 import { planCleanup } from './cleanup.js';
 import { setup } from './setup.js';
 import { initBank, projectInit } from './init.js';
+import { paths } from '../lib/paths.js';
+import { openDb } from '../kb/db.js';
+import { exportAll, rebuild } from '../kb/export.js';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'cleanup') {
   const actions = planCleanup(home); const apply = has('--apply');
@@ -31,4 +34,10 @@ else if (cmd === 'cleanup') {
   const domain = value('--domain'), id = value('--id');
   if (!domain || (has('--id') && !id)) { process.stderr.write('usage: kb project init --domain <d> [--id <id>]\n'); process.exitCode = 2; }
   else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + '\n');
+} else if (cmd === 'export' || cmd === 'rebuild') {
+  const db = openDb(), bank = paths.bankDir();
+  try {
+    if (cmd === 'export') process.stdout.write(`exported ${exportAll(db, bank)} notes to ${bank}\n`);
+    else { const r = rebuild(db, bank); process.stdout.write(`rebuilt index from ${bank}: ${r.imported} notes imported\n`); }
+  } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else { process.stdout.write(usage); if (cmd && cmd !== 'help' && cmd !== '--help') process.exitCode = 2; }
