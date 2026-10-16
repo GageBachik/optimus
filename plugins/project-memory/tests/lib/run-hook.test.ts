@@ -11,3 +11,7 @@ test('truncated JSON → exit 0, no stdout, parse error logged', () => {
   const r = run('{"session_id": "abc", "cwd": '); assert.equal(r.status, 0); assert.equal(r.stdout, '');
   const logPath = path.join(home, 'logs', 'hooks.log'); assert.ok(existsSync(logPath)); assert.match(readFileSync(logPath, 'utf8'), /parse/i);
 });
+test('unparseable stdin is never written to the log (it can carry the user prompt)', () => {
+  const r = run('{"prompt": "sk-SECRET-TOKEN-123'); assert.equal(r.status, 0);
+  const log = readFileSync(path.join(home, 'logs', 'hooks.log'), 'utf8'); assert.doesNotMatch(log, /SECRET-TOKEN/); assert.match(log, /"chars":31/);
+});

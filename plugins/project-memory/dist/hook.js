@@ -278,7 +278,7 @@ async function runHook(event2, fn) {
     try {
       input = JSON.parse(raw);
     } catch (e) {
-      log("error", `stdin parse failed for ${event2}`, { head: raw.slice(0, 200), error: String(e) });
+      log("error", `stdin parse failed for ${event2}`, { chars: raw.length, error: String(e) });
       process.exit(0);
     }
   }
