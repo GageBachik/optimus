@@ -8089,6 +8089,7 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync11, readdirSync as readdirSync5 } from "node:fs";
 import path10 from "node:path";
 var sha256 = (s) => createHash2("sha256").update(s).digest("hex");
+var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(props)}`).slice(0, 26)}`;
 function renderNoteFile(n, attrs, rels) {
   const fm = {
@@ -8102,7 +8103,7 @@ function renderNoteFile(n, attrs, rels) {
     device_id: n.device_id,
     ...n.deleted_at ? { deleted_at: n.deleted_at } : {},
     attrs: Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, v.length === 1 ? v[0] : v])),
-    rels: [...rels].sort((a, b) => a.type.localeCompare(b.type) || a.dst.localeCompare(b.dst)).map((r) => ({ type: r.type, dst: r.dst, ...Object.keys(r.props ?? {}).length ? { props: r.props } : {} }))
+    rels: [...rels].sort((a, b) => cmp(a.type, b.type) || cmp(a.dst, b.dst)).map((r) => ({ type: r.type, dst: r.dst, ...Object.keys(r.props ?? {}).length ? { props: r.props } : {} }))
   };
   return `---
 ${(0, import_yaml2.stringify)(fm, { sortMapEntries: true, lineWidth: 0 })}---
@@ -8160,38 +8161,48 @@ function importFile(db, file) {
   }
   return note;
 }
-function importAll(db, bankDir) {
+function importNotes(db, bankDir) {
   const notes = path10.join(bankDir, "notes");
   let imported = 0, unchanged = 0;
   if (!existsSync9(notes)) return { imported, unchanged };
   const getMeta = db.sql.prepare("SELECT value FROM meta WHERE key=?");
   const setMeta = db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)");
+  for (const kind of readdirSync5(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
+    for (const f of readdirSync5(path10.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
+      const file = path10.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync11(file, "utf8"));
+      if (getMeta.get(key)?.value === hash) {
+        unchanged++;
+        continue;
+      }
+      try {
+        importFile(db, file);
+      } catch (e) {
+        throw new Error(`${file}: ${e.message}`, { cause: e });
+      }
+      setMeta.run(key, hash);
+      imported++;
+    }
+  }
+  return { imported, unchanged };
+}
+function inTransaction(db, fn) {
   db.sql.exec("BEGIN");
   try {
-    for (const kind of readdirSync5(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
-      for (const f of readdirSync5(path10.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
-        const file = path10.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync11(file, "utf8"));
-        if (getMeta.get(key)?.value === hash) {
-          unchanged++;
-          continue;
-        }
-        importFile(db, file);
-        setMeta.run(key, hash);
-        imported++;
-      }
-    }
+    const r = fn();
     db.sql.exec("COMMIT");
+    return r;
   } catch (e) {
     db.sql.exec("ROLLBACK");
     throw e;
   }
-  return { imported, unchanged };
 }
 function rebuild(db, bankDir) {
-  db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
-  const templates = path10.join(bankDir, "templates");
-  if (existsSync9(templates)) for (const f of readdirSync5(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path10.join(templates, f)));
-  return importAll(db, bankDir);
+  return inTransaction(db, () => {
+    db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
+    const templates = path10.join(bankDir, "templates");
+    if (existsSync9(templates)) for (const f of readdirSync5(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path10.join(templates, f)));
+    return importNotes(db, bankDir);
+  });
 }
 
 // src/cli/index.ts

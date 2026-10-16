@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-'));
 const { openDb, upsertNote, setAttrs, addRel, getAttrs, getRels } = await import('../../src/kb/db.js');
-const { exportNote, importAll, importFile, rebuild } = await import('../../src/kb/export.js');
+const kbExport = await import('../../src/kb/export.js');
+const { exportNote, importAll, importFile, rebuild } = kbExport;
 const { ulid } = await import('../../src/kb/ids.js');
 const { conceptNoteId } = await import('../../src/kb/templates.js');
 const freshDb = (name: string) => openDb(path.join(process.env.PROJECT_MEMORY_HOME!, `${name}.sqlite`));
@@ -40,4 +41,22 @@ test('a concept note round-trips and its alias attr re-creates alias rows in a f
   const db4 = freshDb('kb4'); importAll(db4, bank); exportNote(db4, bank, id);
   assert.equal(readFileSync(file, 'utf8'), first);
   assert.equal((db4.sql.prepare('SELECT concept_id FROM alias WHERE name_norm=?').get('posit-size') as any).concept_id, id);
+});
+
+test('rels sort by code point, not the host locale', () => {
+  const { renderNoteFile } = kbExport;
+  const n = { id: 'f_x', kind: 'finding' as const, domain: null, project: null, title: 't', body: '', created_at: 'c', updated_at: 'u', deleted_at: null, device_id: 'd' };
+  const rel = (dst: string) => ({ id: dst, src: 'f_x', type: 'about', dst, props: {}, created_at: 'c', deleted_at: null });
+  const out = renderNoteFile(n, {}, [rel('c_z'), rel('c_a'), rel('c_T'), rel('c_t')]);
+  assert.deepEqual([...out.matchAll(/dst: (\S+)/g)].map((m) => m[1]), ['c_T', 'c_a', 'c_t', 'c_z']);
+});
+
+test('rebuild is atomic: a malformed note file leaves the index untouched and names the file', () => {
+  const bank = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  const db = freshDb('kb5'); const id = 'f_01jcx9h2k7m4q8r3t6v9w2y5z9';
+  upsertNote(db, { id, kind: 'finding', domain: null, project: null, title: 'keep me', body: '', created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', deleted_at: null, device_id: 'mac' });
+  exportNote(db, bank, id);
+  writeFileSync(path.join(bank, 'notes', 'finding', 'f_broken.md'), '<<<<<<< HEAD\nconflict\n');
+  assert.throws(() => rebuild(db, bank), /f_broken\.md/);
+  assert.equal((db.sql.prepare('SELECT title FROM note WHERE id=?').get(id) as any).title, 'keep me');
 });
