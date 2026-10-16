@@ -487,12 +487,12 @@ function storeBlob(text, meta) {
 function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024) {
   const dir = paths.blobsDir();
   const now = Date.now();
-  let removed = 0;
+  const gone = /* @__PURE__ */ new Set();
   const files = readdirSync(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path7.join(dir, f)) }));
   const kept = files.filter(({ f, st }) => {
     if (now - st.mtimeMs <= maxAgeDays * 864e5) return true;
     unlinkSync2(path7.join(dir, f));
-    removed++;
+    gone.add(f);
     return false;
   });
   let total = kept.reduce((n, x) => n + x.st.size, 0);
@@ -500,9 +500,11 @@ function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024) {
     if (total <= maxBytes) break;
     unlinkSync2(path7.join(dir, f));
     total -= st.size;
-    removed++;
+    gone.add(f);
   }
-  return { removed };
+  const index = path7.join(dir, "index.jsonl");
+  if (gone.size && existsSync4(index)) writeFileAtomic(index, readFileSync4(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
+  return { removed: gone.size };
 }
 var init_blobs = __esm({
   "src/offload/blobs.ts"() {

@@ -45,3 +45,11 @@ test('resolveBlobId rejects non-hex ids and ambiguous prefixes', async () => {
   assert.throws(() => resolveBlobId('abababab'), /ambiguous/);
   assert.equal(resolveBlobId('ababababc'), 'abababab' + 'c'.repeat(56));
 });
+test('gcBlobs prunes index.jsonl lines of the blobs it deletes', () => {
+  const dir = path.join(process.env.PROJECT_MEMORY_HOME!, 'blobs');
+  const keep = storeBlob('kept blob', { tool: 'Bash', sessionId: 's3' }); const old = storeBlob('stale blob', { tool: 'Bash', sessionId: 's3' });
+  const t = Date.now() / 1000 - 30 * 86400; utimesSync(path.join(dir, old.id), t, t);
+  assert.equal(gcBlobs(14).removed, 1);
+  const ids = readFileSync(path.join(dir, 'index.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).id);
+  assert.ok(ids.includes(keep.id)); assert.ok(!ids.includes(old.id));
+});

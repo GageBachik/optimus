@@ -24,10 +24,13 @@ export function readBlob(idOrPrefix: string, offset = 0, limit = 8192) {
   return { id, total: text.length, offset: start, text: text.slice(start, start + lim), next: start + lim < text.length ? start + lim : null };
 }
 export function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024): { removed: number } {
-  const dir = paths.blobsDir(); const now = Date.now(); let removed = 0;
+  const dir = paths.blobsDir(); const now = Date.now(); const gone = new Set<string>();
   const files = readdirSync(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync(path.join(dir, f)) }));
-  const kept = files.filter(({ f, st }) => { if (now - st.mtimeMs <= maxAgeDays * 864e5) return true; unlinkSync(path.join(dir, f)); removed++; return false; });
+  const kept = files.filter(({ f, st }) => { if (now - st.mtimeMs <= maxAgeDays * 864e5) return true; unlinkSync(path.join(dir, f)); gone.add(f); return false; });
   let total = kept.reduce((n, x) => n + x.st.size, 0);
-  for (const { f, st } of kept.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs)) { if (total <= maxBytes) break; unlinkSync(path.join(dir, f)); total -= st.size; removed++; }
-  return { removed };
+  for (const { f, st } of kept.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs)) { if (total <= maxBytes) break; unlinkSync(path.join(dir, f)); total -= st.size; gone.add(f); }
+  // ponytail: read-filter-rewrite can drop a line another session appends mid-GC; the blob survives, only its index line is lost.
+  const index = path.join(dir, 'index.jsonl');
+  if (gone.size && existsSync(index)) writeFileAtomic(index, readFileSync(index, 'utf8').split('\n').filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? '')).map((l) => l + '\n').join(''));
+  return { removed: gone.size };
 }
