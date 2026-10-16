@@ -8231,6 +8231,10 @@ function rebuild(db, bankDir) {
 import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync6 } from "node:fs";
 import path11 from "node:path";
 
+// src/kb/ids.ts
+var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
+var KINDS = Object.keys(PREFIX);
+
 // src/lib/redaction.ts
 var PATTERNS = [
   { kind: "aws", re: /\bAKIA[0-9A-Z]{16}\b/g },

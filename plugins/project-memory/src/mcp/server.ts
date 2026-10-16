@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { readBlob } from '../offload/blobs.js';
 import { openDb, type Db } from '../kb/db.js';
 import { kbWrite, kbLink, WRITABLE_KINDS } from '../kb/write.js';
+import { kbFind } from '../kb/find.js';
+import { KINDS } from '../kb/ids.js';
 import { paths } from '../lib/paths.js';
 const server = new McpServer({ name: 'project-memory', version: '0.1.0' });
 let _db: Db | undefined; const db = () => (_db ??= openDb());
@@ -32,5 +34,9 @@ server.registerTool('kb_link', {
   description: 'Add one relation between two bank notes (about, relies_on, under, tests, on, at, in, uses, discovered_in, validated_in, supersedes, conflicts_with, backed_by, …; not transfer, which kb_write proposes and `kb transfer` settles). Returns {rel_id}. Never touches git.',
   inputSchema: { src: z.string().min(1), type: z.string().min(1), dst: z.string().min(1), props: z.record(z.string(), z.unknown()).optional() },
 }, async (l) => { try { return json(kbLink(db(), paths.bankDir(), l)); } catch (e) { return fail(e); } });
+server.registerTool('kb_find', {
+  description: 'Plain full-text search over knowledge-bank notes plus filters. Each word of text is quoted, so punctuation is safe; words are ANDed (max 40). kind/project/domain filter exactly; concept is a concept id, title or alias and keeps notes `about` it. Newest first; limit default 20, max 100. Returns [{id, kind, title, snippet}].',
+  inputSchema: { text: z.string().optional(), kind: z.enum(KINDS).optional(), project: z.string().optional(), domain: z.string().optional(), concept: z.string().optional(), limit: z.number().int().min(1).max(100).optional() },
+}, async (a) => { try { return json(kbFind(db(), a)); } catch (e) { return fail(e); } });
 process.stdin.on('end', () => process.exit(0));
 await server.connect(new StdioServerTransport());

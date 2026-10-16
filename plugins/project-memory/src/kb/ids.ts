@@ -10,6 +10,7 @@ export function ulid(now = Date.now()): string {
 }
 export type Kind = 'domain'|'template'|'project'|'theme'|'approach'|'experiment'|'target'|'concept'|'finding'|'evidence'|'report';
 const PREFIX: Record<Kind, string> = { domain: 'd', template: 'm', project: 'p', theme: 'h', approach: 'a', experiment: 'x', target: 't', concept: 'c', finding: 'f', evidence: 'e', report: 'r' };
+export const KINDS = Object.keys(PREFIX) as [Kind, ...Kind[]];
 export const noteId = (kind: Kind) => `${PREFIX[kind]}_${ulid()}`;
 export const evidenceId = (sha256: string) => `e_${sha256.slice(0, 16)}`;
 export function kindOfId(id: string): Kind {

@@ -21570,6 +21570,7 @@ function ulid(now = Date.now()) {
   return time + lastRand.map((x) => ENC[x]).join("");
 }
 var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
+var KINDS = Object.keys(PREFIX);
 var noteId = (kind) => `${PREFIX[kind]}_${ulid()}`;
 var evidenceId = (sha2563) => `e_${sha2563.slice(0, 16)}`;
 function kindOfId(id) {
@@ -21791,6 +21792,30 @@ function kbLink(db2, bankDir, l, now = (/* @__PURE__ */ new Date()).toISOString(
   return { rel_id };
 }
 
+// src/kb/find.ts
+var ftsQuery = (text) => text.split(/\s+/).filter(Boolean).slice(0, 40).map((t) => `"${t.replaceAll('"', '""')}"`).join(" ");
+function kbFind(db2, a) {
+  const where = ["n.deleted_at IS NULL"], params = [];
+  const q = a.text ? ftsQuery(a.text) : "";
+  if (q) {
+    where.push("note_fts MATCH ?");
+    params.push(q);
+  }
+  for (const k of ["kind", "project", "domain"]) if (a[k] !== void 0) {
+    where.push(`n.${k} = ?`);
+    params.push(a[k]);
+  }
+  if (a.concept !== void 0) {
+    const hit = db2.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?").get(normalizeName(a.concept));
+    where.push(`EXISTS (SELECT 1 FROM rel r WHERE r.src = n.id AND r.type = 'about' AND r.dst = ? AND r.deleted_at IS NULL)`);
+    params.push(hit?.concept_id ?? a.concept);
+  }
+  params.push(Math.max(1, Math.min(a.limit ?? 20, 100)));
+  const snippet = q ? `snippet(note_fts, 2, '', '', '\u2026', 16)` : `substr(n.body, 1, 120)`;
+  const from = q ? "note_fts f JOIN note n ON n.id = f.note_id" : "note n";
+  return db2.sql.prepare(`SELECT n.id, n.kind, n.title, ${snippet} AS snippet FROM ${from} WHERE ${where.join(" AND ")} ORDER BY n.updated_at DESC, n.id LIMIT ?`).all(...params);
+}
+
 // src/mcp/server.ts
 var server = new McpServer({ name: "project-memory", version: "0.1.0" });
 var _db;
@@ -21842,6 +21867,16 @@ server.registerTool("kb_link", {
 }, async (l) => {
   try {
     return json(kbLink(db(), paths.bankDir(), l));
+  } catch (e) {
+    return fail(e);
+  }
+});
+server.registerTool("kb_find", {
+  description: "Plain full-text search over knowledge-bank notes plus filters. Each word of text is quoted, so punctuation is safe; words are ANDed (max 40). kind/project/domain filter exactly; concept is a concept id, title or alias and keeps notes `about` it. Newest first; limit default 20, max 100. Returns [{id, kind, title, snippet}].",
+  inputSchema: { text: external_exports.string().optional(), kind: external_exports.enum(KINDS).optional(), project: external_exports.string().optional(), domain: external_exports.string().optional(), concept: external_exports.string().optional(), limit: external_exports.number().int().min(1).max(100).optional() }
+}, async (a) => {
+  try {
+    return json(kbFind(db(), a));
   } catch (e) {
     return fail(e);
   }
