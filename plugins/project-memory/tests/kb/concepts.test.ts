@@ -36,3 +36,22 @@ test('accept re-points about rels and aliases; reject resolves; split undoes an 
   assert.ok(!getAttrs(db, risk).alias.includes('risk sizing rule'));
   assert.deepEqual(resolveConcept(db, bank, 'risk sizing rule', now), { conceptId: split, how: 'exact' });
 });
+
+test('an accepted merge survives a rebuild on another machine: the alias resolves to the live concept, no new auto-merge log line', async () => {
+  const { rebuild } = await import('../../src/kb/export.js');
+  const bank2 = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'c.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const parity = resolveConcept(db, bank2, 'risk parity', now).conceptId;
+  acceptMerge(db, bank2, (db.sql.prepare('SELECT id FROM pending_merge WHERE a=?').get(parity) as { id: string }).id, now);
+  const log = readFileSync(path.join(bank2, 'concept-merges.md'), 'utf8');
+  const other = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'd.sqlite')); rebuild(other, bank2);
+  assert.deepEqual(resolveConcept(other, bank2, 'risk parity', now), { conceptId: conceptNoteId('risk sizing'), how: 'alias' });
+  assert.equal(readFileSync(path.join(bank2, 'concept-merges.md'), 'utf8'), log);
+});
+
+test('a secret inside a tag is redacted before it is stored as a concept', () => {
+  const bank3 = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'e.sqlite'));
+  const r = resolveConcept(db, bank3, 'api_key=ABCDEFGHIJKLMNOPQRSTUV', now);
+  assert.doesNotMatch(getNote(db, r.conceptId)!.title, /ABCDEFGHIJKLMNOPQRSTUV/);
+});

@@ -8162,8 +8162,9 @@ function importFile(db, file) {
   db.sql.prepare("DELETE FROM rel WHERE src=?").run(note.id);
   const ins = db.sql.prepare("INSERT OR REPLACE INTO rel(id,src,type,dst,props,created_at,deleted_at) VALUES(?,?,?,?,?,?,?)");
   for (const r of rels) ins.run(r.id, r.src, r.type, r.dst, JSON.stringify(r.props), r.created_at, null);
-  if (note.kind === "concept") {
-    const alias = db.sql.prepare("INSERT OR IGNORE INTO alias(name_norm, concept_id) VALUES(?,?)");
+  if (note.kind === "concept" && note.deleted_at) db.sql.prepare("DELETE FROM alias WHERE concept_id=?").run(note.id);
+  else if (note.kind === "concept") {
+    const alias = db.sql.prepare("INSERT OR REPLACE INTO alias(name_norm, concept_id) VALUES(?,?)");
     for (const a of [note.title, ...attrs.alias ?? []]) alias.run(normalizeName(a), note.id);
   }
   return note;

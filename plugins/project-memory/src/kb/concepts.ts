@@ -5,6 +5,7 @@ import { exportNote } from './export.js';
 import { ulid } from './ids.js';
 import { normalizeName, tokens, dice } from './normalize.js';
 import { conceptNoteId } from './templates.js';
+import { redactSensitive } from '../lib/redaction.js';
 
 export type Resolution = { conceptId: string; how: 'exact' | 'alias' | 'auto-alias' | 'pending' | 'new'; score?: number };
 type Concept = { id: string; title: string };
@@ -31,6 +32,7 @@ function createConcept(db: Db, name: string, now: string): string {
 
 /** DESIGN §4.7, in order: exact title → alias table → Dice over stemmed tokens (auto-alias | pending | new). */
 export function resolveConcept(db: Db, bankDir: string, tag: string, now: string): Resolution {
+  tag = redactSensitive(tag).text; // DESIGN principle 10: a tag becomes a note title, an alias and a concept-merges.md line, all synced
   const norm = normalizeName(tag), all = concepts(db);
   const exact = all.find((c) => normalizeName(c.title) === norm); if (exact) return { conceptId: exact.id, how: 'exact' };
   const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm) as { id: string } | undefined;
