@@ -10,6 +10,8 @@ export type SyncResult = 'ok' | 'busy' | 'no-remote' | 'failed';
 const LOCK = '.kb-sync.lock', LOCK_STALE_MS = 10 * 60_000;
 /** DESIGN §4.4: every git call is spawnSync with a 60-second timeout. */
 const git = (cwd: string, ...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 60_000 });
+/** `-c` identity for commit/rebase when git cannot form one (no user.name/email and autodetect refused); never overrides a configured identity. */
+export const gitIdentity = (cwd: string): string[] => git(cwd, 'var', 'GIT_COMMITTER_IDENT').status === 0 ? [] : ['-c', 'user.name=project-memory', '-c', `user.email=kb@${deviceId()}`];
 const errText = (r: SpawnSyncReturns<string>) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();
 
 /** mkdir lock in the bank; one older than 10 minutes belongs to a dead process and is taken over. Empty directories are invisible to `git add -A`. */
@@ -26,14 +28,15 @@ function lock(bank: string): boolean {
 function steps(db: Db, bank: string): { result: SyncResult; reason?: string } {
   const fail = (step: string, r: SpawnSyncReturns<string>) => { log('error', `sync: ${step} failed`, { bank, detail: errText(r) }); return { result: 'failed' as const, reason: `${step} failed` }; };
   let r = git(bank, 'add', '-A'); if (r.status !== 0) return fail('git add', r);
-  r = git(bank, 'commit', '-q', '-m', `kb ${deviceId()} ${new Date().toISOString()}`); if (r.status !== 0 && r.status !== 1) return fail('git commit', r); // 1 = nothing to commit
+  const id = gitIdentity(bank);
+  r = git(bank, ...id, 'commit', '-q', '-m', `kb ${deviceId()} ${new Date().toISOString()}`); if (r.status !== 0 && r.status !== 1) return fail('git commit', r); // 1 = nothing to commit
   const remote = git(bank, 'remote').stdout.split('\n')[0].trim(); if (!remote) return { result: 'no-remote' };
   // `pull --rebase` in its two halves: a fresh bank's remote branch may not exist yet (first push), and `pull` needs tracking info a hand-added remote lacks.
   r = git(bank, 'fetch', '-q', remote); if (r.status !== 0) return fail('git fetch', r);
   const branch = git(bank, 'symbolic-ref', '--short', '-q', 'HEAD').stdout.trim(), upstream = `refs/remotes/${remote}/${branch}`;
   const before = git(bank, 'rev-parse', '--verify', '-q', 'HEAD').stdout.trim(); // '' on an unborn branch: a clone of an empty remote with nothing written yet
   if (git(bank, 'rev-parse', '--verify', '-q', upstream).status === 0) {
-    r = before ? git(bank, 'rebase', '-q', upstream) : git(bank, 'reset', '-q', '--hard', upstream); // unborn: adopt the remote branch
+    r = before ? git(bank, ...id, 'rebase', '-q', upstream) : git(bank, 'reset', '-q', '--hard', upstream); // unborn: adopt the remote branch
     if (r.status !== 0) { git(bank, 'rebase', '--abort'); log('warn', 'sync: rebase conflict, aborted; local commit intact', { bank, detail: errText(r) }); return { result: 'failed', reason: 'rebase conflict' }; }
   } else if (!before) return { result: 'ok' }; // nothing here, nothing there
   r = git(bank, 'push', '-q', '-u', remote, branch); if (r.status !== 0) return fail('git push', r);

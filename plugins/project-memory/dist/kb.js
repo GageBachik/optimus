@@ -7957,9 +7957,9 @@ ${readFileSync8(instructions, "utf8")}`);
 }
 
 // src/cli/init.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
-import { copyFileSync as copyFileSync2, existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync10, readdirSync as readdirSync4, writeFileSync as writeFileSync5 } from "node:fs";
-import path9 from "node:path";
+import { spawnSync as spawnSync4 } from "node:child_process";
+import { copyFileSync as copyFileSync2, existsSync as existsSync10, mkdirSync as mkdirSync6, readFileSync as readFileSync11, readdirSync as readdirSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import path12 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/kb/normalize.ts
@@ -8072,6 +8072,27 @@ function gateRank(db, domain, gate) {
   return i;
 }
 
+// src/kb/sync.ts
+import { existsSync as existsSync9, mkdirSync as mkdirSync5, rmdirSync, statSync as statSync5 } from "node:fs";
+import { spawnSync as spawnSync3 } from "node:child_process";
+import path11 from "node:path";
+
+// src/lib/log.ts
+import { appendFileSync as appendFileSync2 } from "node:fs";
+import path9 from "node:path";
+function log(level, msg, data) {
+  try {
+    appendFileSync2(path9.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+  } catch {
+  }
+}
+
+// src/kb/export.ts
+var import_yaml2 = __toESM(require_dist(), 1);
+import { createHash as createHash2 } from "node:crypto";
+import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync10, readdirSync as readdirSync4 } from "node:fs";
+import path10 from "node:path";
+
 // src/kb/templates-yaml.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { readFileSync as readFileSync9 } from "node:fs";
@@ -8079,75 +8100,7 @@ function loadTemplate(file) {
   return (0, import_yaml.parse)(readFileSync9(file, "utf8"));
 }
 
-// src/cli/init.ts
-function shippedTemplatesDir() {
-  const here = path9.dirname(fileURLToPath3(import.meta.url));
-  return [path9.join(here, "..", "templates"), path9.join(here, "..", "..", "templates")].find(existsSync8) ?? path9.join(here, "..", "templates");
-}
-function git(cwd, ...args2) {
-  const r = spawnSync3("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
-  if (r.status !== 0) throw new Error(`git ${args2.join(" ")} failed: ${(r.stderr || r.error?.message || "").trim()}`);
-  return r.stdout;
-}
-function installBankTemplates(bank) {
-  const dir = path9.join(bank, "templates");
-  if (!existsSync8(dir)) return [];
-  const db = openDb();
-  const files = readdirSync4(dir).filter((f) => f.endsWith(".yaml")).sort();
-  for (const f of files) installTemplate(db, loadTemplate(path9.join(dir, f)));
-  db.sql.close();
-  return files;
-}
-function initBank(opts = {}) {
-  const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
-  const bank = path9.resolve(opts.bank ?? paths.bankDir());
-  const written = [];
-  if (opts.clone) {
-    mkdirSync4(path9.dirname(bank), { recursive: true });
-    git(path9.dirname(bank), "clone", "-q", opts.clone, bank);
-    mkdirSync4(path9.join(bank, "notes"), { recursive: true });
-    print(`cloned ${opts.clone} into ${bank}`);
-  } else {
-    mkdirSync4(bank, { recursive: true });
-    if (!existsSync8(path9.join(bank, ".git"))) {
-      if (readdirSync4(bank).length) throw new Error(`${bank} is not empty and not a git repository; pick an empty directory or an existing bank`);
-      git(bank, "init", "-q", "-b", "main");
-    }
-    if (!existsSync8(path9.join(bank, ".gitattributes"))) {
-      writeFileSync5(path9.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
-      written.push(".gitattributes");
-    }
-    for (const d of ["templates", "notes"]) mkdirSync4(path9.join(bank, d), { recursive: true });
-    const src = shippedTemplatesDir();
-    for (const f of readdirSync4(src).filter((f2) => f2.endsWith(".yaml"))) {
-      if (existsSync8(path9.join(bank, "templates", f))) continue;
-      copyFileSync2(path9.join(src, f), path9.join(bank, "templates", f));
-      written.push(`templates/${f}`);
-    }
-  }
-  const installed = installBankTemplates(bank);
-  paths.saveConfig({ bankDir: bank });
-  print(`templates installed: ${installed.join(", ") || "none"}`);
-  print(`bankDir: ${bank} (${paths.configPath()})`);
-  if (written.length) {
-    git(bank, "add", "--", ...written);
-    git(bank, "commit", "-q", "-m", "kb init", "--only", "--", ...written);
-    print("initial commit written");
-  }
-}
-function projectInit(cwd, opts) {
-  const file = path9.join(cwd, ".kb.json");
-  const prev = existsSync8(file) ? JSON.parse(readFileSync10(file, "utf8")) : {};
-  const c = { ...prev, project_id: opts.id ?? prev.project_id ?? path9.basename(path9.resolve(cwd)).toLowerCase(), domain: opts.domain };
-  writeFileSync5(file, JSON.stringify(c, null, 2) + "\n");
-  return c;
-}
-
 // src/kb/export.ts
-var import_yaml2 = __toESM(require_dist(), 1);
-import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync11, readdirSync as readdirSync5 } from "node:fs";
-import path10 from "node:path";
 var sha256 = (s) => createHash2("sha256").update(s).digest("hex");
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(props)}`).slice(0, 26)}`;
@@ -8198,7 +8151,7 @@ function exportNote(db, bankDir, id) {
   const n = getNote(db, id);
   if (!n) throw new Error(`no note ${id}`);
   const file = noteFile(bankDir, n);
-  mkdirSync5(path10.dirname(file), { recursive: true });
+  mkdirSync4(path10.dirname(file), { recursive: true });
   writeFileAtomic(file, renderNoteFile(n, getAttrs(db, id), getRels(db, id, "out")));
   return file;
 }
@@ -8208,7 +8161,7 @@ function exportAll(db, bankDir) {
   return ids2.length;
 }
 function importFile(db, file) {
-  const { note, attrs, rels } = parseNoteFile(readFileSync11(file, "utf8"));
+  const { note, attrs, rels } = parseNoteFile(readFileSync10(file, "utf8"));
   upsertNote(db, note);
   db.sql.prepare("UPDATE note SET created_at=? WHERE id=?").run(note.created_at, note.id);
   setAttrs(db, note.id, attrs);
@@ -8225,12 +8178,12 @@ function importFile(db, file) {
 function importNotes(db, bankDir) {
   const notes = path10.join(bankDir, "notes");
   let imported = 0, unchanged = 0;
-  if (!existsSync9(notes)) return { imported, unchanged };
+  if (!existsSync8(notes)) return { imported, unchanged };
   const getMeta = db.sql.prepare("SELECT value FROM meta WHERE key=?");
   const setMeta = db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)");
-  for (const kind of readdirSync5(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
-    for (const f of readdirSync5(path10.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
-      const file = path10.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync11(file, "utf8"));
+  for (const kind of readdirSync4(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
+    for (const f of readdirSync4(path10.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
+      const file = path10.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync10(file, "utf8"));
       if (getMeta.get(key)?.value === hash) {
         unchanged++;
         continue;
@@ -8264,14 +8217,166 @@ function rebuild(db, bankDir) {
   return inTransaction(db, () => {
     db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
     const templates = path10.join(bankDir, "templates");
-    if (existsSync9(templates)) for (const f of readdirSync5(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path10.join(templates, f)));
+    if (existsSync8(templates)) for (const f of readdirSync4(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path10.join(templates, f)));
     return importNotes(db, bankDir);
   });
 }
 
+// src/kb/sync.ts
+var LOCK = ".kb-sync.lock";
+var LOCK_STALE_MS = 10 * 6e4;
+var git = (cwd, ...args2) => spawnSync3("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
+var gitIdentity = (cwd) => git(cwd, "var", "GIT_COMMITTER_IDENT").status === 0 ? [] : ["-c", "user.name=project-memory", "-c", `user.email=kb@${deviceId()}`];
+var errText = (r) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();
+function lock(bank) {
+  const dir = path11.join(bank, LOCK);
+  for (let i = 0; i < 2; i++) {
+    try {
+      mkdirSync5(dir);
+      return true;
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
+    }
+    try {
+      if (Date.now() - statSync5(dir).mtimeMs < LOCK_STALE_MS) return false;
+      rmdirSync(dir);
+      log("warn", "sync: removed stale lock", dir);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+function steps(db, bank) {
+  const fail = (step, r2) => {
+    log("error", `sync: ${step} failed`, { bank, detail: errText(r2) });
+    return { result: "failed", reason: `${step} failed` };
+  };
+  let r = git(bank, "add", "-A");
+  if (r.status !== 0) return fail("git add", r);
+  const id = gitIdentity(bank);
+  r = git(bank, ...id, "commit", "-q", "-m", `kb ${deviceId()} ${(/* @__PURE__ */ new Date()).toISOString()}`);
+  if (r.status !== 0 && r.status !== 1) return fail("git commit", r);
+  const remote = git(bank, "remote").stdout.split("\n")[0].trim();
+  if (!remote) return { result: "no-remote" };
+  r = git(bank, "fetch", "-q", remote);
+  if (r.status !== 0) return fail("git fetch", r);
+  const branch = git(bank, "symbolic-ref", "--short", "-q", "HEAD").stdout.trim(), upstream = `refs/remotes/${remote}/${branch}`;
+  const before = git(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim();
+  if (git(bank, "rev-parse", "--verify", "-q", upstream).status === 0) {
+    r = before ? git(bank, ...id, "rebase", "-q", upstream) : git(bank, "reset", "-q", "--hard", upstream);
+    if (r.status !== 0) {
+      git(bank, "rebase", "--abort");
+      log("warn", "sync: rebase conflict, aborted; local commit intact", { bank, detail: errText(r) });
+      return { result: "failed", reason: "rebase conflict" };
+    }
+  } else if (!before) return { result: "ok" };
+  r = git(bank, "push", "-q", "-u", remote, branch);
+  if (r.status !== 0) return fail("git push", r);
+  if (git(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim() !== before) {
+    try {
+      log("info", "sync: re-imported after pull", importAll(db, bank));
+    } catch (e) {
+      log("error", "sync: import after pull failed", String(e));
+      return { result: "failed", reason: "import failed" };
+    }
+  }
+  return { result: "ok" };
+}
+function record(db, result, reason) {
+  paths.saveConfig({ lastSyncAt: (/* @__PURE__ */ new Date()).toISOString() });
+  db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)").run("lastSyncResult", reason ? `${result} (${reason})` : result);
+  return result;
+}
+function sync(bankDir) {
+  const bank = path11.resolve(bankDir), db = openDb();
+  try {
+    if (!existsSync9(path11.join(bank, ".git"))) {
+      log("warn", "sync: bank is not a git repository", bank);
+      return record(db, "failed", "not a git repository");
+    }
+    if (!lock(bank)) return "busy";
+    try {
+      const { result, reason } = steps(db, bank);
+      return record(db, result, reason);
+    } finally {
+      try {
+        rmdirSync(path11.join(bank, LOCK));
+      } catch {
+      }
+    }
+  } finally {
+    db.sql.close();
+  }
+}
+
+// src/cli/init.ts
+function shippedTemplatesDir() {
+  const here = path12.dirname(fileURLToPath3(import.meta.url));
+  return [path12.join(here, "..", "templates"), path12.join(here, "..", "..", "templates")].find(existsSync10) ?? path12.join(here, "..", "templates");
+}
+function git2(cwd, ...args2) {
+  const r = spawnSync4("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
+  if (r.status !== 0) throw new Error(`git ${args2.join(" ")} failed: ${(r.stderr || r.error?.message || "").trim()}`);
+  return r.stdout;
+}
+function installBankTemplates(bank) {
+  const dir = path12.join(bank, "templates");
+  if (!existsSync10(dir)) return [];
+  const db = openDb();
+  const files = readdirSync5(dir).filter((f) => f.endsWith(".yaml")).sort();
+  for (const f of files) installTemplate(db, loadTemplate(path12.join(dir, f)));
+  db.sql.close();
+  return files;
+}
+function initBank(opts = {}) {
+  const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
+  const bank = path12.resolve(opts.bank ?? paths.bankDir());
+  const written = [];
+  if (opts.clone) {
+    mkdirSync6(path12.dirname(bank), { recursive: true });
+    git2(path12.dirname(bank), "clone", "-q", opts.clone, bank);
+    mkdirSync6(path12.join(bank, "notes"), { recursive: true });
+    print(`cloned ${opts.clone} into ${bank}`);
+  } else {
+    mkdirSync6(bank, { recursive: true });
+    if (!existsSync10(path12.join(bank, ".git"))) {
+      if (readdirSync5(bank).length) throw new Error(`${bank} is not empty and not a git repository; pick an empty directory or an existing bank`);
+      git2(bank, "init", "-q", "-b", "main");
+    }
+    if (!existsSync10(path12.join(bank, ".gitattributes"))) {
+      writeFileSync5(path12.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
+      written.push(".gitattributes");
+    }
+    for (const d of ["templates", "notes"]) mkdirSync6(path12.join(bank, d), { recursive: true });
+    const src = shippedTemplatesDir();
+    for (const f of readdirSync5(src).filter((f2) => f2.endsWith(".yaml"))) {
+      if (existsSync10(path12.join(bank, "templates", f))) continue;
+      copyFileSync2(path12.join(src, f), path12.join(bank, "templates", f));
+      written.push(`templates/${f}`);
+    }
+  }
+  const installed = installBankTemplates(bank);
+  paths.saveConfig({ bankDir: bank });
+  print(`templates installed: ${installed.join(", ") || "none"}`);
+  print(`bankDir: ${bank} (${paths.configPath()})`);
+  if (written.length) {
+    git2(bank, "add", "--", ...written);
+    git2(bank, ...gitIdentity(bank), "commit", "-q", "-m", "kb init", "--only", "--", ...written);
+    print("initial commit written");
+  }
+}
+function projectInit(cwd, opts) {
+  const file = path12.join(cwd, ".kb.json");
+  const prev = existsSync10(file) ? JSON.parse(readFileSync11(file, "utf8")) : {};
+  const c = { ...prev, project_id: opts.id ?? prev.project_id ?? path12.basename(path12.resolve(cwd)).toLowerCase(), domain: opts.domain };
+  writeFileSync5(file, JSON.stringify(c, null, 2) + "\n");
+  return c;
+}
+
 // src/kb/concepts.ts
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync6 } from "node:fs";
-import path11 from "node:path";
+import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
+import path13 from "node:path";
 
 // src/kb/ids.ts
 var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
@@ -8305,9 +8410,9 @@ function redactSensitive(text) {
 }
 
 // src/kb/concepts.ts
-var log = (bankDir, line) => {
-  mkdirSync6(bankDir, { recursive: true });
-  appendFileSync2(path11.join(bankDir, "concept-merges.md"), line + "\n");
+var log2 = (bankDir, line) => {
+  mkdirSync7(bankDir, { recursive: true });
+  appendFileSync3(path13.join(bankDir, "concept-merges.md"), line + "\n");
 };
 var touch = (db, id, now) => db.sql.prepare("UPDATE note SET updated_at=? WHERE id=?").run(now, id);
 function addAlias(db, id, names, now) {
@@ -8343,7 +8448,7 @@ function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOSt
     touch(db, n, now);
     exportNote(db, bankDir, n);
   }
-  log(bankDir, `- ${now.slice(0, 10)} merged "${a.title}" into ${b.title} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(a.title)}"`);
+  log2(bankDir, `- ${now.slice(0, 10)} merged "${a.title}" into ${b.title} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(a.title)}"`);
 }
 function rejectMerge(db, id) {
   openPending(db, id);
@@ -8363,7 +8468,7 @@ function splitAlias(db, bankDir, nameNorm, now = (/* @__PURE__ */ new Date()).to
   exportNote(db, bankDir, owner.id);
   const id = createConcept(db, name, now);
   exportNote(db, bankDir, id);
-  log(bankDir, `- ${now.slice(0, 10)} split "${name}" out of ${owner.title} into ${id}`);
+  log2(bankDir, `- ${now.slice(0, 10)} split "${name}" out of ${owner.title} into ${id}`);
   return id;
 }
 
@@ -8461,107 +8566,6 @@ function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()
   setAttrs(db, id, attrs);
   touch2(db, id, now);
   exportNote(db, bankDir, id);
-}
-
-// src/kb/sync.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync7, rmdirSync, statSync as statSync5 } from "node:fs";
-import { spawnSync as spawnSync4 } from "node:child_process";
-import path13 from "node:path";
-
-// src/lib/log.ts
-import { appendFileSync as appendFileSync3 } from "node:fs";
-import path12 from "node:path";
-function log2(level, msg, data) {
-  try {
-    appendFileSync3(path12.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
-  } catch {
-  }
-}
-
-// src/kb/sync.ts
-var LOCK = ".kb-sync.lock";
-var LOCK_STALE_MS = 10 * 6e4;
-var git2 = (cwd, ...args2) => spawnSync4("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
-var errText = (r) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();
-function lock(bank) {
-  const dir = path13.join(bank, LOCK);
-  for (let i = 0; i < 2; i++) {
-    try {
-      mkdirSync7(dir);
-      return true;
-    } catch (e) {
-      if (e?.code !== "EEXIST") throw e;
-    }
-    try {
-      if (Date.now() - statSync5(dir).mtimeMs < LOCK_STALE_MS) return false;
-      rmdirSync(dir);
-      log2("warn", "sync: removed stale lock", dir);
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-function steps(db, bank) {
-  const fail = (step, r2) => {
-    log2("error", `sync: ${step} failed`, { bank, detail: errText(r2) });
-    return { result: "failed", reason: `${step} failed` };
-  };
-  let r = git2(bank, "add", "-A");
-  if (r.status !== 0) return fail("git add", r);
-  r = git2(bank, "commit", "-q", "-m", `kb ${deviceId()} ${(/* @__PURE__ */ new Date()).toISOString()}`);
-  if (r.status !== 0 && r.status !== 1) return fail("git commit", r);
-  const remote = git2(bank, "remote").stdout.split("\n")[0].trim();
-  if (!remote) return { result: "no-remote" };
-  r = git2(bank, "fetch", "-q", remote);
-  if (r.status !== 0) return fail("git fetch", r);
-  const branch = git2(bank, "symbolic-ref", "--short", "-q", "HEAD").stdout.trim(), upstream = `refs/remotes/${remote}/${branch}`;
-  const before = git2(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim();
-  if (git2(bank, "rev-parse", "--verify", "-q", upstream).status === 0) {
-    r = before ? git2(bank, "rebase", "-q", upstream) : git2(bank, "reset", "-q", "--hard", upstream);
-    if (r.status !== 0) {
-      git2(bank, "rebase", "--abort");
-      log2("warn", "sync: rebase conflict, aborted; local commit intact", { bank, detail: errText(r) });
-      return { result: "failed", reason: "rebase conflict" };
-    }
-  } else if (!before) return { result: "ok" };
-  r = git2(bank, "push", "-q", "-u", remote, branch);
-  if (r.status !== 0) return fail("git push", r);
-  if (git2(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim() !== before) {
-    try {
-      log2("info", "sync: re-imported after pull", importAll(db, bank));
-    } catch (e) {
-      log2("error", "sync: import after pull failed", String(e));
-      return { result: "failed", reason: "import failed" };
-    }
-  }
-  return { result: "ok" };
-}
-function record(db, result, reason) {
-  paths.saveConfig({ lastSyncAt: (/* @__PURE__ */ new Date()).toISOString() });
-  db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)").run("lastSyncResult", reason ? `${result} (${reason})` : result);
-  return result;
-}
-function sync(bankDir) {
-  const bank = path13.resolve(bankDir), db = openDb();
-  try {
-    if (!existsSync10(path13.join(bank, ".git"))) {
-      log2("warn", "sync: bank is not a git repository", bank);
-      return record(db, "failed", "not a git repository");
-    }
-    if (!lock(bank)) return "busy";
-    try {
-      const { result, reason } = steps(db, bank);
-      return record(db, result, reason);
-    } finally {
-      try {
-        rmdirSync(path13.join(bank, LOCK));
-      } catch {
-      }
-    }
-  } finally {
-    db.sql.close();
-  }
 }
 
 // src/cli/index.ts

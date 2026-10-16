@@ -42,3 +42,9 @@ test('kb init never commits unrelated user work and refuses a non-empty non-git 
   assert.throws(() => initBank({ bank: stray, print: () => {} }), /not empty and not a git repository/);
   assert.ok(!existsSync(path.join(stray, '.git')));
 });
+test('kb init writes its initial commit on a machine with no git identity', async () => {
+  const { withoutGitIdentity } = await import('../fixtures/git-identity.js');
+  const bank = path.join(mkdtempSync(path.join(tmpdir(), 'bank-')), 'kb');
+  withoutGitIdentity(() => initBank({ bank, print: () => {} }));
+  assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1');
+});

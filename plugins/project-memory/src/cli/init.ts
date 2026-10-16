@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { paths } from '../lib/paths.js';
 import { openDb } from '../kb/db.js';
 import { installTemplate } from '../kb/templates.js';
+import { gitIdentity } from '../kb/sync.js';
 import { loadTemplate } from '../kb/templates-yaml.js';
 import type { ProjectConfig } from '../kb/project.js';
 /** The shipped templates; resolved next to dist/kb.js (`../templates`) or src/cli (`../../templates`). */
@@ -53,7 +54,7 @@ export function initBank(opts: { bank?: string; clone?: string; print?: (line: s
   print(`templates installed: ${installed.join(', ') || 'none'}`); print(`bankDir: ${bank} (${paths.configPath()})`);
   if (written.length) {
     // `--only` with explicit paths: other staged or dirty user work is left alone.
-    git(bank, 'add', '--', ...written); git(bank, 'commit', '-q', '-m', 'kb init', '--only', '--', ...written); print('initial commit written');
+    git(bank, 'add', '--', ...written); git(bank, ...gitIdentity(bank), 'commit', '-q', '-m', 'kb init', '--only', '--', ...written); print('initial commit written');
   }
 }
 /** DESIGN §4.5 `kb project init --domain <d> [--id <id>]`: writes (or updates) `.kb.json` in cwd, keeping other fields. */
