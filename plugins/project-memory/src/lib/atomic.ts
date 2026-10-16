@@ -1,6 +1,8 @@
-import { writeFileSync, renameSync, realpathSync, existsSync, statSync, chmodSync, unlinkSync } from 'node:fs';
+import { writeFileSync, readFileSync, renameSync, realpathSync, existsSync, statSync, chmodSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+/** A JSON file's parsed content, or null when it is missing or unreadable (a half-written or corrupt record is treated as absent). */
+export function readJson<T>(filePath: string): T | null { try { return JSON.parse(readFileSync(filePath, 'utf8')); } catch { return null; } }
 export function writeFileAtomic(filePath: string, data: string | Buffer): void {
   const dir = realpathSync(path.dirname(filePath)); const target = path.join(dir, path.basename(filePath));
   const tmp = path.join(dir, `.${path.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`);

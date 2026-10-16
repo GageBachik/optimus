@@ -1,5 +1,13 @@
-import { type TranscriptEntry, blocks, textOf } from '../lib/transcript.js';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { type TranscriptEntry, blocks, textOf, readTranscript } from '../lib/transcript.js';
+import { paths } from '../lib/paths.js';
+import { readJson } from '../lib/atomic.js';
+import { redactJson } from '../lib/redaction.js';
+import { loadState, type SessionState } from '../lib/session-state.js';
 export type TaskState = { goalFirst: string; goalLatest: string; constraints: string[]; decisions: string[]; files: { path: string; action: string; at: string }[]; commands: { cmd: string; at: string }[]; tests: { cmd: string; lastLine: string }[]; openItems: string[]; errors: string[]; exactValues: string[]; pointers: string[] };
+/** The last-session record (DESIGN §3.11): written by the Stop hook to projects/<key>/last-session.json, shown at the next startup in that project. */
+export type LastSession = { at: string; sessionId: string; cwd: string; taskState: TaskState };
 const cap = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const uniq = <T,>(a: T[]) => [...new Set(a)];
 const TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test|go test|bun test)\b/;
@@ -33,6 +41,20 @@ export function extractTaskState(entries: TranscriptEntry[], pointers: string[])
     commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd)! })),
     tests: tests.slice(-10), openItems: openItems.slice(0, 20), errors: uniq(errors).slice(-10), exactValues: uniq(values).slice(-40), pointers,
   };
+}
+
+/** Recall pointers for a brief: every snapshot, then the three most recent offloaded outputs. */
+export function recallPointers(state: SessionState): string[] {
+  return state.snapshots.map((s) => `snapshot ${s.id} (${s.at}) → recall(id="${s.id}")`)
+    .concat(state.seenBlobs.slice(-3).map((b) => `recent offloaded output → recall(id="${b.slice(0, 16)}")`));
+}
+
+/** The record PreCompact wrote (already redacted); when it is missing, re-extracted from the transcript (DESIGN §3.5); null when neither exists. */
+export function loadTaskState(sessionId: string, transcriptPath: string): TaskState | null {
+  const stored = readJson<TaskState>(path.join(paths.sessionDir(sessionId), 'task-state.json'));
+  if (stored) return stored;
+  if (!transcriptPath || !existsSync(transcriptPath)) return null;
+  return JSON.parse(JSON.stringify(extractTaskState(readTranscript(transcriptPath, 0).entries, recallPointers(loadState(sessionId))), redactJson));
 }
 
 export function renderTaskState(ts: TaskState): string {

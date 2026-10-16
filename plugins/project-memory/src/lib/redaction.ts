@@ -13,6 +13,10 @@ const PATTERNS: { kind: string; re: RegExp; group?: number }[] = [
 ];
 const MAX_CHARS = 1_000_000;
 
+// JSON.stringify replacer: secrets are redacted before anything is stored (DESIGN §1 rule 10). Applied per string value, before JSON escaping,
+// so quoted secrets still match and the 1M-char oversize cut (§3.7) applies per field rather than to the whole record.
+export const redactJson = (_k: string, v: unknown) => (typeof v === 'string' ? redactSensitive(v).text : v);
+
 export function redactSensitive(text: string): { text: string; count: number } {
   if (text.length > MAX_CHARS) return { text: `[REDACTED:oversize ${text.length} chars]`, count: 1 };
   let count = 0;

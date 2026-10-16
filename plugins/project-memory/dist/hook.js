@@ -96,19 +96,371 @@ var init_log = __esm({
   }
 });
 
+// src/lib/budget.ts
+function charSafePrefix(s, n) {
+  if (s.length <= n) return s;
+  let end = Math.max(0, n);
+  const c = s.charCodeAt(end - 1);
+  if (c >= 55296 && c <= 56319) end--;
+  return s.slice(0, end);
+}
+function render(preamble, sections, dropped) {
+  const parts = [preamble.trim()];
+  for (const s of sections) {
+    if (!s.items.length) continue;
+    parts.push(`## ${s.title}`);
+    for (const it of s.items) parts.push(`- ${it}`);
+  }
+  if (dropped) parts.push(`[${dropped} items omitted]`);
+  return parts.join("\n");
+}
+function fitBrief(preamble, sections, limitChars = 9e3) {
+  const work = sections.map((s) => ({ ...s, items: [...s.items] })).sort((a, b) => b.priority - a.priority);
+  let dropped = 0, truncated = false, text = render(preamble, work, 0);
+  while (text.length > limitChars) {
+    const nonEmpty = work.filter((s) => s.items.length);
+    const only = nonEmpty[0];
+    if (nonEmpty.length === 1 && only && only.items.length === 1) {
+      const item = only.items[0] ?? "";
+      const over = text.length - limitChars + 20;
+      only.items[0] = charSafePrefix(item, Math.max(0, item.length - over)) + " [brief truncated]";
+      truncated = true;
+      text = render(preamble, work, dropped);
+      break;
+    }
+    const victim = [...work].reverse().find((s) => s.items.length);
+    if (!victim) break;
+    victim.items.pop();
+    dropped++;
+    text = render(preamble, work, dropped);
+  }
+  if (text.length > limitChars) {
+    text = charSafePrefix(text, limitChars - 20) + "\n[brief truncated]";
+    truncated = true;
+  }
+  return { text, dropped, truncated };
+}
+var init_budget = __esm({
+  "src/lib/budget.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/atomic.ts
+import { writeFileSync as writeFileSync2, readFileSync as readFileSync2, renameSync as renameSync2, realpathSync, existsSync as existsSync2, statSync, chmodSync, unlinkSync } from "node:fs";
+import path3 from "node:path";
+import { randomBytes } from "node:crypto";
+function readJson(filePath) {
+  try {
+    return JSON.parse(readFileSync2(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function writeFileAtomic(filePath, data) {
+  const dir = realpathSync(path3.dirname(filePath));
+  const target = path3.join(dir, path3.basename(filePath));
+  const tmp = path3.join(dir, `.${path3.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const mode = existsSync2(target) ? statSync(target).mode & 511 : void 0;
+  writeFileSync2(tmp, data, "utf8");
+  if (mode !== void 0) chmodSync(tmp, mode);
+  let lastErr;
+  for (let i = 0; i < 5; i++) {
+    try {
+      renameSync2(tmp, target);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (!["EPERM", "EBUSY", "ENOENT"].includes(e?.code)) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try {
+    unlinkSync(tmp);
+  } catch {
+  }
+  throw lastErr;
+}
+var init_atomic = __esm({
+  "src/lib/atomic.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/session-state.ts
+import { readFileSync as readFileSync3, rmSync } from "node:fs";
+import path4 from "node:path";
+function loadState(sessionId, agentId = "main") {
+  try {
+    return { ...empty(), ...JSON.parse(readFileSync3(path4.join(paths.sessionDir(sessionId, agentId), "state.json"), "utf8")) };
+  } catch {
+    return empty();
+  }
+}
+function saveState(sessionId, s, agentId = "main") {
+  writeFileAtomic(path4.join(paths.sessionDir(sessionId, agentId), "state.json"), JSON.stringify(s, null, 2) + "\n");
+}
+var empty;
+var init_session_state = __esm({
+  "src/lib/session-state.ts"() {
+    "use strict";
+    init_paths();
+    init_atomic();
+    empty = () => ({ seenBlobs: [], lastSnapshotOffset: 0, snapshots: [], briefed: [], startedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  }
+});
+
+// src/lib/transcript.ts
+import { openSync, readSync, fstatSync, closeSync } from "node:fs";
+function readTranscript(path11, fromOffset = 0) {
+  const fd = openSync(path11, "r");
+  try {
+    const size = fstatSync(fd).size;
+    if (fromOffset >= size) return { entries: [], toOffset: size };
+    const buf = Buffer.alloc(size - fromOffset);
+    readSync(fd, buf, 0, buf.length, fromOffset);
+    const lastNl = buf.lastIndexOf(10);
+    const complete = lastNl >= 0 ? buf.subarray(0, lastNl + 1) : buf.subarray(0, 0);
+    const entries = [];
+    for (const line of complete.toString("utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+      }
+    }
+    return { entries, toOffset: fromOffset + complete.length };
+  } finally {
+    closeSync(fd);
+  }
+}
+function blocks(e) {
+  const c = e.message?.content;
+  return Array.isArray(c) ? c : typeof c === "string" ? [{ type: "text", text: c }] : [];
+}
+function textOf(e) {
+  return blocks(e).filter((b) => b?.type === "text").map((b) => String(b.text)).join("\n").replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+}
+var init_transcript = __esm({
+  "src/lib/transcript.ts"() {
+    "use strict";
+  }
+});
+
+// src/lib/redaction.ts
+function redactSensitive(text) {
+  if (text.length > MAX_CHARS) return { text: `[REDACTED:oversize ${text.length} chars]`, count: 1 };
+  let count = 0;
+  for (const { kind, re, group } of PATTERNS) {
+    text = text.replace(re, (m, ...g) => {
+      count++;
+      const tag = `[REDACTED:${kind}]`;
+      return group ? m.slice(0, m.length - g[group - 1].length) + tag : tag;
+    });
+  }
+  return { text, count };
+}
+var PATTERNS, MAX_CHARS, redactJson;
+var init_redaction = __esm({
+  "src/lib/redaction.ts"() {
+    "use strict";
+    PATTERNS = [
+      { kind: "aws", re: /\bAKIA[0-9A-Z]{16}\b/g },
+      { kind: "github", re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
+      { kind: "anthropic", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
+      { kind: "openai", re: /\bsk-[A-Za-z0-9]{32,}\b/g },
+      { kind: "slack", re: /\bxox[abpr]-[A-Za-z0-9-]{10,}/g },
+      { kind: "stripe", re: /\bsk_(live|test)_[A-Za-z0-9]{16,}\b/g },
+      { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
+      { kind: "pem", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+      { kind: "bearer", re: /\bBearer\s+([A-Za-z0-9._~+\/=\-]{16,})/g, group: 1 },
+      { kind: "generic", re: /\b(api[_-]?key|secret|token|passphrase|password)\s*[:=]\s*["']?([A-Za-z0-9\/+_\-]{16,})/gi, group: 2 }
+    ];
+    MAX_CHARS = 1e6;
+    redactJson = (_k, v) => typeof v === "string" ? redactSensitive(v).text : v;
+  }
+});
+
+// src/compaction/task-state.ts
+import path5 from "node:path";
+import { existsSync as existsSync3 } from "node:fs";
+function extractTaskState(entries, pointers) {
+  const users = entries.filter((e) => e.type === "user" && textOf(e));
+  const assistants = entries.filter((e) => e.type === "assistant");
+  const constraints = [], decisions = [], files = /* @__PURE__ */ new Map(), commands = [], tests = [], errors = [], values = [];
+  let openItems = [];
+  for (const u of users) for (const line of textOf(u).split("\n")) if (/\b(must|never|always|only|don't|do not)\b/i.test(line)) constraints.push(cap(line.trim(), 200));
+  for (const a of assistants) for (const line of textOf(a).split("\n")) if (/^(Decision|Decided|We will|Chosen|Verdict)\b/i.test(line.trim())) decisions.push(cap(line.trim(), 240));
+  const results = /* @__PURE__ */ new Map();
+  for (const e of entries) for (const b of blocks(e)) if (b?.type === "tool_result") results.set(String(b.tool_use_id), typeof b.content === "string" ? b.content : JSON.stringify(b.content));
+  for (const e of entries) for (const b of blocks(e)) {
+    if (b?.type !== "tool_use") continue;
+    const at = String(e.timestamp ?? "");
+    const inp = b.input ?? {};
+    if (["Write", "Edit", "NotebookEdit", "MultiEdit"].includes(b.name) && inp.file_path) {
+      const p = String(inp.file_path);
+      files.delete(p);
+      files.set(p, { action: b.name, at });
+    }
+    if (b.name === "Bash" && inp.command) {
+      const cmd = cap(String(inp.command), 120);
+      commands.push({ cmd, at });
+      if (TEST_RE.test(cmd)) {
+        const out2 = results.get(String(b.id)) ?? "";
+        const last = out2.trim().split("\n").filter(Boolean).pop() ?? "";
+        tests.push({ cmd, lastLine: cap(last, 160) });
+      }
+    }
+    if ((b.name === "TodoWrite" || b.name === "TaskCreate") && Array.isArray(inp.todos)) openItems = inp.todos.filter((t) => t.status !== "completed").map((t) => cap(String(t.content ?? t.subject ?? ""), 160));
+  }
+  const recent = assistants.slice(-20).map(textOf).join("\n");
+  for (const line of recent.split("\n")) if (/(Error|error:|Traceback|panic|FAIL)/.test(line)) errors.push(cap(line.trim(), 200));
+  for (const m of recent.matchAll(VALUE_RE)) values.push(m[0]);
+  const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
+  return {
+    goalFirst: cap(users[0] ? textOf(users[0]) : "", 600),
+    goalLatest: cap(users.at(-1) ? textOf(users.at(-1)) : "", 600),
+    constraints: uniq(constraints).slice(0, 12),
+    decisions: uniq(decisions).slice(0, 12),
+    files: [...files.entries()].map(([path11, v]) => ({ path: path11, ...v })).slice(-40),
+    commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
+    tests: tests.slice(-10),
+    openItems: openItems.slice(0, 20),
+    errors: uniq(errors).slice(-10),
+    exactValues: uniq(values).slice(-40),
+    pointers
+  };
+}
+function recallPointers(state) {
+  return state.snapshots.map((s) => `snapshot ${s.id} (${s.at}) \u2192 recall(id="${s.id}")`).concat(state.seenBlobs.slice(-3).map((b) => `recent offloaded output \u2192 recall(id="${b.slice(0, 16)}")`));
+}
+function loadTaskState(sessionId, transcriptPath) {
+  const stored = readJson(path5.join(paths.sessionDir(sessionId), "task-state.json"));
+  if (stored) return stored;
+  if (!transcriptPath || !existsSync3(transcriptPath)) return null;
+  return JSON.parse(JSON.stringify(extractTaskState(readTranscript(transcriptPath, 0).entries, recallPointers(loadState(sessionId))), redactJson));
+}
+function renderTaskState(ts) {
+  const sec = (t, items) => items.length ? `## ${t}
+${items.map((i) => `- ${i}`).join("\n")}
+` : "";
+  return [
+    `## Goal
+- First: ${ts.goalFirst}
+- Latest: ${ts.goalLatest}
+`,
+    sec("Open items", ts.openItems),
+    sec("Constraints", ts.constraints),
+    sec("Decisions", ts.decisions),
+    sec("Files", ts.files.map((f) => `${f.path} (${f.action} ${f.at})`)),
+    sec("Exact values", ts.exactValues),
+    sec("Tests", ts.tests.map((t) => `${t.cmd} \u2192 ${t.lastLine}`)),
+    sec("Commands", ts.commands.map((c) => c.cmd)),
+    sec("Errors", ts.errors),
+    sec("Pointers", ts.pointers)
+  ].filter(Boolean).join("\n");
+}
+var cap, uniq, TEST_RE, VALUE_RE;
+var init_task_state = __esm({
+  "src/compaction/task-state.ts"() {
+    "use strict";
+    init_transcript();
+    init_paths();
+    init_atomic();
+    init_redaction();
+    init_session_state();
+    cap = (s, n) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
+    uniq = (a) => [...new Set(a)];
+    TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test|go test|bun test)\b/;
+    VALUE_RE = /\b\d+(?:\.\d+)?\s?(?:%|(?:ms|s|K|M|GB|MB|KB|tokens|bps)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
+  }
+});
+
+// src/compaction/doctrine.ts
+var RESTORE_CHECKLIST;
+var init_doctrine = __esm({
+  "src/compaction/doctrine.ts"() {
+    "use strict";
+    RESTORE_CHECKLIST = `KEEP VERBATIM going forward: paths with line numbers, exact errors, exact values, decisions with rationale, open objectives.`;
+  }
+});
+
+// src/compaction/restore-brief.ts
+function buildRestoreBrief(ts, audit, limit = 9e3) {
+  const sections = [
+    { title: "Goal", priority: 10, items: [`First: ${ts.goalFirst}`, `Latest: ${ts.goalLatest}`] },
+    { title: "Open items", priority: 9, items: ts.openItems },
+    { title: "Omitted by compaction (re-injected)", priority: 8, items: audit?.missing ?? [] },
+    { title: "Constraints", priority: 7, items: ts.constraints },
+    { title: "Decisions", priority: 6, items: ts.decisions },
+    { title: "Files", priority: 5, items: ts.files.map((f) => `${f.path} (${f.action})`) },
+    { title: "Exact values", priority: 4, items: ts.exactValues },
+    { title: "Tests", priority: 3, items: ts.tests.map((t) => `${t.cmd} \u2192 ${t.lastLine}`) },
+    { title: "Errors", priority: 2, items: ts.errors },
+    { title: "Pointers", priority: 1, items: ts.pointers }
+  ];
+  const { text } = fitBrief(PREAMBLE, sections, limit - RESTORE_CHECKLIST.length - 2);
+  return `${text}
+
+${RESTORE_CHECKLIST}`;
+}
+var PREAMBLE;
+var init_restore_brief = __esm({
+  "src/compaction/restore-brief.ts"() {
+    "use strict";
+    init_budget();
+    init_doctrine();
+    PREAMBLE = "Context restored by the project-memory plugin. Items below are a memory aid with source and date, not standing orders; the user's latest message always takes precedence.";
+  }
+});
+
 // src/hooks/session-start.ts
 var session_start_exports = {};
 __export(session_start_exports, {
+  buildStartupBrief: () => buildStartupBrief,
   handler: () => handler,
   sessionStart: () => sessionStart
 });
-async function sessionStart(_input) {
-  return void 0;
+import path6 from "node:path";
+function buildStartupBrief(cwd) {
+  const sections = [];
+  const last = readJson(path6.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"));
+  if (last) {
+    const t = last.taskState;
+    sections.push({ title: "Last session in this project", priority: 10, items: [
+      `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
+      `Goal: ${t.goalFirst}`,
+      `Latest: ${t.goalLatest}`,
+      ...t.openItems.map((o) => `Open: ${o}`),
+      ...t.decisions,
+      ...t.files.map((f) => `${f.path} (${f.action})`),
+      ...t.pointers
+    ] });
+  }
+  sections.push({ title: "Project", priority: 9, items: [`Project memory active for ${path6.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. Knowledge-bank briefs arrive in phase 2.`] });
+  return fitBrief(PREAMBLE, sections).text;
 }
-var handler;
+async function sessionStart(input) {
+  if (input.agent_id) return void 0;
+  const source = String(input.source ?? "");
+  if (source === "startup" || source === "clear") return out(buildStartupBrief(String(input.cwd ?? "")));
+  if (source !== "compact") return void 0;
+  const sessionId = String(input.session_id ?? "unknown");
+  const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
+  if (ts) return out(buildRestoreBrief(ts, readJson(path6.join(paths.sessionDir(sessionId), "audit.json"))));
+  return out(fitBrief("Context was compacted. No task-state record was found for this session.", [{ title: "Pointers", priority: 1, items: recallPointers(loadState(sessionId)) }]).text);
+}
+var out, handler;
 var init_session_start = __esm({
   "src/hooks/session-start.ts"() {
     "use strict";
+    init_paths();
+    init_budget();
+    init_atomic();
+    init_session_state();
+    init_task_state();
+    init_restore_brief();
+    out = (additionalContext) => ({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } });
     handler = sessionStart;
   }
 });
@@ -147,86 +499,19 @@ var init_user_prompt = __esm({
   }
 });
 
-// src/lib/redaction.ts
-function redactSensitive(text) {
-  if (text.length > MAX_CHARS) return { text: `[REDACTED:oversize ${text.length} chars]`, count: 1 };
-  let count = 0;
-  for (const { kind, re, group } of PATTERNS) {
-    text = text.replace(re, (m, ...g) => {
-      count++;
-      const tag = `[REDACTED:${kind}]`;
-      return group ? m.slice(0, m.length - g[group - 1].length) + tag : tag;
-    });
-  }
-  return { text, count };
-}
-var PATTERNS, MAX_CHARS;
-var init_redaction = __esm({
-  "src/lib/redaction.ts"() {
-    "use strict";
-    PATTERNS = [
-      { kind: "aws", re: /\bAKIA[0-9A-Z]{16}\b/g },
-      { kind: "github", re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
-      { kind: "anthropic", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
-      { kind: "openai", re: /\bsk-[A-Za-z0-9]{32,}\b/g },
-      { kind: "slack", re: /\bxox[abpr]-[A-Za-z0-9-]{10,}/g },
-      { kind: "stripe", re: /\bsk_(live|test)_[A-Za-z0-9]{16,}\b/g },
-      { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
-      { kind: "pem", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
-      { kind: "bearer", re: /\bBearer\s+([A-Za-z0-9._~+\/=\-]{16,})/g, group: 1 },
-      { kind: "generic", re: /\b(api[_-]?key|secret|token|passphrase|password)\s*[:=]\s*["']?([A-Za-z0-9\/+_\-]{16,})/gi, group: 2 }
-    ];
-    MAX_CHARS = 1e6;
-  }
-});
-
-// src/lib/atomic.ts
-import { writeFileSync as writeFileSync2, renameSync as renameSync2, realpathSync, existsSync as existsSync2, statSync, chmodSync, unlinkSync } from "node:fs";
-import path3 from "node:path";
-import { randomBytes } from "node:crypto";
-function writeFileAtomic(filePath, data) {
-  const dir = realpathSync(path3.dirname(filePath));
-  const target = path3.join(dir, path3.basename(filePath));
-  const tmp = path3.join(dir, `.${path3.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
-  const mode = existsSync2(target) ? statSync(target).mode & 511 : void 0;
-  writeFileSync2(tmp, data, "utf8");
-  if (mode !== void 0) chmodSync(tmp, mode);
-  let lastErr;
-  for (let i = 0; i < 5; i++) {
-    try {
-      renameSync2(tmp, target);
-      return;
-    } catch (e) {
-      lastErr = e;
-      if (!["EPERM", "EBUSY", "ENOENT"].includes(e?.code)) break;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-    }
-  }
-  try {
-    unlinkSync(tmp);
-  } catch {
-  }
-  throw lastErr;
-}
-var init_atomic = __esm({
-  "src/lib/atomic.ts"() {
-    "use strict";
-  }
-});
-
 // src/offload/blobs.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync2, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
-import path4 from "node:path";
+import { existsSync as existsSync4, readFileSync as readFileSync4, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import path7 from "node:path";
 function storeBlob(text, meta) {
   const id = createHash2("sha256").update(text, "utf8").digest("hex");
-  const file = path4.join(paths.blobsDir(), id);
-  const created = !existsSync3(file);
+  const file = path7.join(paths.blobsDir(), id);
+  const created = !existsSync4(file);
   const lines = text.split("\n").length;
   if (created) {
     writeFileAtomic(file, text);
     const m = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, " "), sessionId: meta.sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), command: meta.command === void 0 ? void 0 : redactSensitive(meta.command).text.slice(0, 120) };
-    appendFileSync2(path4.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
+    appendFileSync2(path7.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
   }
   return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
 }
@@ -253,29 +538,6 @@ ${tail}`;
 var init_placeholder = __esm({
   "src/offload/placeholder.ts"() {
     "use strict";
-  }
-});
-
-// src/lib/session-state.ts
-import { readFileSync as readFileSync3, rmSync } from "node:fs";
-import path5 from "node:path";
-function loadState(sessionId, agentId = "main") {
-  try {
-    return { ...empty(), ...JSON.parse(readFileSync3(path5.join(paths.sessionDir(sessionId, agentId), "state.json"), "utf8")) };
-  } catch {
-    return empty();
-  }
-}
-function saveState(sessionId, s, agentId = "main") {
-  writeFileAtomic(path5.join(paths.sessionDir(sessionId, agentId), "state.json"), JSON.stringify(s, null, 2) + "\n");
-}
-var empty;
-var init_session_state = __esm({
-  "src/lib/session-state.ts"() {
-    "use strict";
-    init_paths();
-    init_atomic();
-    empty = () => ({ seenBlobs: [], lastSnapshotOffset: 0, snapshots: [], briefed: [], startedAt: (/* @__PURE__ */ new Date()).toISOString() });
   }
 });
 
@@ -355,130 +617,13 @@ var init_post_tool_use = __esm({
   }
 });
 
-// src/lib/transcript.ts
-import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path7, fromOffset = 0) {
-  const fd = openSync(path7, "r");
-  try {
-    const size = fstatSync(fd).size;
-    if (fromOffset >= size) return { entries: [], toOffset: size };
-    const buf = Buffer.alloc(size - fromOffset);
-    readSync(fd, buf, 0, buf.length, fromOffset);
-    const lastNl = buf.lastIndexOf(10);
-    const complete = lastNl >= 0 ? buf.subarray(0, lastNl + 1) : buf.subarray(0, 0);
-    const entries = [];
-    for (const line of complete.toString("utf8").split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        entries.push(JSON.parse(line));
-      } catch {
-      }
-    }
-    return { entries, toOffset: fromOffset + complete.length };
-  } finally {
-    closeSync(fd);
-  }
-}
-function blocks(e) {
-  const c = e.message?.content;
-  return Array.isArray(c) ? c : typeof c === "string" ? [{ type: "text", text: c }] : [];
-}
-function textOf(e) {
-  return blocks(e).filter((b) => b?.type === "text").map((b) => String(b.text)).join("\n").replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
-}
-var init_transcript = __esm({
-  "src/lib/transcript.ts"() {
-    "use strict";
-  }
-});
-
-// src/compaction/task-state.ts
-function extractTaskState(entries, pointers) {
-  const users = entries.filter((e) => e.type === "user" && textOf(e));
-  const assistants = entries.filter((e) => e.type === "assistant");
-  const constraints = [], decisions = [], files = /* @__PURE__ */ new Map(), commands = [], tests = [], errors = [], values = [];
-  let openItems = [];
-  for (const u of users) for (const line of textOf(u).split("\n")) if (/\b(must|never|always|only|don't|do not)\b/i.test(line)) constraints.push(cap(line.trim(), 200));
-  for (const a of assistants) for (const line of textOf(a).split("\n")) if (/^(Decision|Decided|We will|Chosen|Verdict)\b/i.test(line.trim())) decisions.push(cap(line.trim(), 240));
-  const results = /* @__PURE__ */ new Map();
-  for (const e of entries) for (const b of blocks(e)) if (b?.type === "tool_result") results.set(String(b.tool_use_id), typeof b.content === "string" ? b.content : JSON.stringify(b.content));
-  for (const e of entries) for (const b of blocks(e)) {
-    if (b?.type !== "tool_use") continue;
-    const at = String(e.timestamp ?? "");
-    const inp = b.input ?? {};
-    if (["Write", "Edit", "NotebookEdit", "MultiEdit"].includes(b.name) && inp.file_path) {
-      const p = String(inp.file_path);
-      files.delete(p);
-      files.set(p, { action: b.name, at });
-    }
-    if (b.name === "Bash" && inp.command) {
-      const cmd = cap(String(inp.command), 120);
-      commands.push({ cmd, at });
-      if (TEST_RE.test(cmd)) {
-        const out = results.get(String(b.id)) ?? "";
-        const last = out.trim().split("\n").filter(Boolean).pop() ?? "";
-        tests.push({ cmd, lastLine: cap(last, 160) });
-      }
-    }
-    if ((b.name === "TodoWrite" || b.name === "TaskCreate") && Array.isArray(inp.todos)) openItems = inp.todos.filter((t) => t.status !== "completed").map((t) => cap(String(t.content ?? t.subject ?? ""), 160));
-  }
-  const recent = assistants.slice(-20).map(textOf).join("\n");
-  for (const line of recent.split("\n")) if (/(Error|error:|Traceback|panic|FAIL)/.test(line)) errors.push(cap(line.trim(), 200));
-  for (const m of recent.matchAll(VALUE_RE)) values.push(m[0]);
-  const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
-  return {
-    goalFirst: cap(users[0] ? textOf(users[0]) : "", 600),
-    goalLatest: cap(users.at(-1) ? textOf(users.at(-1)) : "", 600),
-    constraints: uniq(constraints).slice(0, 12),
-    decisions: uniq(decisions).slice(0, 12),
-    files: [...files.entries()].map(([path7, v]) => ({ path: path7, ...v })).slice(-40),
-    commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
-    tests: tests.slice(-10),
-    openItems: openItems.slice(0, 20),
-    errors: uniq(errors).slice(-10),
-    exactValues: uniq(values).slice(-40),
-    pointers
-  };
-}
-function renderTaskState(ts) {
-  const sec = (t, items) => items.length ? `## ${t}
-${items.map((i) => `- ${i}`).join("\n")}
-` : "";
-  return [
-    `## Goal
-- First: ${ts.goalFirst}
-- Latest: ${ts.goalLatest}
-`,
-    sec("Open items", ts.openItems),
-    sec("Constraints", ts.constraints),
-    sec("Decisions", ts.decisions),
-    sec("Files", ts.files.map((f) => `${f.path} (${f.action} ${f.at})`)),
-    sec("Exact values", ts.exactValues),
-    sec("Tests", ts.tests.map((t) => `${t.cmd} \u2192 ${t.lastLine}`)),
-    sec("Commands", ts.commands.map((c) => c.cmd)),
-    sec("Errors", ts.errors),
-    sec("Pointers", ts.pointers)
-  ].filter(Boolean).join("\n");
-}
-var cap, uniq, TEST_RE, VALUE_RE;
-var init_task_state = __esm({
-  "src/compaction/task-state.ts"() {
-    "use strict";
-    init_transcript();
-    cap = (s, n) => s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
-    uniq = (a) => [...new Set(a)];
-    TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test|go test|bun test)\b/;
-    VALUE_RE = /\b\d+(?:\.\d+)?\s?(?:%|(?:ms|s|K|M|GB|MB|KB|tokens|bps)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
-  }
-});
-
 // src/hooks/pre-compact.ts
 var pre_compact_exports = {};
 __export(pre_compact_exports, {
   handler: () => handler5,
   preCompact: () => preCompact
 });
-import path6 from "node:path";
+import path8 from "node:path";
 async function preCompact(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
@@ -486,22 +631,21 @@ async function preCompact(input) {
   if (!tp) return void 0;
   const state = loadState(sessionId);
   const delta = readTranscript(tp, state.lastSnapshotOffset);
-  const text = delta.entries.map((e) => JSON.stringify(e, redact)).join("\n");
+  const text = delta.entries.map((e) => JSON.stringify(e, redactJson)).join("\n");
   if (text) {
     const blob = storeBlob(text, { tool: "snapshot", sessionId });
     state.snapshots.push({ id: blob.id16, from: state.lastSnapshotOffset, to: delta.toOffset, at: (/* @__PURE__ */ new Date()).toISOString() });
     state.lastSnapshotOffset = delta.toOffset;
   }
-  const pointers = state.snapshots.map((s) => `snapshot ${s.id} (${s.at}) \u2192 recall(id="${s.id}")`).concat(state.seenBlobs.slice(-3).map((b) => `recent offloaded output \u2192 recall(id="${b.slice(0, 16)}")`));
-  const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, pointers), redact));
+  const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
-  writeFileAtomic(path6.join(dir, "task-state.md"), renderTaskState(ts));
-  writeFileAtomic(path6.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
+  writeFileAtomic(path8.join(dir, "task-state.md"), renderTaskState(ts));
+  writeFileAtomic(path8.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
   saveState(sessionId, state);
   log("info", "pre-compact snapshot written", { sessionId, trigger: input.trigger, snapshots: state.snapshots.length });
   return void 0;
 }
-var redact, handler5;
+var handler5;
 var init_pre_compact = __esm({
   "src/hooks/pre-compact.ts"() {
     "use strict";
@@ -513,8 +657,28 @@ var init_pre_compact = __esm({
     init_redaction();
     init_paths();
     init_log();
-    redact = (_k, v) => typeof v === "string" ? redactSensitive(v).text : v;
     handler5 = preCompact;
+  }
+});
+
+// src/compaction/audit.ts
+import path9 from "node:path";
+function auditSummary(summary, ts) {
+  const s = summary.toLowerCase();
+  const present = [], missing = [];
+  const check = (label, key) => {
+    (key && s.includes(key.toLowerCase()) ? present : missing).push(label);
+  };
+  for (const f of ts.files) check(path9.basename(f.path), path9.basename(f.path));
+  for (const c of ts.commands) check(c.cmd, c.cmd.split(/\s+/).slice(0, 2).join(" "));
+  for (const o of ts.openItems) check(o, o.split(/\s+/).slice(0, 6).join(" "));
+  for (const e of ts.errors) check(e, e.split(/\s+/).slice(0, 8).join(" "));
+  for (const v of ts.exactValues) check(v, v);
+  return { present, missing };
+}
+var init_audit = __esm({
+  "src/compaction/audit.ts"() {
+    "use strict";
   }
 });
 
@@ -524,13 +688,28 @@ __export(post_compact_exports, {
   handler: () => handler6,
   postCompact: () => postCompact
 });
-async function postCompact(_input) {
+import path10 from "node:path";
+async function postCompact(input) {
+  if (input.agent_id) return void 0;
+  const summary = String(input.compact_summary ?? "");
+  if (!summary) return void 0;
+  const sessionId = String(input.session_id ?? "unknown");
+  const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
+  if (!ts) return void 0;
+  const audit = auditSummary(summary, ts);
+  writeFileAtomic(path10.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
+  log("info", "post-compact audit written", { sessionId, present: audit.present.length, missing: audit.missing.length });
   return void 0;
 }
 var handler6;
 var init_post_compact = __esm({
   "src/hooks/post-compact.ts"() {
     "use strict";
+    init_paths();
+    init_atomic();
+    init_log();
+    init_task_state();
+    init_audit();
     handler6 = postCompact;
   }
 });
@@ -631,8 +810,8 @@ async function runHook(event2, fn) {
     }
   }
   try {
-    const out = await fn(input);
-    if (out !== void 0) process.stdout.write(JSON.stringify(out));
+    const out2 = await fn(input);
+    if (out2 !== void 0) process.stdout.write(JSON.stringify(out2));
   } catch (e) {
     log("error", `handler threw in ${event2}`, String(e));
   }
