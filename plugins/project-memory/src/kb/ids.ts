@@ -12,4 +12,8 @@ export type Kind = 'domain'|'template'|'project'|'theme'|'approach'|'experiment'
 const PREFIX: Record<Kind, string> = { domain: 'd', template: 'm', project: 'p', theme: 'h', approach: 'a', experiment: 'x', target: 't', concept: 'c', finding: 'f', evidence: 'e', report: 'r' };
 export const noteId = (kind: Kind) => `${PREFIX[kind]}_${ulid()}`;
 export const evidenceId = (sha256: string) => `e_${sha256.slice(0, 16)}`;
-export const kindOfId = (id: string): Kind => (Object.entries(PREFIX).find(([, p]) => id.startsWith(p + '_'))?.[0] as Kind) ?? 'evidence';
+export function kindOfId(id: string): Kind {
+  const k = Object.entries(PREFIX).find(([, p]) => id.startsWith(p + '_'))?.[0];
+  if (!k) throw new Error(`unknown id prefix: ${id}`);
+  return k as Kind;
+}

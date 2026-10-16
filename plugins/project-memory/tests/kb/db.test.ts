@@ -20,3 +20,8 @@ test('schema, attrs, rels, FTS search, FTS update removes old terms', () => {
   assert.equal((db.sql.prepare('SELECT COUNT(*) AS n FROM rank_weights').get() as any).n, 10);
 });
 test('ulid is 26 chars and time-ordered', () => { const a = ulid(), b = ulid(); assert.equal(a.length, 26); assert.ok(b >= a); });
+test('kindOfId maps prefixes and rejects unknown ones', async () => {
+  const { kindOfId, evidenceId } = await import('../../src/kb/ids.js');
+  assert.equal(kindOfId(noteId('concept')), 'concept'); assert.equal(kindOfId(evidenceId('ab'.repeat(32))), 'evidence');
+  assert.throws(() => kindOfId('l_' + 'a'.repeat(26)), /unknown id prefix/);
+});
