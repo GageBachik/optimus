@@ -163,17 +163,130 @@ var init_session_end = __esm({
   }
 });
 
+// src/lib/stdin.ts
+function readStdin(idleMs = 1500) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      let s = Buffer.concat(chunks).toString("utf8");
+      if (s.charCodeAt(0) === 65279) s = s.slice(1);
+      resolve(s);
+    };
+    const timer = setTimeout(() => {
+      if (chunks.length === 0) finish();
+    }, idleMs);
+    process.stdin.on("data", (c) => chunks.push(c));
+    process.stdin.on("end", finish);
+    process.stdin.on("error", finish);
+    process.stdin.resume();
+  });
+}
+
+// src/lib/log.ts
+import { appendFileSync } from "node:fs";
+import path2 from "node:path";
+
+// src/lib/paths.ts
+import os from "node:os";
+import path from "node:path";
+import { createHash } from "node:crypto";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+function ensure(p) {
+  if (!existsSync(p)) mkdirSync(p, { recursive: true });
+  return p;
+}
+var safe = (s) => s.replace(/[^A-Za-z0-9_-]/g, "_");
+var paths = {
+  stateDir() {
+    return ensure(path.normalize(process.env.PROJECT_MEMORY_HOME ?? path.join(os.homedir(), ".project-memory")));
+  },
+  blobsDir() {
+    return ensure(path.join(this.stateDir(), "blobs"));
+  },
+  sessionDir(sessionId, agentId = "main") {
+    return ensure(path.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
+  },
+  logsDir() {
+    return ensure(path.join(this.stateDir(), "logs"));
+  },
+  configPath() {
+    return path.join(this.stateDir(), "config.json");
+  },
+  config() {
+    try {
+      return JSON.parse(readFileSync(this.configPath(), "utf8"));
+    } catch {
+      return {};
+    }
+  },
+  saveConfig(patch) {
+    const next = { ...this.config(), ...patch };
+    const tmp = this.configPath() + ".tmp";
+    writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+    renameSync(tmp, this.configPath());
+  },
+  bankDir() {
+    return path.normalize(process.env.PROJECT_MEMORY_BANK ?? this.config().bankDir ?? path.join(os.homedir(), "knowledge-bank"));
+  },
+  projectKey(cwd) {
+    let dir = path.resolve(cwd);
+    for (let i = 0; i < 8; i++) {
+      const f = path.join(dir, ".kb.json");
+      if (existsSync(f)) {
+        try {
+          const id = JSON.parse(readFileSync(f, "utf8")).project_id;
+          if (typeof id === "string" && id) return safe(id);
+        } catch {
+        }
+      }
+      const up = path.dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+    return createHash("sha256").update(path.normalize(cwd)).digest("hex").slice(0, 16);
+  },
+  projectDir(key) {
+    return ensure(path.join(this.stateDir(), "projects", safe(key)));
+  }
+};
+
+// src/lib/log.ts
+function log(level, msg, data) {
+  try {
+    appendFileSync(path2.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+  } catch {
+  }
+}
+
 // src/lib/run-hook.ts
 async function runHook(event2, fn) {
+  process.on("uncaughtException", (e) => {
+    log("error", `uncaught in ${event2}`, String(e));
+    process.exit(0);
+  });
+  process.on("unhandledRejection", (e) => {
+    log("error", `unhandled in ${event2}`, String(e));
+    process.exit(0);
+  });
+  let input = {};
+  const raw = await readStdin();
+  if (raw.trim()) {
+    try {
+      input = JSON.parse(raw);
+    } catch (e) {
+      log("error", `stdin parse failed for ${event2}`, { head: raw.slice(0, 200), error: String(e) });
+      process.exit(0);
+    }
+  }
   try {
-    let raw = "";
-    for await (const chunk of process.stdin) raw += chunk;
-    const input = raw.trim() ? JSON.parse(raw) : {};
     const out = await fn(input);
     if (out !== void 0) process.stdout.write(JSON.stringify(out));
   } catch (e) {
-    process.stderr.write(`project-memory ${event2}: ${String(e)}
-`);
+    log("error", `handler threw in ${event2}`, String(e));
   }
   process.exit(0);
 }

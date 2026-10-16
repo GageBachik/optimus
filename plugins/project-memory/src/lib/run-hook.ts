@@ -1,13 +1,11 @@
-// Minimal wrapper: read all of stdin, parse JSON, run the handler, print its result, always exit 0. Task 2 replaces it.
-export async function runHook(event: string, fn: (input: Record<string, unknown>) => Promise<unknown>): Promise<void> {
-  try {
-    let raw = '';
-    for await (const chunk of process.stdin) raw += chunk;
-    const input = raw.trim() ? JSON.parse(raw) : {};
-    const out = await fn(input);
-    if (out !== undefined) process.stdout.write(JSON.stringify(out));
-  } catch (e) {
-    process.stderr.write(`project-memory ${event}: ${String(e)}\n`);
-  }
+import { readStdin } from './stdin.js';
+import { log } from './log.js';
+export type HookInput = { session_id?: string; transcript_path?: string; cwd?: string; hook_event_name?: string; agent_id?: string; agent_type?: string; [k: string]: unknown };
+export async function runHook(event: string, fn: (input: HookInput) => Promise<unknown>): Promise<void> {
+  process.on('uncaughtException', (e) => { log('error', `uncaught in ${event}`, String(e)); process.exit(0); });
+  process.on('unhandledRejection', (e) => { log('error', `unhandled in ${event}`, String(e)); process.exit(0); });
+  let input: HookInput = {}; const raw = await readStdin();
+  if (raw.trim()) { try { input = JSON.parse(raw); } catch (e) { log('error', `stdin parse failed for ${event}`, { head: raw.slice(0, 200), error: String(e) }); process.exit(0); } }
+  try { const out = await fn(input); if (out !== undefined) process.stdout.write(JSON.stringify(out)); } catch (e) { log('error', `handler threw in ${event}`, String(e)); }
   process.exit(0);
 }
