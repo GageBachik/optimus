@@ -852,8 +852,8 @@ var require_uri_all = __commonJS({
             wsComponents.secure = void 0;
           }
           if (wsComponents.resourceName) {
-            var _wsComponents$resourc = wsComponents.resourceName.split("?"), _wsComponents$resourc2 = slicedToArray(_wsComponents$resourc, 2), path = _wsComponents$resourc2[0], query = _wsComponents$resourc2[1];
-            wsComponents.path = path && path !== "/" ? path : void 0;
+            var _wsComponents$resourc = wsComponents.resourceName.split("?"), _wsComponents$resourc2 = slicedToArray(_wsComponents$resourc, 2), path3 = _wsComponents$resourc2[0], query = _wsComponents$resourc2[1];
+            wsComponents.path = path3 && path3 !== "/" ? path3 : void 0;
             wsComponents.query = query;
             wsComponents.resourceName = void 0;
           }
@@ -1226,16 +1226,16 @@ var require_util = __commonJS({
       return "'" + escapeQuotes(str) + "'";
     }
     function getPathExpr(currentPath, expr, jsonPointers, isNumber) {
-      var path = jsonPointers ? "'/' + " + expr + (isNumber ? "" : ".replace(/~/g, '~0').replace(/\\//g, '~1')") : isNumber ? "'[' + " + expr + " + ']'" : "'[\\'' + " + expr + " + '\\']'";
-      return joinPaths(currentPath, path);
+      var path3 = jsonPointers ? "'/' + " + expr + (isNumber ? "" : ".replace(/~/g, '~0').replace(/\\//g, '~1')") : isNumber ? "'[' + " + expr + " + ']'" : "'[\\'' + " + expr + " + '\\']'";
+      return joinPaths(currentPath, path3);
     }
     function getPath(currentPath, prop, jsonPointers) {
-      var path = jsonPointers ? toQuotedString("/" + escapeJsonPointer(prop)) : toQuotedString(getProperty(prop));
-      return joinPaths(currentPath, path);
+      var path3 = jsonPointers ? toQuotedString("/" + escapeJsonPointer(prop)) : toQuotedString(getProperty(prop));
+      return joinPaths(currentPath, path3);
     }
     var JSON_POINTER = /^\/(?:[^~]|~0|~1)*$/;
     var RELATIVE_JSON_POINTER = /^([0-9]+)(#|\/(?:[^~]|~0|~1)*)?$/;
-    function getData($data, lvl, paths) {
+    function getData($data, lvl, paths2) {
       var up, jsonPointer, data, matches;
       if ($data === "") return "rootData";
       if ($data[0] == "/") {
@@ -1249,7 +1249,7 @@ var require_util = __commonJS({
         jsonPointer = matches[2];
         if (jsonPointer == "#") {
           if (up >= lvl) throw new Error("Cannot access property/index " + up + " levels up, current level is " + lvl);
-          return paths[lvl - up];
+          return paths2[lvl - up];
         }
         if (up > lvl) throw new Error("Cannot access data " + up + " levels up, current level is " + lvl);
         data = "data" + (lvl - up || "");
@@ -6737,8 +6737,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path, errorMaps, issueData } = params;
-  const fullPath = [...path, ...issueData.path || []];
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -6854,11 +6854,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path, key) {
+  constructor(parent, value, path3, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path;
+    this._path = path3;
     this._key = key;
   }
   get path() {
@@ -13791,7 +13791,7 @@ var EMPTY_COMPLETION_RESULT = {
 };
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
-import process from "node:process";
+import process2 from "node:process";
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
 var ReadBuffer = class {
@@ -13823,7 +13823,7 @@ function serializeMessage(message) {
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 var StdioServerTransport = class {
-  constructor(_stdin = process.stdin, _stdout = process.stdout) {
+  constructor(_stdin = process2.stdin, _stdout = process2.stdout) {
     this._stdin = _stdin;
     this._stdout = _stdout;
     this._readBuffer = new ReadBuffer();
@@ -13885,8 +13885,102 @@ var StdioServerTransport = class {
   }
 };
 
+// src/offload/blobs.ts
+import { existsSync as existsSync2, readFileSync as readFileSync2, appendFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import path2 from "node:path";
+
+// src/lib/paths.ts
+import os from "node:os";
+import path from "node:path";
+import { createHash } from "node:crypto";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+function ensure(p) {
+  if (!existsSync(p)) mkdirSync(p, { recursive: true });
+  return p;
+}
+var safe = (s) => s.replace(/[^A-Za-z0-9_-]/g, "_");
+var paths = {
+  stateDir() {
+    return ensure(path.normalize(process.env.PROJECT_MEMORY_HOME ?? path.join(os.homedir(), ".project-memory")));
+  },
+  blobsDir() {
+    return ensure(path.join(this.stateDir(), "blobs"));
+  },
+  sessionDir(sessionId, agentId = "main") {
+    return ensure(path.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
+  },
+  logsDir() {
+    return ensure(path.join(this.stateDir(), "logs"));
+  },
+  configPath() {
+    return path.join(this.stateDir(), "config.json");
+  },
+  config() {
+    try {
+      return JSON.parse(readFileSync(this.configPath(), "utf8"));
+    } catch {
+      return {};
+    }
+  },
+  saveConfig(patch) {
+    const next = { ...this.config(), ...patch };
+    const tmp = this.configPath() + ".tmp";
+    writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+    renameSync(tmp, this.configPath());
+  },
+  bankDir() {
+    return path.normalize(process.env.PROJECT_MEMORY_BANK ?? this.config().bankDir ?? path.join(os.homedir(), "knowledge-bank"));
+  },
+  projectKey(cwd) {
+    let dir = path.resolve(cwd);
+    for (let i = 0; i < 8; i++) {
+      const f = path.join(dir, ".kb.json");
+      if (existsSync(f)) {
+        try {
+          const id = JSON.parse(readFileSync(f, "utf8")).project_id;
+          if (typeof id === "string" && id) return safe(id);
+        } catch {
+        }
+      }
+      const up = path.dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+    return createHash("sha256").update(path.normalize(cwd)).digest("hex").slice(0, 16);
+  },
+  projectDir(key) {
+    return ensure(path.join(this.stateDir(), "projects", safe(key)));
+  }
+};
+
+// src/offload/blobs.ts
+function resolveBlobId(idOrPrefix) {
+  if (idOrPrefix.length === 64) return existsSync2(path2.join(paths.blobsDir(), idOrPrefix)) ? idOrPrefix : null;
+  return readdirSync(paths.blobsDir()).find((f) => f.length === 64 && f.startsWith(idOrPrefix)) ?? null;
+}
+function readBlob(idOrPrefix, offset = 0, limit = 8192) {
+  const id = resolveBlobId(idOrPrefix);
+  if (!id) throw new Error(`unknown blob ${idOrPrefix} (looked in ${paths.blobsDir()})`);
+  const text = readFileSync2(path2.join(paths.blobsDir(), id), "utf8");
+  const lim = Math.max(1, Math.min(limit, 32768));
+  const start = Math.max(0, Math.min(offset, text.length));
+  return { id, total: text.length, offset: start, text: text.slice(start, start + lim), next: start + lim < text.length ? start + lim : null };
+}
+
 // src/mcp/server.ts
 var server = new McpServer({ name: "project-memory", version: "0.1.0" });
+server.registerTool("recall", {
+  description: "Return the exact text of an offloaded tool output or pre-compaction snapshot by id (16-hex prefix or full sha256). Pages of up to 32 KB; default 8 KB; use offset and next_offset to page.",
+  inputSchema: { id: external_exports.string().min(8), offset: external_exports.number().int().min(0).optional(), limit: external_exports.number().int().min(1).max(32768).optional() }
+}, async ({ id, offset, limit }) => {
+  try {
+    const p = readBlob(id, offset ?? 0, limit ?? 8192);
+    return { content: [{ type: "text", text: JSON.stringify({ id: p.id, total_chars: p.total, offset: p.offset, text: p.text, next_offset: p.next }) }] };
+  } catch (e) {
+    return { content: [{ type: "text", text: JSON.stringify({ error: String(e.message) }) }], isError: true };
+  }
+});
+process.stdin.on("end", () => process.exit(0));
 await server.connect(new StdioServerTransport());
 /*! Bundled license information:
 
