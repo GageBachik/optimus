@@ -8867,7 +8867,7 @@ function graphData(db, today = /* @__PURE__ */ new Date()) {
   const laneOf = (n) => n.domain ?? NO_DOMAIN;
   const loose = /* @__PURE__ */ new Map();
   for (const f of findingNotes) if (!attachOf(f)) (loose.get(laneOf(f)) ?? loose.set(laneOf(f), []).get(laneOf(f))).push(f);
-  const domains = [.../* @__PURE__ */ new Set([...liveNotes(db, ["domain"]).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...loose.keys()])].sort();
+  const domains = [.../* @__PURE__ */ new Set([...liveNotes(db, ["domain"]).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...findingNotes.map(laneOf)])].sort();
   const node = (n, x, y) => {
     const attrs = getAttrs(db, n.id);
     return { id: n.id, kind: n.kind, title: n.title, domain: n.domain, project: n.project, attrs, x, y, ...axes(attrs) };

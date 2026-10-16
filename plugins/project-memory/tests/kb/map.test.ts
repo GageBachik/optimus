@@ -65,6 +65,16 @@ test('map: one lane per domain, a data-state badge per finding, data-type per ed
   for (const id of ['gate-min', 'valid-today', 'has-evidence', 'show-proposed', 'panel']) assert.ok(html.includes(`id="${id}"`), id);
 });
 
+test('map: an attached finding whose domain has no lane still gets a Domain checkbox', () => {
+  const db = openDb();
+  const a = db.sql.prepare("SELECT id FROM note WHERE kind = 'approach' AND title = 'SPY trend'").get() as { id: string };
+  const f = kbWrite(db, bank, { kind: 'finding', title: 'no-domain finding', rels: [{ type: 'about', dst: a.id }] }, now);
+  const out = path.join(process.env.PROJECT_MEMORY_HOME!, 'out', 'map2.html'); generateMap(db, out, today);
+  const html = readFileSync(out, 'utf8');
+  const dom = html.match(new RegExp(`<g class="badge"[^>]*data-id="${f.id}"[^>]*>`))![0].match(/data-domain="([^"]*)"/)![1];
+  assert.ok(html.includes(`data-filter="domain" value="${dom}"`), `a domain box for ${dom}`);
+});
+
 test('kb map writes <stateDir>/map.html and prints its path', () => {
   const r = spawnSync(process.execPath, ['dist/kb.js', 'map'], { encoding: 'utf8' });
   const file = path.join(process.env.PROJECT_MEMORY_HOME!, 'map.html');

@@ -34,7 +34,7 @@ export function graphData(db: Db, today = new Date()): Graph {
   const laneOf = (n: NoteRow) => n.domain ?? NO_DOMAIN;
   const loose = new Map<string, NoteRow[]>();
   for (const f of findingNotes) if (!attachOf(f)) (loose.get(laneOf(f)) ?? loose.set(laneOf(f), []).get(laneOf(f))!).push(f);
-  const domains = [...new Set([...liveNotes(db, ['domain']).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...loose.keys()])].sort();
+  const domains = [...new Set([...liveNotes(db, ['domain']).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...findingNotes.map(laneOf)])].sort();
 
   const node = (n: NoteRow, x: number, y: number): Node => { const attrs = getAttrs(db, n.id); return { id: n.id, kind: n.kind, title: n.title, domain: n.domain, project: n.project, attrs, x, y, ...axes(attrs) }; };
   const nodeById = new Map<string, Node>(), looseRow = new Map<string, number>();
