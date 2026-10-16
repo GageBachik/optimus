@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { paths } from '../lib/paths.js';
 import { openDb } from '../kb/db.js';
 import { installTemplate } from '../kb/templates.js';
+import { rebuild } from '../kb/export.js';
 import { gitIdentity } from '../kb/sync.js';
 import { loadTemplate } from '../kb/templates-yaml.js';
 import type { ProjectConfig } from '../kb/project.js';
@@ -50,6 +51,8 @@ export function initBank(opts: { bank?: string; clone?: string; print?: (line: s
     }
   }
   const installed = installBankTemplates(bank);
+  // DESIGN §4.4: a second machine "clones and rebuilds", so the clone's notes are indexed before its first session.
+  if (opts.clone) { const db = openDb(); try { print(`index rebuilt from the clone: ${rebuild(db, bank).imported} notes`); } finally { db.sql.close(); } }
   paths.saveConfig({ bankDir: bank });
   print(`templates installed: ${installed.join(', ') || 'none'}`); print(`bankDir: ${bank} (${paths.configPath()})`);
   if (written.length) {

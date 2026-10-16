@@ -11,6 +11,8 @@ export type Candidate = {
   /** `facet:environment` / `facet:subject` values of the targets it is `validated_in`. */
   target: { environment: string[]; subject: string[] };
   transfers: { confirmed: number; refuted: number }; conflicts: number;
+  /** Transfers still awaiting a person (`proposed` or `confirmed_provisional`), with the project of the approach each points at. */
+  proposals: { id: string; state: string; project: string | null }[];
   /** Titles of the evidence notes it is `backed_by` (`<kind>: <ref>`). */
   evidence: string[];
 };
@@ -62,11 +64,14 @@ export function loadCandidates(db: Db, findingIds: Iterable<string>): Candidate[
   for (const id of new Set(findingIds)) {
     const n = note.get(id) as Pick<Candidate, 'id' | 'title' | 'project' | 'updated_at'> | undefined; if (!n) continue;
     const rels = getRels(db, id, 'both');
-    const c: Candidate = { ...n, attrs: getAttrs(db, id), facets: {}, target: { environment: [], subject: [] }, transfers: { confirmed: 0, refuted: 0 }, conflicts: 0, evidence: [] };
+    const c: Candidate = { ...n, attrs: getAttrs(db, id), facets: {}, target: { environment: [], subject: [] }, transfers: { confirmed: 0, refuted: 0 }, conflicts: 0, proposals: [], evidence: [] };
     for (const r of rels) {
       if (r.type === 'conflicts_with') { c.conflicts++; continue; }
       if (r.src !== id) continue; // other incoming relations say nothing about this finding's fit
-      if (r.type === 'transfer') { if (r.props.state === 'confirmed') c.transfers.confirmed++; else if (r.props.state === 'refuted') c.transfers.refuted++; }
+      if (r.type === 'transfer') {
+        if (r.props.state === 'confirmed') c.transfers.confirmed++; else if (r.props.state === 'refuted') c.transfers.refuted++;
+        else c.proposals.push({ id: r.id, state: String(r.props.state), project: getNote(db, r.dst)?.project ?? null });
+      }
       else if (r.type === 'about' && r.dst.startsWith('a_')) { for (const [k, v] of Object.entries(getAttrs(db, r.dst))) if (k.startsWith('facet:')) (c.facets[k.slice(6)] ??= []).push(...v); }
       else if (r.type === 'validated_in') { const a = getAttrs(db, r.dst); c.target.environment.push(...(a['facet:environment'] ?? [])); c.target.subject.push(...(a['facet:subject'] ?? [])); }
       else if (r.type === 'backed_by') c.evidence.push(getNote(db, r.dst)?.title ?? r.dst);

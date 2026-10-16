@@ -38,7 +38,7 @@ server.registerTool('kb_link', {
   inputSchema: { src: z.string().min(1), type: z.string().min(1), dst: z.string().min(1), props: z.record(z.string(), z.unknown()).optional() },
 }, async (l) => { try { return json(kbLink(db(), paths.bankDir(), l)); } catch (e) { return fail(e); } });
 server.registerTool('kb_find', {
-  description: 'Plain full-text search over knowledge-bank notes plus filters. Each word of text is quoted, so punctuation is safe; words are ANDed (max 40). kind/project/domain filter exactly; concept is a concept id, title or alias and keeps notes `about` it. Newest first; limit default 20, max 100. Returns [{id, kind, title, snippet}].',
+  description: 'Plain full-text search over knowledge-bank notes plus filters. Fields: text, kind, project, domain, concept, limit. Each word of text is quoted, so punctuation is safe; words are ANDed (max 40). kind/project/domain filter exactly; concept is a concept id, title or alias and keeps notes `about` it. Newest first; limit default 20, max 100. Returns [{id, kind, title, snippet}].',
   inputSchema: { text: z.string().optional(), kind: z.enum(KINDS).optional(), project: z.string().optional(), domain: z.string().optional(), concept: z.string().optional(), limit: z.number().int().min(1).max(100).optional() },
 }, async (a) => { try { return json(kbFind(db(), a)); } catch (e) { return fail(e); } });
 /** The project's `.kb.json` (the server runs in the session's directory); another project id gets a config from the id and the domain its notes carry. */

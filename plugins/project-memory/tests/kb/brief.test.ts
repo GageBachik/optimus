@@ -30,3 +30,25 @@ test('60 imported notes: at most 40 titles, newest first, under 9,000 chars', ()
   assert.equal(titles.length, 40); assert.ok(titles.includes('- memory_59')); assert.ok(!titles.includes('- memory_19'));
   assert.ok(lines.join('\n').length <= 9000);
 });
+test('a finding from another project says how its target and facets differ from mine and carries the pending transfer command (DESIGN §4.6 partial credit, §4.8, §8)', async () => {
+  const { installTemplate } = await import('../../src/kb/templates.js');
+  const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
+  const { kbWrite } = await import('../../src/kb/write.js');
+  const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'c.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const bank = mkdtempSync(path.join(tmpdir(), 'bank-')), now = '2026-10-16T00:00:00Z';
+  const spx = kbWrite(db, bank, { kind: 'target', title: 'Databento backtest × SPX 0DTE options', domain: 'trading', facets: { environment: 'Databento backtest', subject: 'SPX 0DTE options' } }, now);
+  const mix = kbWrite(db, bank, { kind: 'approach', title: 'best mix at 1x', domain: 'trading', project: 'options-0dte', facets: { risk: 'size-for-target' }, tags: ['risk sizing'] }, now);
+  kbWrite(db, bank, { kind: 'approach', title: 'YoloLottery', domain: 'trading', project: 'yolo', facets: { risk: 'all-in' }, tags: ['risk sizing'] }, now);
+  const f = kbWrite(db, bank, { kind: 'finding', title: 'doubling the best mix lifts P(touch -10%) from 6.7% to 27.6%', domain: 'trading', project: 'options-0dte', tags: ['risk sizing'], attrs: { state: 'reproduced', gate: 'out-of-sample' }, evidence: [{ kind: 'path', ref: 'results.md' }], rels: [{ type: 'about', dst: mix.id, props: { facet_key: 'risk' } }, { type: 'validated_in', dst: spx.id, props: { gate: 'out-of-sample' } }] }, now);
+  assert.equal(f.transfers.length, 1);
+  const yolo = { project_id: 'yolo', domain: 'trading', facets: { risk: 'all-in' }, target: { environment: 'Schwab paper', subject: 'SPY 0DTE options' }, relies_on: ['risk sizing'] };
+  const line = buildProjectBrief(db, yolo, []).split('\n').find((l) => l.includes(f.id))!;
+  assert.ok(line.includes('your subject differs: SPY 0DTE options vs SPX 0DTE options'), line);
+  assert.ok(line.includes('your environment differs: Schwab paper vs Databento backtest'), line);
+  assert.ok(line.includes('your risk differs: all-in vs size-for-target'), line);
+  assert.ok(line.includes(`transfer proposed: kb transfer ${f.transfers[0]} confirm|refute`), line);
+  // The project that made the finding sees neither a difference nor a transfer line.
+  const options = { project_id: 'options-0dte', domain: 'trading', facets: { risk: 'size-for-target' }, target: { environment: 'Databento backtest', subject: 'SPX 0DTE options' }, relies_on: ['risk sizing'] };
+  const mine = buildProjectBrief(db, options, []).split('\n').find((l) => l.includes(f.id))!;
+  assert.ok(!mine.includes('differs') && !mine.includes('kb transfer'), mine);
+});

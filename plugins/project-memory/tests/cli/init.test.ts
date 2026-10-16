@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-'));
 const { initBank, projectInit } = await import('../../src/cli/init.js');
-const { openDb } = await import('../../src/kb/db.js');
+const { openDb, getNote } = await import('../../src/kb/db.js');
+const { kbWrite } = await import('../../src/kb/write.js');
 const { gateRank } = await import('../../src/kb/templates.js');
 const config = () => JSON.parse(readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'config.json'), 'utf8'));
 const git = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' }).stdout.trim();
@@ -19,9 +20,13 @@ test('kb init creates a committed bank with the three templates installed; --clo
   assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1'); assert.equal(git(bank, 'status', '--porcelain'), '');
   assert.equal(config().bankDir, bank); assert.equal(gateRank(openDb(), 'ios', 'testflight'), 2);
   initBank({ bank, print: () => {} }); assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1');
+  // A note committed to the bank must be in the second machine's index right after `kb init --clone` (DESIGN §4.4: "clones and rebuilds").
+  const db = openDb(); const p = kbWrite(db, bank, { kind: 'project', title: 'es', domain: 'trading', project: 'es' }); db.sql.exec('DELETE FROM note'); db.sql.close();
+  git(bank, 'add', '-A'); git(bank, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'note');
   const clone = path.join(mkdtempSync(path.join(tmpdir(), 'clone-')), 'kb');
   initBank({ bank: clone, clone: bank, print: () => {} });
   assert.ok(existsSync(path.join(clone, 'templates', 'trading.yaml'))); assert.equal(config().bankDir, clone);
+  assert.equal(getNote(openDb(), p.id)?.title, 'es', 'index rebuilt from the clone');
 });
 test('kb project init writes .kb.json with project_id defaulting to the lowercase basename', () => {
   const dir = path.join(mkdtempSync(path.join(tmpdir(), 'proj-')), 'ES-MeanRev');

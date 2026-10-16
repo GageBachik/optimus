@@ -2,7 +2,7 @@ import path from 'node:path';
 // Never import write.ts, concepts.ts or export.ts here: they reach `yaml`, which the hook bundle refuses (esbuild guard).
 import type { Db } from './db.js';
 import type { ProjectConfig } from './project.js';
-import { tokens } from './normalize.js';
+import { normalizeName, tokens } from './normalize.js';
 import { type Candidate, type Ranked, findingsAbout, findingsIn, loadCandidates, rankCandidates, rankFindings } from './rank.js';
 import { comparisonSections } from './compare.js';
 import { fitBrief, type Section } from '../lib/budget.js';
@@ -36,11 +36,23 @@ export function pendingQuestions(db: Db, max = 3): string[] {
   return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
 }
 
-/** DESIGN §3.6: one line per finding, ending with its id and evidence pointer. */
-export function findingLine(f: Candidate & { demoted?: boolean }): string {
+/** DESIGN §4.6 partial credit made visible: which target axis or facet of the asking project differs from the finding's, and (§4.8) the pending transfer into it. */
+function fitNotes(f: Candidate, cfg: ProjectConfig): string[] {
+  const out: string[] = [], theirs = (xs: string[]) => [...new Set(xs)].join('/');
+  for (const axis of ['environment', 'subject'] as const) {
+    const want = cfg.target?.[axis], have = f.target[axis];
+    if (want && have.length && !have.some((x) => normalizeName(x) === normalizeName(want))) out.push(`your ${axis} differs: ${want} vs ${theirs(have)}`);
+  }
+  for (const [k, v] of Object.entries(cfg.facets ?? {})) { const have = f.facets[k]; if (have && !have.includes(v)) out.push(`your ${k} differs: ${v} vs ${theirs(have)}`); }
+  for (const p of f.proposals) if (p.project === cfg.project_id) out.push(`transfer ${p.state}: kb transfer ${p.id} confirm|refute`);
+  return out;
+}
+/** DESIGN §3.6: one line per finding, ending with its id and evidence pointer; given the asking project's config, the fit notes follow. */
+export function findingLine(f: Candidate & { demoted?: boolean }, cfg?: ProjectConfig): string {
   const a = f.attrs;
   const meta = [a.state?.[0] ?? 'unverified', a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(', ');
-  return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join('; ') || 'none'}`;
+  const notes = cfg ? fitNotes(f, cfg) : [];
+  return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join('; ') || 'none'}${notes.length ? ` — ${notes.join('; ')}` : ''}`;
 }
 
 function projectCard(cfg: ProjectConfig): Section {
@@ -60,7 +72,7 @@ export function projectBrief(db: Db, cfg: ProjectConfig, questions: string[], li
   const sections: Section[] = [
     ...lastSessionSection(cfg.project_id), projectCard(cfg),
     { title: 'Pending concept questions', priority: 8, items: questions.slice(0, 3) },
-    { title: 'Relevant findings', priority: 7, items: findings.map(findingLine) },
+    { title: 'Relevant findings', priority: 7, items: findings.map((f) => findingLine(f, cfg)) },
     ...comparisonSections(db, cfg),
     { title: 'Imported memories for this project', priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "…" }) opens any of them`, ...memories] : [] },
   ];
@@ -84,5 +96,5 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
   if (!fresh.length) return null;
   const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, TOP_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));
-  return fitBrief(PREAMBLE, [{ title: `Knowledge bank on ${names.join(', ')}`, priority: 7, items: ranked.map(findingLine) }]).text;
+  return fitBrief(PREAMBLE, [{ title: `Knowledge bank on ${names.join(', ')}`, priority: 7, items: ranked.map((f) => findingLine(f, cfg)) }]).text;
 }

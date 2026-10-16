@@ -8073,26 +8073,11 @@ function gateRank(db, domain, gate) {
   return i;
 }
 
-// src/kb/sync.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync5, rmdirSync, statSync as statSync5 } from "node:fs";
-import { spawnSync as spawnSync3 } from "node:child_process";
-import path11 from "node:path";
-
-// src/lib/log.ts
-import { appendFileSync as appendFileSync2 } from "node:fs";
-import path9 from "node:path";
-function log(level, msg, data) {
-  try {
-    appendFileSync2(path9.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
-  } catch {
-  }
-}
-
 // src/kb/export.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync10, readdirSync as readdirSync4 } from "node:fs";
-import path10 from "node:path";
+import path9 from "node:path";
 
 // src/kb/templates-yaml.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -8147,12 +8132,12 @@ function parseNoteFile(text) {
   });
   return { note, attrs, rels };
 }
-var noteFile = (bankDir, n) => path10.join(bankDir, "notes", n.kind, `${n.id}.md`);
+var noteFile = (bankDir, n) => path9.join(bankDir, "notes", n.kind, `${n.id}.md`);
 function exportNote(db, bankDir, id) {
   const n = getNote(db, id);
   if (!n) throw new Error(`no note ${id}`);
   const file = noteFile(bankDir, n);
-  mkdirSync4(path10.dirname(file), { recursive: true });
+  mkdirSync4(path9.dirname(file), { recursive: true });
   writeFileAtomic(file, renderNoteFile(n, getAttrs(db, id), getRels(db, id, "out")));
   return file;
 }
@@ -8177,14 +8162,14 @@ function importFile(db, file) {
   return note;
 }
 function importNotes(db, bankDir) {
-  const notes = path10.join(bankDir, "notes");
+  const notes = path9.join(bankDir, "notes");
   let imported = 0, unchanged = 0;
   if (!existsSync8(notes)) return { imported, unchanged };
   const getMeta = db.sql.prepare("SELECT value FROM meta WHERE key=?");
   const setMeta = db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)");
   for (const kind of readdirSync4(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
-    for (const f of readdirSync4(path10.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
-      const file = path10.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync10(file, "utf8"));
+    for (const f of readdirSync4(path9.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
+      const file = path9.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync10(file, "utf8"));
       if (getMeta.get(key)?.value === hash) {
         unchanged++;
         continue;
@@ -8217,10 +8202,25 @@ function importAll(db, bankDir) {
 function rebuild(db, bankDir) {
   return inTransaction(db, () => {
     db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
-    const templates = path10.join(bankDir, "templates");
-    if (existsSync8(templates)) for (const f of readdirSync4(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path10.join(templates, f)));
+    const templates = path9.join(bankDir, "templates");
+    if (existsSync8(templates)) for (const f of readdirSync4(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path9.join(templates, f)));
     return importNotes(db, bankDir);
   });
+}
+
+// src/kb/sync.ts
+import { existsSync as existsSync9, mkdirSync as mkdirSync5, rmdirSync, statSync as statSync5 } from "node:fs";
+import { spawnSync as spawnSync3 } from "node:child_process";
+import path11 from "node:path";
+
+// src/lib/log.ts
+import { appendFileSync as appendFileSync2 } from "node:fs";
+import path10 from "node:path";
+function log(level, msg, data) {
+  try {
+    appendFileSync2(path10.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+  } catch {
+  }
 }
 
 // src/kb/sync.ts
@@ -8358,6 +8358,14 @@ function initBank(opts = {}) {
     }
   }
   const installed = installBankTemplates(bank);
+  if (opts.clone) {
+    const db = openDb();
+    try {
+      print(`index rebuilt from the clone: ${rebuild(db, bank).imported} notes`);
+    } finally {
+      db.sql.close();
+    }
+  }
   paths.saveConfig({ bankDir: bank });
   print(`templates installed: ${installed.join(", ") || "none"}`);
   print(`bankDir: ${bank} (${paths.configPath()})`);
