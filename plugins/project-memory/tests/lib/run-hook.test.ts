@@ -15,3 +15,7 @@ test('unparseable stdin is never written to the log (it can carry the user promp
   const r = run('{"prompt": "sk-SECRET-TOKEN-123'); assert.equal(r.status, 0);
   const log = readFileSync(path.join(home, 'logs', 'hooks.log'), 'utf8'); assert.doesNotMatch(log, /SECRET-TOKEN/); assert.match(log, /"chars":31/);
 });
+test('parse error message snippet is not logged (V8 "Unexpected token" quotes the input)', () => {
+  const r = run('sk-SECRET-TOKEN-123 x'); assert.equal(r.status, 0);
+  const log = readFileSync(path.join(home, 'logs', 'hooks.log'), 'utf8'); assert.doesNotMatch(log, /sk-SECRET/); assert.match(log, /"chars":21/);
+});
