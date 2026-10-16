@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, utimesSync, readdirSync } from 'node:fs';
+import { mkdtempSync, utimesSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-'));
@@ -29,4 +29,9 @@ test('gcBlobs drops blobs past the age limit, then oldest-first past the byte ca
   assert.equal(gcBlobs(14).removed, 1);
   assert.equal(gcBlobs(14, 0).removed, before - 1);
   assert.equal(readdirSync(dir).filter((f) => f.length === 64).length, 0);
+});
+test('storeBlob redacts meta.command before writing it to index.jsonl', () => {
+  const s = storeBlob('cmd blob', { tool: 'Bash', sessionId: 's3', command: "curl -H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345' https://x" });
+  const line = readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'blobs', 'index.jsonl'), 'utf8').split('\n').find((l) => l.includes(s.id))!;
+  assert.ok(!line.includes('abcdefghijklmnopqrstuvwxyz012345')); assert.ok(line.includes('[REDACTED:bearer]'));
 });

@@ -3,11 +3,12 @@ import { existsSync, readFileSync, appendFileSync, readdirSync, statSync, unlink
 import path from 'node:path';
 import { paths } from '../lib/paths.js';
 import { writeFileAtomic } from '../lib/atomic.js';
+import { redactSensitive } from '../lib/redaction.js';
 export type BlobMeta = { id: string; tool: string; chars: number; lines: number; head: string; sessionId: string; createdAt: string; command?: string };
 export function storeBlob(text: string, meta: { tool: string; sessionId: string; command?: string }) {
   const id = createHash('sha256').update(text, 'utf8').digest('hex'); const file = path.join(paths.blobsDir(), id); const created = !existsSync(file);
   const lines = text.split('\n').length;
-  if (created) { writeFileAtomic(file, text); const m: BlobMeta = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, ' '), sessionId: meta.sessionId, createdAt: new Date().toISOString(), command: meta.command?.slice(0, 120) }; appendFileSync(path.join(paths.blobsDir(), 'index.jsonl'), JSON.stringify(m) + '\n', 'utf8'); }
+  if (created) { writeFileAtomic(file, text); const m: BlobMeta = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, ' '), sessionId: meta.sessionId, createdAt: new Date().toISOString(), command: meta.command === undefined ? undefined : redactSensitive(meta.command).text.slice(0, 120) }; appendFileSync(path.join(paths.blobsDir(), 'index.jsonl'), JSON.stringify(m) + '\n', 'utf8'); }
   return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
 }
 export function resolveBlobId(idOrPrefix: string): string | null {
