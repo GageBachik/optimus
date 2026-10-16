@@ -33,6 +33,7 @@ This file is a glossary only. It defines the words the plugin, the briefs, the m
 - **Recall** — The tool that pages an exact slice of a stored blob or snapshot back into context.
 - **Snapshot** — The transcript slice and task-state record saved immediately before native compaction.
 - **Task-state record** — The protected record of goal, constraints, decisions, files, tests run, exact values and open items, rebuilt from originals and re-injected after compaction.
+- **Last-session record** — The most recent task-state record for a Project on this machine, shown at the start of the next session opened there. Working state, not knowledge; it does not travel between machines.
 - **Working set** — The live context Claude Code keeps before compacting; set by the autoCompactWindow setting (about 200K tokens).
 
 ## Terms deliberately not used

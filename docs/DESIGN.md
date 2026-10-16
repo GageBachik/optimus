@@ -38,6 +38,7 @@ One Claude Code plugin, written in TypeScript for Node 24, that does two things 
 │   ├─ blobs/<sha256>            offloaded tool outputs, snapshots (GC: 14 days / 500 MB)   │
 │   ├─ sessions/<session>/<agent>/   state.json; main agent also task-state.{md,json},      │
 │   │                                audit.json                                             │
+│   ├─ projects/<key>/last-session.json  where the last session in that project left off   │
 │   ├─ kb.sqlite                 index + FTS5, rebuilt from the bank repo on demand         │
 │   ├─ map.html                  generated lane map (open from disk)                        │
 │   ├─ metrics.jsonl             one usage sample per main-agent Stop                       │
@@ -67,7 +68,7 @@ Plugin hooks also fire inside subagents, with the same `session_id` and an `agen
 
 | Event | Matcher | Mode | Timeout | Does | Output |
 |---|---|---|---|---|---|
-| SessionStart | `startup` | sync | 10 s | Project card + top findings brief (phase 2); pending synonym questions (≤ 3 lines) | `additionalContext` ≤ 9,000 chars |
+| SessionStart | `startup` | sync | 10 s | Last-session section for this project (§3.11) + project card; phase 2 adds the top findings brief, pending synonym questions (≤ 3 lines) and imported memory titles on a cold start | `additionalContext` ≤ 9,000 chars |
 | SessionStart | `clear` | sync | 10 s | Same as startup | same |
 | SessionStart | `compact` | sync | 10 s | Restore brief from `task-state.json` + `audit.json` omissions + recall pointers | same |
 | SessionStart | `resume`, `fork` | — | — | **No brief is injected** (the transcript already carries it; re-injecting breaks the cache). Only the async hook below runs. | — |
@@ -77,7 +78,7 @@ Plugin hooks also fire inside subagents, with the same `session_id` and an `agen
 | PreCompact | — | sync | 30 s | Main agent only. Snapshot the transcript since the last snapshot into a blob; write `task-state.md` and `task-state.json` | nothing; **never `block`** |
 | PostCompact | — | sync | 15 s | Main agent only. Diff `compact_summary` against `task-state.json`; write `audit.json` (omissions) | nothing |
 | SubagentStart | — | sync | 5 s | Pointer brief ≤ 1,500 chars: project id, bank location, how to `recall`, how to `kb_brief` | `additionalContext` |
-| Stop | — | **async** | — | Main agent only. Append a usage sample from the transcript to `metrics.jsonl`; phase 2: run `kb sync` if the last sync is older than 60 s. No report files. | none |
+| Stop | — | **async** | — | Main agent only. Rebuild the task-state record from the transcript and write `projects/<key>/last-session.json` (§3.11); append a usage sample to `metrics.jsonl`; phase 2: run `kb sync` if the last sync is older than 60 s. No report files. | none |
 | SessionEnd | — | **sync** | shared 1.5 s | Store `task-state.md` as a blob if present; delete `sessions/<id>/`. Milliseconds of work: plugin SessionEnd hooks share a 1.5-second budget that per-hook timeouts cannot raise, and async hooks are killed at exit. | none |
 
 Matchers for SessionStart are separate entries, not one regular expression, so each branch is explicit. No PreToolUse hook is registered at all.
@@ -133,7 +134,7 @@ Every brief opens with one fixed sentence: *"Context restored by the project-mem
 
 Restore brief (SessionStart compact) priority: Goal → Open items → Omitted by compaction → Constraints → Decisions → Files → Exact values → Tests → Errors → Pointers.
 
-Startup brief priority (phase 2): project card → pending synonym questions (≤ 3 lines, once per session) → top findings (ranked, §4.6) → comparison block when the project declares a facet key with two or more competing findings (§4.9).
+Startup brief priority: last session in this project (§3.11) → project card → pending synonym questions (≤ 3 lines, once per session; phase 2) → top findings (ranked, §4.6; phase 2) → comparison block when the project declares a facet key with two or more competing findings (§4.9; phase 2) → titles of this project's imported memory notes (phase 2, cold start).
 
 Recall brief (UserPromptSubmit, phase 2): built from concepts and projects named in the prompt that this session has not been briefed on; the last successful brief is cached in `state.json` and injected if the bank query throws.
 
@@ -167,6 +168,16 @@ The retention doctrine (billion-context `kernel/src/compression-rules.ts`, MIT w
 ### 3.10 Measurement
 
 `kb doctor --baseline` reads `~/.claude/projects/**/*.jsonl` usage fields and prints: sessions, turns, context per turn p50/p90/p99/max, compactions per week, cache-read share. Baseline on 2026-10-16: p50 336K, p90 613K, max 966K, 2 compactions in 5,427 turns. Targets after phase 1 on real work: p50 < 200K, compactions actually occurring, zero unresolved audit omissions in a forced-compaction test, cache-read share unchanged with offload on.
+
+### 3.11 Session continuity (what replaces `/sc:load` and `/sc:save`)
+
+Gage's requirement (16 Oct, evening): opening a session in a project must load the right context by itself, with no command. Three layers, all automatic:
+
+1. **Where the last session left off.** After every main-agent turn the Stop hook rebuilds the task-state record (§3.4) from the transcript and writes it to `~/.project-memory/projects/<project key>/last-session.json` with the time, session id and working directory. The project key is the `project_id` from `.kb.json` when one is present, otherwise a hash of the normalized working directory, so this works in phase 1 before the bank exists. On `startup` and `clear` the SessionStart hook injects a "Last session in this project" section (when, goal, open items, decisions, files touched, pointers) at top priority. This record is machine-local by design: it is working state, not knowledge; the bank carries what should travel between machines.
+2. **What the bank knows about this project** (phase 2): the ranked findings brief, the comparison block, and on a cold start (a project that has imported memories but no findings yet) the titles of its imported Serena and auto-memory notes with the `kb_find` call that opens any of them, so the 760 imported files are reachable from the first session without a command.
+3. **What Claude Code already loads natively** is left alone: `CLAUDE.md`, the auto-memory `MEMORY.md` index, and `--resume`/`--continue` for the same conversation. The plugin never duplicates those.
+
+Nothing is saved by a command either: PreCompact, Stop and SessionEnd capture; `kb sync` carries bank changes to the other machines. `/sc:save` and `/sc:load` therefore become removable (§6).
 
 ## 4. The knowledge half (the bank)
 
@@ -316,7 +327,7 @@ Prints one line per check with pass/warn/fail/info: Node version (info; ≥ 24.1
 
 ## 8. Acceptance (what "done" means)
 
-Phase 1: a real session's median context drops below 200K; a forced `/compact` produces `task-state.json`, `audit.json`, and a restore brief with zero unresolved omissions; `recall` returns a sha256-identical copy of the tool result as it was delivered to the hook; cache-read share with offload on is within 5 points of off; `kb doctor --live` passes on this Mac; nothing in `~/.claude/settings.json` changed except `autoCompactWindow` and the cleanup disables Gage approved.
+Phase 1: a real session's median context drops below 200K; a forced `/compact` produces `task-state.json`, `audit.json`, and a restore brief with zero unresolved omissions; a new session opened in a project after another one ended there shows the last-session section with no command; `recall` returns a sha256-identical copy of the tool result as it was delivered to the hook; cache-read share with offload on is within 5 points of off; `kb doctor --live` passes on this Mac; nothing in `~/.claude/settings.json` changed except `autoCompactWindow` and the cleanup disables Gage approved.
 Phase 2: the risk-sizing finding written in the options repo surfaces in the futures repo's SessionStart brief in a second clone as a proposed transfer with its evidence pointer; `kb transfer confirm` turns the map edge solid; the genibook heap-ceiling finding reaches `gen-clob-explainer` the same way; `kb compare risk-sizing` prints the comparison table; the 213 Serena and 547 auto-memory files are present as evidence and searchable; `git log` on the bare remote shows both clones' commits; `kb doctor` is clean on both.
 Phase 3: all of phase 1 and 2 pass on the Windows PC.
 
