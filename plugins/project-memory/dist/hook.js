@@ -623,6 +623,7 @@ __export(pre_compact_exports, {
   handler: () => handler5,
   preCompact: () => preCompact
 });
+import { rmSync as rmSync2 } from "node:fs";
 import path8 from "node:path";
 async function preCompact(input) {
   if (input.agent_id) return void 0;
@@ -639,6 +640,7 @@ async function preCompact(input) {
   }
   const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
+  rmSync2(path8.join(dir, "audit.json"), { force: true });
   writeFileAtomic(path8.join(dir, "task-state.md"), renderTaskState(ts));
   writeFileAtomic(path8.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
   saveState(sessionId, state);

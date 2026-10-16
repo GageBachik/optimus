@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import path from 'node:path';
 import type { HookInput } from '../lib/run-hook.js';
 import { readTranscript } from '../lib/transcript.js';
@@ -25,6 +26,7 @@ export async function preCompact(input: HookInput): Promise<undefined> {
   // Always rebuilt from the whole transcript, never from a previous record (DESIGN §3.4: no summary-of-summary).
   const ts: TaskState = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
+  rmSync(path.join(dir, 'audit.json'), { force: true }); // DESIGN §3.5: an audit belongs to one compaction; without this PostCompact, the brief comes from task-state.json alone.
   writeFileAtomic(path.join(dir, 'task-state.md'), renderTaskState(ts));
   writeFileAtomic(path.join(dir, 'task-state.json'), JSON.stringify(ts) + '\n');
   saveState(sessionId, state);

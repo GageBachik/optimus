@@ -31,4 +31,10 @@ test('postCompact writes audit.json for the main agent only; the compact brief t
   assert.deepEqual(JSON.parse(readFileSync(auditPath, 'utf8')).missing, ['ship']);
   const c: any = await sessionStart({ session_id: 'x', source: 'compact', cwd: '/w/proj' });
   const t = c.hookSpecificOutput.additionalContext; assert.ok(t.includes('## Omitted by compaction')); assert.ok(t.indexOf('## Open items') < t.indexOf('## Omitted by compaction'));
+  // A second compaction whose PostCompact never writes (or runs after SessionStart) must not reuse the old audit.
+  const { preCompact } = await import('../../src/hooks/pre-compact.js');
+  await preCompact({ session_id: 'x', cwd: '/w/proj', transcript_path: path.join(import.meta.dirname, '..', 'fixtures', 'transcript-small.jsonl') });
+  assert.ok(!existsSync(auditPath));
+  const c2: any = await sessionStart({ session_id: 'x', source: 'compact', cwd: '/w/proj' });
+  assert.ok(!c2.hookSpecificOutput.additionalContext.includes('## Omitted by compaction'));
 });

@@ -2,6 +2,8 @@
 
 Retention doctrine copied verbatim from billion-context `kernel/src/compression-rules.ts` (https://github.com/ranxianglei/billion-context, Copyright (c) 2026 ranxianglei, MIT License with an attribution term; commit ce9bc90a315ad2ee77761faf0e9fd0543bd5ccee, license text in `licenses/MIT-billion-context.txt`). The domain additions and the restore checklist are this plugin's own (DESIGN §3.9). `kb setup` offers to append this file to `~/.claude/CLAUDE.md`; the restore brief carries the checklist regardless.
 
+Reading note for Claude Code: the doctrine below was written for billion-context's own `compress`/`decompress` tools and its `m00420`-style message refs, neither of which exists here. Read "compress" as writing the compaction summary, and in place of a message ref cite the file path, command, or `recall(id)` pointer that locates the original.
+
 Compression Philosophy:
 - All compression serves the primary task, but be frugal.
 - Context capacity is precious. Save context by compressing consumed outputs, not by avoiding tools.
