@@ -287,12 +287,19 @@ var init_redaction = __esm({
 // src/compaction/task-state.ts
 import path5 from "node:path";
 import { existsSync as existsSync3 } from "node:fs";
+function promptText(e) {
+  if (e.type !== "user" || e.isMeta || e.isCompactSummary || e.origin?.kind === "task-notification") return "";
+  const t = textOf(e);
+  if (/^<(task-notification|local-command-)/.test(t)) return "";
+  if (t.startsWith("<command-name>")) return /<command-args>([\s\S]*?)<\/command-args>/.exec(t)?.[1].trim() ?? "";
+  return t;
+}
 function extractTaskState(entries, pointers) {
-  const users = entries.filter((e) => e.type === "user" && textOf(e));
+  const users = entries.map(promptText).filter(Boolean);
   const assistants = entries.filter((e) => e.type === "assistant");
   const constraints = [], decisions = [], files = /* @__PURE__ */ new Map(), commands = [], tests = [], errors = [], values = [];
   let openItems = [];
-  for (const u of users) for (const line of textOf(u).split("\n")) if (/\b(must|never|always|only|don't|do not)\b/i.test(line)) constraints.push(cap(line.trim(), 200));
+  for (const u of users) for (const line of u.split("\n")) if (/\b(must|never|always|only|don't|do not)\b/i.test(line)) constraints.push(cap(line.trim(), 200));
   for (const a of assistants) for (const line of textOf(a).split("\n")) if (/^(Decision|Decided|We will|Chosen|Verdict)\b/i.test(line.trim())) decisions.push(cap(line.trim(), 240));
   const results = /* @__PURE__ */ new Map();
   for (const e of entries) for (const b of blocks(e)) if (b?.type === "tool_result") results.set(String(b.tool_use_id), typeof b.content === "string" ? b.content : JSON.stringify(b.content));
@@ -321,8 +328,8 @@ function extractTaskState(entries, pointers) {
   for (const m of recent.matchAll(VALUE_RE)) values.push(m[0]);
   const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
   return {
-    goalFirst: cap(users[0] ? textOf(users[0]) : "", 600),
-    goalLatest: cap(users.at(-1) ? textOf(users.at(-1)) : "", 600),
+    goalFirst: cap(users[0] ?? "", 600),
+    goalLatest: cap(users.at(-1) ?? "", 600),
     constraints: uniq(constraints).slice(0, 12),
     decisions: uniq(decisions).slice(0, 12),
     files: [...files.entries()].map(([path14, v]) => ({ path: path14, ...v })).slice(-40),
