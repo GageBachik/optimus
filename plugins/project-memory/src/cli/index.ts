@@ -7,11 +7,12 @@ import { paths } from '../lib/paths.js';
 import { openDb } from '../kb/db.js';
 import { exportAll, rebuild } from '../kb/export.js';
 import { pendingQuestions, acceptMerge, rejectMerge, splitAlias } from '../kb/concepts.js';
+import { setTransfer, retractNote, setAttr } from '../kb/write.js';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value>\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'cleanup') {
   const actions = planCleanup(home); const apply = has('--apply');
@@ -49,4 +50,11 @@ else if (cmd === 'cleanup') {
     else if (sub === 'reject') { rejectMerge(db, arg); process.stdout.write(`rejected ${arg}\n`); }
     else process.stdout.write(`split "${arg}" into ${splitAlias(db, bank, arg)}\n`);
   } catch (e) { process.stderr.write(`kb concepts ${sub}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+} else if ((cmd === 'transfer' && args[0] && ['confirm', 'refute'].includes(args[1])) || (cmd === 'retract' && args[0]) || (cmd === 'set' && args.length >= 3)) {
+  const db = openDb(), bank = paths.bankDir(), [id, a, b] = args;
+  try {
+    if (cmd === 'transfer') { const state = a === 'confirm' ? 'confirmed' : 'refuted'; setTransfer(db, bank, id, state); process.stdout.write(`transfer ${id} ${state}\n`); }
+    else if (cmd === 'retract') { retractNote(db, bank, id); process.stdout.write(`retracted ${id}\n`); }
+    else { setAttr(db, bank, id, a, b); process.stdout.write(`set ${a}=${b} on ${id}\n`); }
+  } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else { process.stdout.write(usage); if (cmd && cmd !== 'help' && cmd !== '--help') process.exitCode = 2; }

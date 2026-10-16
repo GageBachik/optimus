@@ -7437,10 +7437,10 @@ function upsertNote(db, n) {
     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, domain=excluded.domain, project=excluded.project, title=excluded.title, body=excluded.body, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, device_id=excluded.device_id`).run(n.id, n.kind, n.domain, n.project, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.device_id);
   reindexFts(db, n.id);
 }
-function setAttrs(db, noteId, attrs) {
-  db.sql.prepare("DELETE FROM attr WHERE note_id=?").run(noteId);
+function setAttrs(db, noteId2, attrs) {
+  db.sql.prepare("DELETE FROM attr WHERE note_id=?").run(noteId2);
   const ins = db.sql.prepare("INSERT OR IGNORE INTO attr(note_id,key,value) VALUES(?,?,?)");
-  for (const [k, v] of Object.entries(attrs)) for (const val of Array.isArray(v) ? v : [v]) ins.run(noteId, k, String(val));
+  for (const [k, v] of Object.entries(attrs)) for (const val of Array.isArray(v) ? v : [v]) ins.run(noteId2, k, String(val));
 }
 function softDeleteNote(db, id, at = (/* @__PURE__ */ new Date()).toISOString()) {
   db.sql.prepare("UPDATE note SET deleted_at=?, updated_at=? WHERE id=?").run(at, at, id);
@@ -7459,10 +7459,10 @@ function getRels(db, id, dir = "out") {
   const args2 = dir === "both" ? [id, id] : [id];
   return db.sql.prepare(`SELECT * FROM rel WHERE ${where} AND deleted_at IS NULL ORDER BY created_at`).all(...args2).map((r) => ({ ...r, props: JSON.parse(r.props) }));
 }
-function reindexFts(db, noteId) {
-  const n = getNote(db, noteId);
-  db.sql.prepare("DELETE FROM note_fts WHERE note_id=?").run(noteId);
-  if (n && !n.deleted_at) db.sql.prepare("INSERT INTO note_fts(note_id,title,body) VALUES(?,?,?)").run(noteId, n.title, n.body);
+function reindexFts(db, noteId2) {
+  const n = getNote(db, noteId2);
+  db.sql.prepare("DELETE FROM note_fts WHERE note_id=?").run(noteId2);
+  if (n && !n.deleted_at) db.sql.prepare("INSERT INTO note_fts(note_id,title,body) VALUES(?,?,?)").run(noteId2, n.title, n.body);
 }
 
 // src/cli/baseline.ts
@@ -8018,6 +8018,20 @@ function installTemplate(db, t, now = (/* @__PURE__ */ new Date()).toISOString()
     for (const a of [c.name, ...aliases]) ins.run(normalizeName(a), id);
   }
 }
+function templateFor(db, domain) {
+  const a = {};
+  for (const r of db.sql.prepare("SELECT key, value FROM attr WHERE note_id=? ORDER BY rowid").all(templateNoteId(domain))) (a[r.key] ??= []).push(r.value);
+  if (!a.facet) return null;
+  const gates = Object.entries(a).filter(([k]) => k.startsWith("gate:")).sort(([x], [y]) => Number(x.slice(5)) - Number(y.slice(5))).map(([, v]) => v[0]);
+  return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [] };
+}
+function gateRank(db, domain, gate) {
+  const t = templateFor(db, domain);
+  if (!t) throw new Error(`unknown domain ${domain}`);
+  const i = t.gates.indexOf(gate);
+  if (i < 0) throw new Error(`unknown gate ${gate}; allowed gates: ${t.gates.join(" < ")}`);
+  return i;
+}
 
 // src/kb/templates-yaml.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -8216,6 +8230,39 @@ function rebuild(db, bankDir) {
 // src/kb/concepts.ts
 import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync6 } from "node:fs";
 import path11 from "node:path";
+
+// src/kb/ids.ts
+var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
+var KINDS = Object.keys(PREFIX);
+
+// src/lib/redaction.ts
+var PATTERNS = [
+  { kind: "aws", re: /\bAKIA[0-9A-Z]{16}\b/g },
+  { kind: "github", re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
+  { kind: "anthropic", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
+  { kind: "openai", re: /\bsk-[A-Za-z0-9]{32,}\b/g },
+  { kind: "slack", re: /\bxox[abpr]-[A-Za-z0-9-]{10,}/g },
+  { kind: "stripe", re: /\bsk_(live|test)_[A-Za-z0-9]{16,}\b/g },
+  { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
+  { kind: "pem", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  { kind: "bearer", re: /\bBearer\s+([A-Za-z0-9._~+\/=\-]{16,})/g, group: 1 },
+  { kind: "generic", re: /\b(api[_-]?key|secret|token|passphrase|password)\s*[:=]\s*["']?([A-Za-z0-9\/+_\-]{16,})/gi, group: 2 }
+];
+var MAX_CHARS = 1e6;
+function redactSensitive(text) {
+  if (text.length > MAX_CHARS) return { text: `[REDACTED:oversize ${text.length} chars]`, count: 1 };
+  let count = 0;
+  for (const { kind, re, group } of PATTERNS) {
+    text = text.replace(re, (m, ...g) => {
+      count++;
+      const tag = `[REDACTED:${kind}]`;
+      return group ? m.slice(0, m.length - g[group - 1].length) + tag : tag;
+    });
+  }
+  return { text, count };
+}
+
+// src/kb/concepts.ts
 var log = (bankDir, line) => {
   mkdirSync6(bankDir, { recursive: true });
   appendFileSync2(path11.join(bankDir, "concept-merges.md"), line + "\n");
@@ -8283,6 +8330,38 @@ function splitAlias(db, bankDir, nameNorm, now = (/* @__PURE__ */ new Date()).to
   return id;
 }
 
+// src/kb/write.ts
+var red = (s) => redactSensitive(s).text;
+var touch2 = (db, id, now) => db.sql.prepare("UPDATE note SET updated_at=? WHERE id=?").run(now, id);
+var must = (db, id) => {
+  const n = getNote(db, id);
+  if (!n || n.deleted_at) throw new Error(`no note ${id}`);
+  return n;
+};
+function setTransfer(db, bankDir, transferId, state, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const t = db.sql.prepare(`SELECT src, props FROM rel WHERE id=? AND type='transfer' AND deleted_at IS NULL`).get(transferId);
+  if (!t) throw new Error(`no transfer ${transferId}`);
+  db.sql.prepare("UPDATE rel SET props=? WHERE id=?").run(JSON.stringify({ ...JSON.parse(t.props), state }), transferId);
+  touch2(db, t.src, now);
+  exportNote(db, bankDir, t.src);
+}
+function retractNote(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  must(db, id);
+  softDeleteNote(db, id, now);
+  exportNote(db, bankDir, id);
+}
+function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const n = must(db, id), attrs = getAttrs(db, id);
+  attrs[key] = [red(value2)];
+  if (key === "gate") {
+    if (!n.domain) throw new Error("gate needs a domain");
+    attrs.gate_rank = [String(gateRank(db, n.domain, value2))];
+  }
+  setAttrs(db, id, attrs);
+  touch2(db, id, now);
+  exportNote(db, bankDir, id);
+}
+
 // src/cli/index.ts
 var [cmd, ...args] = process.argv.slice(2);
 var has = (f) => args.includes(f);
@@ -8291,7 +8370,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os3.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value>\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "cleanup") {
   const actions = planCleanup(home);
@@ -8365,6 +8444,30 @@ else if (cmd === "cleanup") {
 `);
   } catch (e) {
     process.stderr.write(`kb concepts ${sub}: ${e.message}
+`);
+    process.exitCode = 1;
+  } finally {
+    db.sql.close();
+  }
+} else if (cmd === "transfer" && args[0] && ["confirm", "refute"].includes(args[1]) || cmd === "retract" && args[0] || cmd === "set" && args.length >= 3) {
+  const db = openDb(), bank = paths.bankDir(), [id, a, b] = args;
+  try {
+    if (cmd === "transfer") {
+      const state = a === "confirm" ? "confirmed" : "refuted";
+      setTransfer(db, bank, id, state);
+      process.stdout.write(`transfer ${id} ${state}
+`);
+    } else if (cmd === "retract") {
+      retractNote(db, bank, id);
+      process.stdout.write(`retracted ${id}
+`);
+    } else {
+      setAttr(db, bank, id, a, b);
+      process.stdout.write(`set ${a}=${b} on ${id}
+`);
+    }
+  } catch (e) {
+    process.stderr.write(`kb ${cmd}: ${e.message}
 `);
     process.exitCode = 1;
   } finally {
