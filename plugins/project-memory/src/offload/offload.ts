@@ -21,6 +21,10 @@ export function offload(input: HookInput) {
   const target = largestStringField(input.tool_response); if (!target || target.value.length < threshold) return undefined;
   const state = loadState(sessionId, agentId);
   const redacted = redactSensitive(target.value);
+  // Oversize fields redact to a bare marker (DESIGN §3.7); a placeholder built from it would hide the whole output, so leave it alone.
+  if (redacted.text.startsWith('[REDACTED:oversize')) return undefined;
+  // Whole-line head+tail (§3.2) cannot shrink few-but-long-line output (minified JSON); skip rather than emit something no shorter. id16 is always 16 chars, so a dummy id gives the exact length.
+  if (buildPlaceholder({ text: redacted.text, chars: redacted.text.length, lines: redacted.text.split('\n').length, id16: '0'.repeat(16), seen: false, headLines, tailLines }).length >= target.value.length) return undefined;
   const command = (input.tool_input as { command?: unknown } | undefined)?.command;
   const blob = storeBlob(redacted.text, { tool: String(input.tool_name), sessionId, command: typeof command === 'string' ? command : undefined });
   const seen = state.seenBlobs.includes(blob.id); if (!seen) { state.seenBlobs = [...state.seenBlobs, blob.id].slice(-500); saveState(sessionId, state, agentId); }

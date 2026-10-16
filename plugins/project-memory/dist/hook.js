@@ -309,6 +309,8 @@ function offload(input) {
   if (!target || target.value.length < threshold) return void 0;
   const state = loadState(sessionId, agentId);
   const redacted = redactSensitive(target.value);
+  if (redacted.text.startsWith("[REDACTED:oversize")) return void 0;
+  if (buildPlaceholder({ text: redacted.text, chars: redacted.text.length, lines: redacted.text.split("\n").length, id16: "0".repeat(16), seen: false, headLines, tailLines }).length >= target.value.length) return void 0;
   const command = input.tool_input?.command;
   const blob = storeBlob(redacted.text, { tool: String(input.tool_name), sessionId, command: typeof command === "string" ? command : void 0 });
   const seen = state.seenBlobs.includes(blob.id);

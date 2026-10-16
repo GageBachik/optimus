@@ -30,3 +30,10 @@ test('determinism: same input → byte-identical placeholder in a fresh home', (
   const b = JSON.stringify(offload(fx('posttooluse-bash.json', { '@@BIG@@': big, 's-fixture': 's-det' })));
   assert.equal(a, b);
 });
+test('field over 1,000,000 chars left untouched: redaction would reduce it to a bare marker', () => {
+  const huge = Array.from({ length: 20000 }, (_, i) => `line ${i} ${'y'.repeat(50)}`).join('\n'); // ~1.2M chars
+  assert.equal(offload(fx('posttooluse-bash.json', { '@@BIG@@': huge })), undefined);
+});
+test('one 30,000-char line (minified JSON) left untouched: whole-line placeholder would not be shorter', () => {
+  assert.equal(offload(fx('posttooluse-mcp-blocks.json', { '@@BIG@@': 'x'.repeat(30000), '@@BIG2@@': 'ok' })), undefined);
+});
