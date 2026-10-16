@@ -19,3 +19,8 @@ test('parse error message snippet is not logged (V8 "Unexpected token" quotes th
   const r = run('sk-SECRET-TOKEN-123 x'); assert.equal(r.status, 0);
   const log = readFileSync(path.join(home, 'logs', 'hooks.log'), 'utf8'); assert.doesNotMatch(log, /sk-SECRET/); assert.match(log, /"chars":21/);
 });
+test('PreCompact with a missing transcript → exit 0, no stdout (compaction is never blocked), error logged', () => {
+  const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', 'dist/hook.js', 'pre-compact'], { input: '{"session_id":"mt","transcript_path":"/nonexistent/t.jsonl"}', encoding: 'utf8', env, timeout: 5000 });
+  assert.equal(r.status, 0); assert.equal(r.stdout, '');
+  assert.match(readFileSync(path.join(home, 'logs', 'hooks.log'), 'utf8'), /handler threw in pre-compact.*ENOENT/);
+});
