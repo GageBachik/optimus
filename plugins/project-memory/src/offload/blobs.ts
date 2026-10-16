@@ -12,8 +12,11 @@ export function storeBlob(text: string, meta: { tool: string; sessionId: string;
   return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
 }
 export function resolveBlobId(idOrPrefix: string): string | null {
+  if (!/^[0-9a-f]{8,64}$/.test(idOrPrefix)) return null; // ids are hex only: blocks path traversal out of the blobs dir
   if (idOrPrefix.length === 64) return existsSync(path.join(paths.blobsDir(), idOrPrefix)) ? idOrPrefix : null;
-  return readdirSync(paths.blobsDir()).find((f) => f.length === 64 && f.startsWith(idOrPrefix)) ?? null;
+  const hits = readdirSync(paths.blobsDir()).filter((f) => f.length === 64 && f.startsWith(idOrPrefix));
+  if (hits.length > 1) throw new Error(`ambiguous blob prefix ${idOrPrefix} (${hits.length} matches); pass more hex characters`);
+  return hits[0] ?? null;
 }
 export function readBlob(idOrPrefix: string, offset = 0, limit = 8192) {
   const id = resolveBlobId(idOrPrefix); if (!id) throw new Error(`unknown blob ${idOrPrefix} (looked in ${paths.blobsDir()})`);

@@ -35,3 +35,13 @@ test('storeBlob redacts meta.command before writing it to index.jsonl', () => {
   const line = readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'blobs', 'index.jsonl'), 'utf8').split('\n').find((l) => l.includes(s.id))!;
   assert.ok(!line.includes('abcdefghijklmnopqrstuvwxyz012345')); assert.ok(line.includes('[REDACTED:bearer]'));
 });
+test('resolveBlobId rejects non-hex ids and ambiguous prefixes', async () => {
+  const { resolveBlobId } = await import('../../src/offload/blobs.js');
+  const { writeFileSync } = await import('node:fs');
+  const dir = path.join(process.env.PROJECT_MEMORY_HOME!, 'blobs');
+  assert.equal(resolveBlobId(('../'.repeat(10) + 'etc/passwd').padStart(64, '/')), null);
+  assert.throws(() => readBlob('../../../../etc/passwd'), /unknown blob/);
+  writeFileSync(path.join(dir, 'ab'.repeat(32)), 'x'); writeFileSync(path.join(dir, 'abababab' + 'c'.repeat(56)), 'y');
+  assert.throws(() => resolveBlobId('abababab'), /ambiguous/);
+  assert.equal(resolveBlobId('ababababc'), 'abababab' + 'c'.repeat(56));
+});

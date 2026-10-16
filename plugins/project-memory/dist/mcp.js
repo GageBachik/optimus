@@ -13955,8 +13955,11 @@ var paths = {
 
 // src/offload/blobs.ts
 function resolveBlobId(idOrPrefix) {
+  if (!/^[0-9a-f]{8,64}$/.test(idOrPrefix)) return null;
   if (idOrPrefix.length === 64) return existsSync2(path2.join(paths.blobsDir(), idOrPrefix)) ? idOrPrefix : null;
-  return readdirSync(paths.blobsDir()).find((f) => f.length === 64 && f.startsWith(idOrPrefix)) ?? null;
+  const hits = readdirSync(paths.blobsDir()).filter((f) => f.length === 64 && f.startsWith(idOrPrefix));
+  if (hits.length > 1) throw new Error(`ambiguous blob prefix ${idOrPrefix} (${hits.length} matches); pass more hex characters`);
+  return hits[0] ?? null;
 }
 function readBlob(idOrPrefix, offset = 0, limit = 8192) {
   const id = resolveBlobId(idOrPrefix);
@@ -13971,7 +13974,7 @@ function readBlob(idOrPrefix, offset = 0, limit = 8192) {
 var server = new McpServer({ name: "project-memory", version: "0.1.0" });
 server.registerTool("recall", {
   description: "Return the exact text of an offloaded tool output or pre-compaction snapshot by id (16-hex prefix or full sha256). Pages of up to 32 KB; default 8 KB; use offset and next_offset to page.",
-  inputSchema: { id: external_exports.string().min(8), offset: external_exports.number().int().min(0).optional(), limit: external_exports.number().int().min(1).max(32768).optional() }
+  inputSchema: { id: external_exports.string().regex(/^[0-9a-f]{8,64}$/), offset: external_exports.number().int().min(0).optional(), limit: external_exports.number().int().min(1).max(32768).optional() }
 }, async ({ id, offset, limit }) => {
   try {
     const p = readBlob(id, offset ?? 0, limit ?? 8192);
