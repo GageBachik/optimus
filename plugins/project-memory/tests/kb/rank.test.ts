@@ -22,4 +22,7 @@ test('facet+environment match outranks a newer unrelated finding; expired is dem
   const cfg = { project_id: 'spy', domain: 'trading', facets: { risk: 'fixed-fractional' }, target: { environment: 'ibkr', subject: 'SPY options' }, relies_on: ['risk sizing'] };
   const ranked = rankFindings(db, cfg, 10, new Date('2026-10-16'));
   assert.equal(ranked[0].id, strong.id); assert.ok(ranked.some((r) => r.id === expired.id && r.demoted)); assert.ok(!ranked.some((r) => r.id === old.id)); assert.ok(ranked.findIndex((r) => r.id === newer.id) > 0);
+  // Pin the scores so a dead term (e.g. gate_rank) fails the test, not just a reordering.
+  const score = (title: string) => Number(ranked.find((r) => r.title === title)!.score.toFixed(2));
+  assert.deepEqual(['strong', 'replacement', 'expired', 'newer unrelated'].map(score), [6.28, 4, 2, 1]);
 });

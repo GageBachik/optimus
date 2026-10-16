@@ -48,3 +48,9 @@ test('when the bank query throws, the last successful brief cached in state.json
   const cached: any = await userPrompt({ session_id: 'u3', cwd, prompt: 'anything at all' });
   assert.equal(cached.hookSpecificOutput.additionalContext, first.hookSpecificOutput.additionalContext);
 });
+test('a malformed .kb.json degrades to no .kb.json: the phase-1 startup brief still appears and userPrompt injects nothing', async () => {
+  const bad = mkdtempSync(path.join(tmpdir(), 'bad-')); writeFileSync(path.join(bad, '.kb.json'), '{bad json');
+  const s: any = await sessionStart({ session_id: 'u4', source: 'startup', cwd: bad });
+  assert.ok(s.hookSpecificOutput.additionalContext.includes('No .kb.json here'), s.hookSpecificOutput.additionalContext);
+  assert.equal(await userPrompt({ session_id: 'u4', cwd: bad, prompt }), undefined);
+});

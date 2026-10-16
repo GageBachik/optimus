@@ -489,7 +489,13 @@ function loadProjectConfig(cwd) {
   for (let i = 0; i < 8; i++) {
     const f = path7.join(dir, ".kb.json");
     if (existsSync4(f)) {
-      const c = JSON.parse(readFileSync4(f, "utf8"));
+      let c;
+      try {
+        c = JSON.parse(readFileSync4(f, "utf8"));
+      } catch (e) {
+        log("warn", `.kb.json at ${f} is not valid JSON; ignored`, String(e));
+        return null;
+      }
       if (!c.project_id || !c.domain) {
         log("warn", `.kb.json at ${f} lacks project_id or domain; ignored`);
         return null;
