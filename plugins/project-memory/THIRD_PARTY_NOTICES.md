@@ -6,7 +6,7 @@ This plugin is a personal tool. After the 2026-10-16 review it copies text from 
 
 | Source | File copied into this plugin | License | Obligations honoured |
 |---|---|---|---|
-| billion-context (ranxianglei/billion-context, Copyright (c) 2026 ranxianglei), commit `73d9360c6f37d5d95309949aba1893d64fa28c70` (2026-10-16) | `src/compaction/doctrine.ts` — the retention rule constants from `kernel/src/compression-rules.ts` (about 137 lines of doctrine text) | MIT with an attribution term for user-facing products | MIT header retained in the file; license text in `licenses/MIT-billion-context.txt`; README carries the line "uses mechanisms from billion-context / acp-kernel (https://github.com/ranxianglei/billion-context, https://github.com/ranxianglei/acp-kernel)" |
+| billion-context (ranxianglei/billion-context, Copyright (c) 2026 ranxianglei), commit `ce9bc90a315ad2ee77761faf0e9fd0543bd5ccee` (2026-10-17) | `src/compaction/doctrine.ts` — the retention rule constants from `kernel/src/compression-rules.ts` (about 137 lines of doctrine text) | MIT with an attribution term for user-facing products | MIT header retained in the file; license text in `licenses/MIT-billion-context.txt`; README carries the line "uses mechanisms from billion-context / acp-kernel (https://github.com/ranxianglei/billion-context, https://github.com/ranxianglei/acp-kernel)" |
 
 ## Re-implemented from behaviour (no text copied)
 
