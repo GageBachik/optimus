@@ -11,7 +11,7 @@ const { kbWrite } = await import('../../src/kb/write.js');
 const { compareConcept, resolveConceptRef } = await import('../../src/kb/compare.js');
 const { buildProjectBrief } = await import('../../src/kb/brief.js');
 const bank = process.env.PROJECT_MEMORY_BANK!, now = '2026-10-16T00:00:00Z';
-test('kb_compare: gate rank first, then the metric in its better direction (−4% max drawdown above −1%, Review Focus 5); brief shows the block', () => {
+test('kb_compare: gate rank first even over a better metric (paper −0.5% above in-sample −4%/−1%), then the metric in its better direction (−4% above −1%, Review Focus 5); brief shows the block', () => {
   const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml'));
   const t = kbWrite(db, bank, { kind: 'target', title: 'IBKR × ES', domain: 'trading', facets: { environment: 'IBKR', subject: 'ES' } }, now);
   const approach = (title: string, risk: string, project: string) => kbWrite(db, bank, { kind: 'approach', title, domain: 'trading', project, facets: { risk } }, now).id;
@@ -22,7 +22,7 @@ test('kb_compare: gate rank first, then the metric in its better direction (−4
   }, now).id;
   const shallow = finding('shallow drawdown', approach('ES fixed', 'fixed-fractional', 'es'), 'in-sample', -1, 'es');
   const deep = finding('deep drawdown', approach('ES kelly', 'half-kelly', 'es'), 'in-sample', -4, 'es');
-  const gated = finding('paper traded', approach('SPY vol', 'vol-target', 'spy'), 'paper', -10, 'spy');
+  const gated = finding('paper traded', approach('SPY vol', 'vol-target', 'spy'), 'paper', -0.5, 'spy');
   const rows = compareConcept(db, conceptNoteId('risk sizing'));
   assert.deepEqual(rows.map((r) => r.findingId), [gated, deep, shallow]);
   assert.deepEqual(rows[1], { findingId: deep, approachValue: 'half-kelly', gate: 'in-sample', gateRank: 0, metric: 'maxdd', value: -4, unit: 'pct', better: 'lower', target: 'IBKR × ES', validFrom: '2026-10-01', state: 'observed', project: 'es' });
