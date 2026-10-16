@@ -6,6 +6,7 @@ import { openDb, type Db } from '../kb/db.js';
 import { kbWrite, kbLink, WRITABLE_KINDS } from '../kb/write.js';
 import { kbFind } from '../kb/find.js';
 import { projectBrief } from '../kb/brief.js';
+import { compareConcept, resolveConceptRef } from '../kb/compare.js';
 import { loadProjectConfig, type ProjectConfig } from '../kb/project.js';
 import { KINDS } from '../kb/ids.js';
 import { paths } from '../lib/paths.js';
@@ -54,5 +55,9 @@ server.registerTool('kb_brief', {
   try { const { text, findings } = projectBrief(db(), briefConfig(project), [], limit); return json({ text, items: findings.map(({ id, title, project, score, demoted }) => ({ id, title, project, score, demoted })) }); }
   catch (e) { return fail(e); }
 });
+server.registerTool('kb_compare', {
+  description: 'Comparison table for a concept (DESIGN §4.9): one row per live finding about it — the facet value of the approach it is about, gate and gate rank, first metric (value, unit, better), target, valid_from, state, project. Sorted by gate rank, then metric value in its better direction (a −4% max drawdown ranks above −1%). concept is a concept id, title or alias. Returns [{findingId, approachValue, gate, gateRank, metric, value, unit, better, target, validFrom, state, project}].',
+  inputSchema: { concept: z.string().min(1) },
+}, async ({ concept }) => { try { return json(compareConcept(db(), resolveConceptRef(db(), concept))); } catch (e) { return fail(e); } });
 process.stdin.on('end', () => process.exit(0));
 await server.connect(new StdioServerTransport());

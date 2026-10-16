@@ -4,6 +4,7 @@ import type { Db } from './db.js';
 import type { ProjectConfig } from './project.js';
 import { tokens } from './normalize.js';
 import { type Candidate, type Ranked, findingsAbout, findingsIn, loadCandidates, rankCandidates, rankFindings } from './rank.js';
+import { comparisonSections } from './compare.js';
 import { fitBrief, type Section } from '../lib/budget.js';
 import { readJson } from '../lib/atomic.js';
 import { paths } from '../lib/paths.js';
@@ -49,8 +50,8 @@ function projectCard(cfg: ProjectConfig): Section {
 }
 
 export type ProjectBrief = { text: string; findings: Ranked[] };
-/** DESIGN §3.6 startup brief: last session (10) → project card (9) → synonym questions (8) → top findings (7) → imported memories (1; the comparison
- *  block at 6 arrives with kb_compare). The memories section leads with the kb_find call so fitBrief, which trims from the end, drops titles before it. */
+/** DESIGN §3.6 startup brief: last session (10) → project card (9) → synonym questions (8) → top findings (7) → comparison blocks (6, §4.9) →
+ *  imported memories (1). The memories section leads with the kb_find call so fitBrief, which trims from the end, drops titles before it. */
 export function projectBrief(db: Db, cfg: ProjectConfig, questions: string[], limit = 9000, today = new Date()): ProjectBrief {
   const findings = rankFindings(db, cfg, TOP_FINDINGS, today);
   const memories = (db.sql.prepare(`SELECT n.title FROM note n WHERE n.kind='evidence' AND n.project=? AND n.deleted_at IS NULL
@@ -60,6 +61,7 @@ export function projectBrief(db: Db, cfg: ProjectConfig, questions: string[], li
     ...lastSessionSection(cfg.project_id), projectCard(cfg),
     { title: 'Pending concept questions', priority: 8, items: questions.slice(0, 3) },
     { title: 'Relevant findings', priority: 7, items: findings.map(findingLine) },
+    ...comparisonSections(db, cfg),
     { title: 'Imported memories for this project', priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "…" }) opens any of them`, ...memories] : [] },
   ];
   return { text: fitBrief(PREAMBLE, sections, limit).text, findings };

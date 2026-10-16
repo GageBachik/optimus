@@ -8,12 +8,13 @@ import { openDb } from '../kb/db.js';
 import { exportAll, rebuild } from '../kb/export.js';
 import { acceptMerge, rejectMerge, splitAlias } from '../kb/concepts.js';
 import { pendingQuestions } from '../kb/brief.js';
+import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js';
 import { setTransfer, retractNote, setAttr } from '../kb/write.js';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value>\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept>\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'cleanup') {
   const actions = planCleanup(home); const apply = has('--apply');
@@ -58,4 +59,8 @@ else if (cmd === 'cleanup') {
     else if (cmd === 'retract') { retractNote(db, bank, id); process.stdout.write(`retracted ${id}\n`); }
     else { setAttr(db, bank, id, a, b); process.stdout.write(`set ${a}=${b} on ${id}\n`); }
   } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+} else if (cmd === 'compare' && args[0]) {
+  const db = openDb(), name = args.join(' ');
+  try { const rows = compareConcept(db, resolveConceptRef(db, name)); process.stdout.write(rows.length ? rows.map((r) => compareLine(r)).join('\n') + '\n' : `no findings about ${name}\n`); }
+  catch (e) { process.stderr.write(`kb compare: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else { process.stdout.write(usage); if (cmd && cmd !== 'help' && cmd !== '--help') process.exitCode = 2; }

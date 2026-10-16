@@ -714,6 +714,71 @@ var init_rank = __esm({
   }
 });
 
+// src/kb/compare.ts
+function compareConcept(db, conceptId, facetKey) {
+  const rows = findingsAbout(db, [conceptId]).map((id) => {
+    const a = getAttrs(db, id), rels = getRels(db, id);
+    let approachValue = null, target = null;
+    for (const r of rels) {
+      const key = r.props.facet_key;
+      if (approachValue === null && r.type === "about" && r.dst.startsWith("a_") && typeof key === "string" && (facetKey === void 0 || key === facetKey) && live(db, r.dst))
+        approachValue = getAttrs(db, r.dst)[`facet:${key}`]?.[0] ?? null;
+      if (target === null && r.type === "validated_in") target = live(db, r.dst)?.title ?? null;
+    }
+    const mk = Object.keys(a).find((k) => k.startsWith("metric:"));
+    const [v, unit, better] = mk ? a[mk][0].split("|") : [];
+    const value = v !== void 0 && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+    return {
+      findingId: id,
+      approachValue,
+      gate: a.gate?.[0] ?? null,
+      gateRank: a.gate_rank ? Number(a.gate_rank[0]) : -1,
+      metric: mk ? mk.slice(7) : null,
+      value,
+      unit: unit || null,
+      better: better === "higher" || better === "lower" ? better : null,
+      target,
+      validFrom: a.valid_from?.[0] ?? null,
+      state: a.state?.[0] ?? null,
+      project: getNote(db, id)?.project ?? null
+    };
+  });
+  const score = (r) => r.value === null ? -Infinity : r.value * (r.better === "lower" ? -1 : 1);
+  return rows.sort((x, y) => y.gateRank - x.gateRank || score(y) - score(x) || (x.findingId < y.findingId ? -1 : 1));
+}
+function compareLine(r, key) {
+  const metric = r.metric ? `${r.metric} ${r.value ?? "?"}${r.unit ? ` ${r.unit}` : ""}${r.better ? ` (${r.better} is better)` : ""}` : "no metric";
+  const meta = [r.gate && `gate ${r.gate}`, r.target && `target ${r.target}`, r.state, r.validFrom, r.project && `project ${r.project}`].filter(Boolean).join(", ");
+  return `${key ? `${key}=${r.approachValue}` : r.approachValue ?? "(no approach facet)"}: ${metric} (${meta}) [${r.findingId}]`;
+}
+function comparisonSections(db, cfg) {
+  const keys = Object.keys(cfg.facets ?? {});
+  if (!keys.length) return [];
+  const pairs = db.sql.prepare(`SELECT DISTINCT c.dst AS concept, json_extract(p.props, '$.facet_key') AS key, n.title FROM rel p
+    JOIN rel c ON c.src=p.src AND c.type='about' AND c.deleted_at IS NULL AND c.dst LIKE 'c\\_%' ESCAPE '\\'
+    JOIN note n ON n.id=c.dst AND n.deleted_at IS NULL
+    WHERE p.type='about' AND p.deleted_at IS NULL AND p.dst LIKE 'a\\_%' ESCAPE '\\' AND json_extract(p.props, '$.facet_key') IN (${keys.map(() => "?").join(",")})
+    ORDER BY n.title, key`).all(...keys);
+  const out2 = [];
+  for (const p of pairs) {
+    const rows = compareConcept(db, p.concept, p.key).filter((r) => r.approachValue !== null);
+    if (rows.length >= 2) out2.push({ title: `Comparison: ${p.title} by ${p.key}`, priority: 6, items: rows.map((r) => compareLine(r, p.key)) });
+  }
+  return out2;
+}
+var live;
+var init_compare = __esm({
+  "src/kb/compare.ts"() {
+    "use strict";
+    init_db();
+    init_rank();
+    live = (db, id) => {
+      const n = getNote(db, id);
+      return n && !n.deleted_at ? n : void 0;
+    };
+  }
+});
+
 // src/kb/brief.ts
 import path8 from "node:path";
 function lastSessionSection(projectKey) {
@@ -755,6 +820,7 @@ function projectBrief(db, cfg, questions, limit = 9e3, today = /* @__PURE__ */ n
     projectCard(cfg),
     { title: "Pending concept questions", priority: 8, items: questions.slice(0, 3) },
     { title: "Relevant findings", priority: 7, items: findings.map(findingLine) },
+    ...comparisonSections(db, cfg),
     { title: "Imported memories for this project", priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "\u2026" }) opens any of them`, ...memories] : [] }
   ];
   return { text: fitBrief(PREAMBLE, sections, limit).text, findings };
@@ -779,6 +845,7 @@ var init_brief = __esm({
     "use strict";
     init_normalize();
     init_rank();
+    init_compare();
     init_budget();
     init_atomic();
     init_paths();

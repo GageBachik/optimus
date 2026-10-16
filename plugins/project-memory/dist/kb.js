@@ -7699,8 +7699,8 @@ function doctorChecks(home2) {
   const enabled = settings.enabledPlugins ?? {};
   const installed = installedPlugins(home2);
   const ours = installed.filter((p) => p.name.startsWith("project-memory@"));
-  const live = ours.find((p) => enabled[p.name] && existsSync3(path5.join(p.installPath, "hooks", "hooks.json")) && existsSync3(path5.join(p.installPath, "dist", "hook.js")));
-  out.push(live ? { status: "PASS", name: "hooks", detail: `${live.name} hooks present in ${live.installPath}` } : { status: "WARN", name: "hooks", detail: ours.length ? `${ours[0].name} installed but not enabled or its cache lacks hooks/hooks.json + dist/hook.js` : "project-memory plugin not installed in the plugin cache" });
+  const live2 = ours.find((p) => enabled[p.name] && existsSync3(path5.join(p.installPath, "hooks", "hooks.json")) && existsSync3(path5.join(p.installPath, "dist", "hook.js")));
+  out.push(live2 ? { status: "PASS", name: "hooks", detail: `${live2.name} hooks present in ${live2.installPath}` } : { status: "WARN", name: "hooks", detail: ours.length ? `${ours[0].name} installed but not enabled or its cache lacks hooks/hooks.json + dist/hook.js` : "project-memory plugin not installed in the plugin cache" });
   const collisions = [];
   for (const p of installed) {
     if (!enabled[p.name] || p.name.startsWith("project-memory@")) continue;
@@ -7733,11 +7733,11 @@ function doctor(home2, opts = {}) {
 live marker test (two headless runs, about two minutes)...
 `);
     const r = runLiveTest();
-    const live = liveChecks(r);
-    checks.push(...live);
+    const live2 = liveChecks(r);
+    checks.push(...live2);
     print({ status: "INFO", name: "live:claude", detail: v.status === 0 ? v.stdout.trim() : "claude not found on PATH" });
-    for (const c of live) print(c);
-    process.stdout.write(`${live.some((c) => c.status === "FAIL") ? r.log : r.log.split("\n")[0]}
+    for (const c of live2) print(c);
+    process.stdout.write(`${live2.some((c) => c.status === "FAIL") ? r.log : r.log.split("\n")[0]}
 `);
   }
   if (opts.baseline) {
@@ -8164,9 +8164,9 @@ function exportNote(db, bankDir, id) {
   return file;
 }
 function exportAll(db, bankDir) {
-  const ids = db.sql.prepare("SELECT id FROM note ORDER BY id").all().map((r) => r.id);
-  for (const id of ids) exportNote(db, bankDir, id);
-  return ids.length;
+  const ids2 = db.sql.prepare("SELECT id FROM note ORDER BY id").all().map((r) => r.id);
+  for (const id of ids2) exportNote(db, bankDir, id);
+  return ids2.length;
 }
 function importFile(db, file) {
   const { note, attrs, rels } = parseNoteFile(readFileSync11(file, "utf8"));
@@ -8328,6 +8328,59 @@ function splitAlias(db, bankDir, nameNorm, now = (/* @__PURE__ */ new Date()).to
 // src/kb/rank.ts
 var NOT_SUPERSEDED = `NOT EXISTS (SELECT 1 FROM rel s JOIN note m ON m.id=s.src AND m.deleted_at IS NULL WHERE s.type='supersedes' AND s.dst=n.id AND s.deleted_at IS NULL)`;
 var LIVE_FINDING = `n.kind='finding' AND n.deleted_at IS NULL AND ${NOT_SUPERSEDED}`;
+var marks = (xs) => xs.map(() => "?").join(",");
+var ids = (rows) => rows.map((r) => r.id);
+function conceptIds(db, names) {
+  const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
+  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
+}
+function findingsAbout(db, concepts) {
+  if (!concepts.length) return [];
+  return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
+}
+
+// src/kb/compare.ts
+var live = (db, id) => {
+  const n = getNote(db, id);
+  return n && !n.deleted_at ? n : void 0;
+};
+var resolveConceptRef = (db, ref) => ref.startsWith("c_") && live(db, ref) ? ref : conceptIds(db, [ref])[0];
+function compareConcept(db, conceptId, facetKey) {
+  const rows = findingsAbout(db, [conceptId]).map((id) => {
+    const a = getAttrs(db, id), rels = getRels(db, id);
+    let approachValue = null, target = null;
+    for (const r of rels) {
+      const key = r.props.facet_key;
+      if (approachValue === null && r.type === "about" && r.dst.startsWith("a_") && typeof key === "string" && (facetKey === void 0 || key === facetKey) && live(db, r.dst))
+        approachValue = getAttrs(db, r.dst)[`facet:${key}`]?.[0] ?? null;
+      if (target === null && r.type === "validated_in") target = live(db, r.dst)?.title ?? null;
+    }
+    const mk = Object.keys(a).find((k) => k.startsWith("metric:"));
+    const [v, unit, better] = mk ? a[mk][0].split("|") : [];
+    const value2 = v !== void 0 && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+    return {
+      findingId: id,
+      approachValue,
+      gate: a.gate?.[0] ?? null,
+      gateRank: a.gate_rank ? Number(a.gate_rank[0]) : -1,
+      metric: mk ? mk.slice(7) : null,
+      value: value2,
+      unit: unit || null,
+      better: better === "higher" || better === "lower" ? better : null,
+      target,
+      validFrom: a.valid_from?.[0] ?? null,
+      state: a.state?.[0] ?? null,
+      project: getNote(db, id)?.project ?? null
+    };
+  });
+  const score = (r) => r.value === null ? -Infinity : r.value * (r.better === "lower" ? -1 : 1);
+  return rows.sort((x, y) => y.gateRank - x.gateRank || score(y) - score(x) || (x.findingId < y.findingId ? -1 : 1));
+}
+function compareLine(r, key) {
+  const metric = r.metric ? `${r.metric} ${r.value ?? "?"}${r.unit ? ` ${r.unit}` : ""}${r.better ? ` (${r.better} is better)` : ""}` : "no metric";
+  const meta = [r.gate && `gate ${r.gate}`, r.target && `target ${r.target}`, r.state, r.validFrom, r.project && `project ${r.project}`].filter(Boolean).join(", ");
+  return `${key ? `${key}=${r.approachValue}` : r.approachValue ?? "(no approach facet)"}: ${metric} (${meta}) [${r.findingId}]`;
+}
 
 // src/kb/brief.ts
 function pendingQuestions(db, max = 3) {
@@ -8376,7 +8429,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os3.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value>\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept>\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "cleanup") {
   const actions = planCleanup(home);
@@ -8474,6 +8527,19 @@ else if (cmd === "cleanup") {
     }
   } catch (e) {
     process.stderr.write(`kb ${cmd}: ${e.message}
+`);
+    process.exitCode = 1;
+  } finally {
+    db.sql.close();
+  }
+} else if (cmd === "compare" && args[0]) {
+  const db = openDb(), name = args.join(" ");
+  try {
+    const rows = compareConcept(db, resolveConceptRef(db, name));
+    process.stdout.write(rows.length ? rows.map((r) => compareLine(r)).join("\n") + "\n" : `no findings about ${name}
+`);
+  } catch (e) {
+    process.stderr.write(`kb compare: ${e.message}
 `);
     process.exitCode = 1;
   } finally {

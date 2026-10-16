@@ -19,6 +19,8 @@ test('kb_write and kb_link over MCP; a bad gate comes back as an error payload',
     const f = await call('kb_write', { kind: 'finding', title: 'F', domain: 'trading', project: 'es', tags: ['risk sizing'], attrs: { gate: 'in-sample' }, metrics: [{ name: 'sharpe', value: 1.2, better: 'higher' }], evidence: [{ kind: 'commit', ref: 'abc' }] });
     assert.match(f.id, /^f_/); assert.equal(f.created, true); assert.equal(f.concepts[0].how, 'exact'); assert.deepEqual(f.transfers, []);
     assert.match((await call('kb_link', { src: f.id, type: 'about', dst: a.id, props: { facet_key: 'risk' } })).rel_id, /^l_/);
+    const rows = await call('kb_compare', { concept: 'position sizing' });
+    assert.deepEqual(rows.map((r: any) => [r.findingId, r.approachValue, r.metric, r.value]), [[f.id, 'fixed-fractional', 'sharpe', 1.2]]);
     assert.match((await call('kb_write', { kind: 'finding', title: 'x', domain: 'trading', attrs: { gate: 'mainnet' } })).error, /allowed gates/);
     assert.ok(existsSync(path.join(process.env.PROJECT_MEMORY_BANK!, 'notes', 'finding', `${f.id}.md`)));
     const b = await call('kb_brief', { project: 'es' }); assert.ok(b.text.includes('## Project es'), b.text); assert.ok(b.text.includes('Domain trading')); assert.deepEqual(b.items, []);
