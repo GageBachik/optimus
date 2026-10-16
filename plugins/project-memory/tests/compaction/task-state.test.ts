@@ -20,6 +20,21 @@ test('task-state extracts the record; bare small integers are not exact values',
   assert.ok(ts.exactValues.includes('0.5%')); // a % unit is followed by a non-word char, so it must not need a trailing \b
   assert.ok(renderTaskState(ts).startsWith('## Goal'));
 });
+test('harness user entries (skill body, task-notification, compact summary, command output) are not the goal or constraints', () => {
+  const u = (text: string, extra: object = {}) => ({ type: 'user', ...extra, message: { role: 'user', content: text } });
+  const ts = extractTaskState([
+    u('Refactor the parser, never touch the lexer'),
+    u('# Workflow authoring reference\nYou must always load this skill', { isMeta: true }),
+    u('<task-notification>\n<result>Subagent says: never ship on Friday</result>', { origin: { kind: 'task-notification' } }),
+    u('This session is being continued... must only use X', { isCompactSummary: true }),
+    u('<local-command-stdout>Compacted, always</local-command-stdout>'),
+    u('<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>'),
+  ] as any, []);
+  assert.equal(ts.goalFirst, 'Refactor the parser, never touch the lexer'); assert.equal(ts.goalLatest, ts.goalFirst);
+  assert.deepEqual(ts.constraints, ['Refactor the parser, never touch the lexer']);
+  const cmd = extractTaskState([u('<command-name>/fix</command-name>\n<command-args>the flaky test</command-args>')] as any, []);
+  assert.equal(cmd.goalLatest, 'the flaky test');
+});
 test('two PreCompact calls snapshot the delta (review focus 4); subagent PreCompact is ignored', async () => {
   const tp = path.join(process.env.PROJECT_MEMORY_HOME!, 't.jsonl'); writeFileSync(tp, readFileSync(fx, 'utf8'));
   await preCompact({ session_id: 'pc1', transcript_path: tp, cwd: '/tmp', hook_event_name: 'PreCompact', trigger: 'auto' });
