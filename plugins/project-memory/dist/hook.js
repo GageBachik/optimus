@@ -215,8 +215,8 @@ var init_session_state = __esm({
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path17, fromOffset = 0) {
-  const fd = openSync(path17, "r");
+function readTranscript(path18, fromOffset = 0) {
+  const fd = openSync(path18, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -332,7 +332,7 @@ function extractTaskState(entries, pointers) {
     goalLatest: cap(users.at(-1) ?? "", 600),
     constraints: uniq(constraints).slice(0, 12),
     decisions: uniq(decisions).slice(0, 12),
-    files: [...files.entries()].map(([path17, v]) => ({ path: path17, ...v })).slice(-40),
+    files: [...files.entries()].map(([path18, v]) => ({ path: path18, ...v })).slice(-40),
     commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
     tests: tests.slice(-10),
     openItems: openItems.slice(0, 20),
@@ -962,6 +962,32 @@ var init_blobs = __esm({
   }
 });
 
+// src/lib/kb-sync.ts
+import { existsSync as existsSync6 } from "node:fs";
+import { spawn } from "node:child_process";
+import path11 from "node:path";
+import { fileURLToPath } from "node:url";
+function kbJs() {
+  const here = path11.dirname(fileURLToPath(import.meta.url));
+  return [path11.join(here, "kb.js"), path11.join(here, "..", "..", "dist", "kb.js")].find(existsSync6);
+}
+function spawnKbSync() {
+  if (!existsSync6(path11.join(paths.bankDir(), ".git"))) return;
+  const kb = kbJs();
+  if (!kb) {
+    log("warn", "kb sync not spawned: dist/kb.js not found");
+    return;
+  }
+  spawn(process.execPath, [kb, "sync", "--quiet"], { detached: true, stdio: "ignore", windowsHide: true }).on("error", (e) => log("error", "kb sync spawn failed", String(e))).unref();
+}
+var init_kb_sync = __esm({
+  "src/lib/kb-sync.ts"() {
+    "use strict";
+    init_paths();
+    init_log();
+  }
+});
+
 // src/hooks/session-sync.ts
 var session_sync_exports = {};
 __export(session_sync_exports, {
@@ -969,6 +995,7 @@ __export(session_sync_exports, {
   sessionSync: () => sessionSync
 });
 async function sessionSync(_input) {
+  spawnKbSync();
   log("info", "blob gc", gcBlobs());
   return void 0;
 }
@@ -977,6 +1004,7 @@ var init_session_sync = __esm({
   "src/hooks/session-sync.ts"() {
     "use strict";
     init_blobs();
+    init_kb_sync();
     init_log();
     handler2 = sessionSync;
   }
@@ -1124,7 +1152,7 @@ __export(pre_compact_exports, {
   preCompact: () => preCompact
 });
 import { rmSync as rmSync2 } from "node:fs";
-import path11 from "node:path";
+import path12 from "node:path";
 async function preCompact(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
@@ -1140,9 +1168,9 @@ async function preCompact(input) {
   }
   const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
-  rmSync2(path11.join(dir, "audit.json"), { force: true });
-  writeFileAtomic(path11.join(dir, "task-state.md"), renderTaskState(ts));
-  writeFileAtomic(path11.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
+  rmSync2(path12.join(dir, "audit.json"), { force: true });
+  writeFileAtomic(path12.join(dir, "task-state.md"), renderTaskState(ts));
+  writeFileAtomic(path12.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
   saveState(sessionId, state);
   log("info", "pre-compact snapshot written", { sessionId, trigger: input.trigger, snapshots: state.snapshots.length });
   return void 0;
@@ -1164,14 +1192,14 @@ var init_pre_compact = __esm({
 });
 
 // src/compaction/audit.ts
-import path12 from "node:path";
+import path13 from "node:path";
 function auditSummary(summary, ts) {
   const s = summary.toLowerCase();
   const present = [], missing = [];
   const check = (label, key) => {
     (key && s.includes(key.toLowerCase()) ? present : missing).push(label);
   };
-  for (const f of ts.files) check(path12.basename(f.path), path12.basename(f.path));
+  for (const f of ts.files) check(path13.basename(f.path), path13.basename(f.path));
   for (const c of ts.commands) check(c.cmd, c.cmd.split(/\s+/).slice(0, 2).join(" "));
   for (const o of ts.openItems) check(o, o.split(/\s+/).slice(0, 6).join(" "));
   for (const e of ts.errors) check(e, e.split(/\s+/).slice(0, 8).join(" "));
@@ -1190,7 +1218,7 @@ __export(post_compact_exports, {
   handler: () => handler6,
   postCompact: () => postCompact
 });
-import path13 from "node:path";
+import path14 from "node:path";
 async function postCompact(input) {
   if (input.agent_id) return void 0;
   const summary = String(input.compact_summary ?? "");
@@ -1199,7 +1227,7 @@ async function postCompact(input) {
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
   if (!ts) return void 0;
   const audit = auditSummary(summary, ts);
-  writeFileAtomic(path13.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
+  writeFileAtomic(path14.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
   log("info", "post-compact audit written", { sessionId, present: audit.present.length, missing: audit.missing.length });
   return void 0;
 }
@@ -1222,9 +1250,9 @@ __export(subagent_start_exports, {
   handler: () => handler7,
   subagentStart: () => subagentStart
 });
-import path14 from "node:path";
+import path15 from "node:path";
 async function subagentStart(input) {
-  const cwd = String(input.cwd ?? ""), proj = loadProjectConfig(cwd)?.project_id ?? (path14.basename(cwd) || "this project");
+  const cwd = String(input.cwd ?? ""), proj = loadProjectConfig(cwd)?.project_id ?? (path15.basename(cwd) || "this project");
   const text = `Project memory: project ${proj}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). Knowledge bank at ${paths.bankDir()}: kb_brief({ project: "${proj}" }) returns the ranked findings brief for this project; kb_find searches it. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`;
   return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(text, 1500) } };
 }
@@ -1245,22 +1273,23 @@ __export(stop_exports, {
   handler: () => handler8,
   stop: () => stop
 });
-import path15 from "node:path";
-import { appendFileSync as appendFileSync3, existsSync as existsSync6 } from "node:fs";
+import path16 from "node:path";
+import { appendFileSync as appendFileSync3, existsSync as existsSync7 } from "node:fs";
 async function stop(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const cwd = String(input.cwd ?? "");
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
-  const entries = tp && existsSync6(tp) ? readTranscript(tp, 0).entries : [];
+  const entries = tp && existsSync7(tp) ? readTranscript(tp, 0).entries : [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
     const last = { at, sessionId, cwd, taskState };
-    writeFileAtomic(path15.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
+    writeFileAtomic(path16.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
   }
   const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
-  appendFileSync3(path15.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
+  appendFileSync3(path16.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
+  if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
   return void 0;
 }
 var handler8;
@@ -1272,6 +1301,7 @@ var init_stop = __esm({
     init_redaction();
     init_transcript();
     init_session_state();
+    init_kb_sync();
     init_task_state();
     handler8 = stop;
   }
@@ -1283,12 +1313,12 @@ __export(session_end_exports, {
   handler: () => handler9,
   sessionEnd: () => sessionEnd
 });
-import path16 from "node:path";
-import { existsSync as existsSync7, readFileSync as readFileSync6 } from "node:fs";
+import path17 from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
 async function sessionEnd(input) {
   const sessionId = String(input.session_id ?? "unknown");
-  const ts = path16.join(paths.sessionDir(sessionId), "task-state.md");
-  if (existsSync7(ts)) storeBlob(readFileSync6(ts, "utf8"), { tool: "task-state", sessionId });
+  const ts = path17.join(paths.sessionDir(sessionId), "task-state.md");
+  if (existsSync8(ts)) storeBlob(readFileSync6(ts, "utf8"), { tool: "task-state", sessionId });
   deleteSession(sessionId);
   return void 0;
 }

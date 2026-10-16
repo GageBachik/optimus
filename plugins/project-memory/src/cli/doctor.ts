@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, unlinkS
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { paths } from '../lib/paths.js';
-import { loadSqlite } from '../kb/db.js';
+import { loadSqlite, openDb } from '../kb/db.js';
 import { computeBaseline } from './baseline.js';
 import { runLiveTest, type LiveResult } from './live-test.js';
 export type Check = { status: 'PASS' | 'WARN' | 'FAIL' | 'INFO'; name: string; detail: string };
@@ -17,6 +17,36 @@ function installedPlugins(home: string): { name: string; installPath: string }[]
   const j = readJsonFile(path.join(home, '.claude', 'plugins', 'installed_plugins.json'));
   return Object.entries<any>(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === 'string').map((e) => ({ name, installPath: e.installPath as string })));
 }
+/** DESIGN §7: bank repo present, clean/dirty, ahead/behind, remote reachable (`git ls-remote`, 10 s). */
+function bankChecks(): Check[] {
+  const bank = paths.bankDir();
+  if (!existsSync(path.join(bank, '.git'))) return [{ status: 'WARN', name: 'bank', detail: `${bank} is not a git repository (run \`kb init\`)` }];
+  const g = (args: string[], timeout = 60_000) => spawnSync('git', args, { cwd: bank, encoding: 'utf8', timeout });
+  const dirty = g(['status', '--porcelain']).stdout.trim() ? 'dirty' : 'clean';
+  const ab = g(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']); const [ahead, behind] = ab.stdout.trim().split(/\s+/);
+  const out: Check[] = [{ status: 'PASS', name: 'bank', detail: `${bank}: ${dirty}, ${ab.status === 0 ? `ahead ${ahead} behind ${behind}` : 'no upstream yet'}` }];
+  const remote = g(['remote']).stdout.split('\n')[0].trim();
+  if (!remote) out.push({ status: 'INFO', name: 'bank-remote', detail: 'no remote configured; kb sync stops at no-remote' });
+  else { const ls = g(['ls-remote', '-q', remote], 10_000); out.push(ls.status === 0 ? { status: 'PASS', name: 'bank-remote', detail: `${remote} reachable (${g(['remote', 'get-url', remote]).stdout.trim()})` } : { status: 'WARN', name: 'bank-remote', detail: `${remote} unreachable: ${(ls.error?.message || ls.stderr || `exit ${ls.status}`).trim()}` }); }
+  return out;
+}
+/** DESIGN §7: kb.sqlite size and row counts per kind, pending merges, last sync result and time. */
+function indexChecks(): Check[] {
+  const file = path.join(paths.stateDir(), 'kb.sqlite'), at = paths.config().lastSyncAt ?? 'unknown time';
+  if (!existsSync(file)) return [{ status: 'INFO', name: 'index', detail: 'no kb.sqlite yet (kb init builds it)' }, { status: 'INFO', name: 'last-sync', detail: 'never' }];
+  let db; try { db = openDb(file); } catch (e: any) { return [{ status: 'FAIL', name: 'index', detail: `${file}: ${e?.message ?? e}` }]; }
+  try {
+    const counts = (db.sql.prepare('SELECT kind, COUNT(*) AS n FROM note WHERE deleted_at IS NULL GROUP BY kind ORDER BY kind').all() as { kind: string; n: number }[]).map((r) => `${r.kind} ${r.n}`).join(', ') || 'no notes';
+    const pending = (db.sql.prepare('SELECT COUNT(*) AS n FROM pending_merge WHERE resolved IS NULL').get() as { n: number }).n;
+    const result = (db.sql.prepare("SELECT value FROM meta WHERE key='lastSyncResult'").get() as { value: string } | undefined)?.value;
+    return [
+      { status: 'INFO', name: 'index', detail: `${file} ${(statSync(file).size / 1048576).toFixed(1)} MB: ${counts}` },
+      { status: 'INFO', name: 'pending-merges', detail: pending ? `${pending} awaiting review (kb concepts review)` : 'none' },
+      !result ? { status: 'INFO', name: 'last-sync', detail: 'never' }
+        : { status: result.startsWith('failed') ? 'WARN' : result === 'ok' ? 'PASS' : 'INFO', name: 'last-sync', detail: `${result} at ${at}${result.includes('rebase conflict') ? ` — resolve with git in ${paths.bankDir()}, then kb sync` : ''}` },
+    ];
+  } finally { db.sql.close(); }
+}
 const matchesAgent = (matcher: unknown) => { if (matcher === undefined || matcher === '' || matcher === '*') return true; try { return new RegExp(`^(?:${matcher})$`).test('Agent'); } catch { return matcher === 'Agent'; } };
 export function doctorChecks(home: string): Check[] {
   const out: Check[] = [];
@@ -24,6 +54,7 @@ export function doctorChecks(home: string): Check[] {
   out.push(fts5Probe());
   const git = spawnSync('git', ['--version'], { encoding: 'utf8' });
   out.push(git.status === 0 ? { status: 'PASS', name: 'git', detail: git.stdout.trim() } : { status: 'FAIL', name: 'git', detail: 'git not found on PATH' });
+  out.push(...bankChecks(), ...indexChecks());
   const state = paths.stateDir();
   try { const probe = path.join(state, `.doctor-${process.pid}`); writeFileSync(probe, 'ok'); unlinkSync(probe); out.push({ status: 'PASS', name: 'state-dir', detail: `${state} writable` }); }
   catch (e: any) { out.push({ status: 'FAIL', name: 'state-dir', detail: `${state} not writable: ${e?.message ?? e}` }); }

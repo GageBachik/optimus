@@ -10,12 +10,17 @@ import { acceptMerge, rejectMerge, splitAlias } from '../kb/concepts.js';
 import { pendingQuestions } from '../kb/brief.js';
 import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js';
 import { setTransfer, retractNote, setAttr } from '../kb/write.js';
+import { sync } from '../kb/sync.js';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept>\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb sync [--quiet]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
+else if (cmd === 'sync') {
+  try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${paths.logsDir()}/hooks.log)\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
+  catch (e) { process.stderr.write(`kb sync: ${(e as Error).message}\n`); process.exitCode = 1; }
+}
 else if (cmd === 'cleanup') {
   const actions = planCleanup(home); const apply = has('--apply');
   if (!actions.length) process.stdout.write('nothing to clean up\n');

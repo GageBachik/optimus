@@ -109,17 +109,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path12) {
-      const ctrl = callVisitor(key, node, visitor, path12);
+    function visit_(key, node, visitor, path14) {
+      const ctrl = callVisitor(key, node, visitor, path14);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path12, ctrl);
-        return visit_(key, ctrl, visitor, path12);
+        replaceNode(key, path14, ctrl);
+        return visit_(key, ctrl, visitor, path14);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path12 = Object.freeze(path12.concat(node));
+          path14 = Object.freeze(path14.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path12);
+            const ci = visit_(i, node.items[i], visitor, path14);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -130,13 +130,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path12 = Object.freeze(path12.concat(node));
-          const ck = visit_("key", node.key, visitor, path12);
+          path14 = Object.freeze(path14.concat(node));
+          const ck = visit_("key", node.key, visitor, path14);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path12);
+          const cv = visit_("value", node.value, visitor, path14);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -157,17 +157,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path12) {
-      const ctrl = await callVisitor(key, node, visitor, path12);
+    async function visitAsync_(key, node, visitor, path14) {
+      const ctrl = await callVisitor(key, node, visitor, path14);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path12, ctrl);
-        return visitAsync_(key, ctrl, visitor, path12);
+        replaceNode(key, path14, ctrl);
+        return visitAsync_(key, ctrl, visitor, path14);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path12 = Object.freeze(path12.concat(node));
+          path14 = Object.freeze(path14.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path12);
+            const ci = await visitAsync_(i, node.items[i], visitor, path14);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -178,13 +178,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path12 = Object.freeze(path12.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path12);
+          path14 = Object.freeze(path14.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path14);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path12);
+          const cv = await visitAsync_("value", node.value, visitor, path14);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -211,23 +211,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path12) {
+    function callVisitor(key, node, visitor, path14) {
       if (typeof visitor === "function")
-        return visitor(key, node, path12);
+        return visitor(key, node, path14);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path12);
+        return visitor.Map?.(key, node, path14);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path12);
+        return visitor.Seq?.(key, node, path14);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path12);
+        return visitor.Pair?.(key, node, path14);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path12);
+        return visitor.Scalar?.(key, node, path14);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path12);
+        return visitor.Alias?.(key, node, path14);
       return void 0;
     }
-    function replaceNode(key, path12, node) {
-      const parent = path12[path12.length - 1];
+    function replaceNode(key, path14, node) {
+      const parent = path14[path14.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -835,10 +835,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path12, value2) {
+    function collectionFromPath(schema, path14, value2) {
       let v = value2;
-      for (let i = path12.length - 1; i >= 0; --i) {
-        const k = path12[i];
+      for (let i = path14.length - 1; i >= 0; --i) {
+        const k = path14[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -857,7 +857,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path12) => path12 == null || typeof path12 === "object" && !!path12[Symbol.iterator]().next().done;
+    var isEmptyPath = (path14) => path14 == null || typeof path14 === "object" && !!path14[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -887,11 +887,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path12, value2) {
-        if (isEmptyPath(path12))
+      addIn(path14, value2) {
+        if (isEmptyPath(path14))
           this.add(value2);
         else {
-          const [key, ...rest] = path12;
+          const [key, ...rest] = path14;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value2);
@@ -905,8 +905,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path12) {
-        const [key, ...rest] = path12;
+      deleteIn(path14) {
+        const [key, ...rest] = path14;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -920,8 +920,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path12, keepScalar) {
-        const [key, ...rest] = path12;
+      getIn(path14, keepScalar) {
+        const [key, ...rest] = path14;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path12) {
-        const [key, ...rest] = path12;
+      hasIn(path14) {
+        const [key, ...rest] = path14;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -950,8 +950,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path12, value2) {
-        const [key, ...rest] = path12;
+      setIn(path14, value2) {
+        const [key, ...rest] = path14;
         if (rest.length === 0) {
           this.set(key, value2);
         } else {
@@ -1746,7 +1746,7 @@ var require_merge = __commonJS({
 var require_addPairToJSMap = __commonJS({
   "node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
     "use strict";
-    var log2 = require_log();
+    var log3 = require_log();
     var merge = require_merge();
     var stringify2 = require_stringify();
     var identity = require_identity();
@@ -1795,7 +1795,7 @@ var require_addPairToJSMap = __commonJS({
           let jsonStr = JSON.stringify(strKey);
           if (jsonStr.length > 40)
             jsonStr = jsonStr.substring(0, 36) + '..."';
-          log2.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
+          log3.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
           ctx.mapKeyWarned = true;
         }
         return strKey;
@@ -3455,9 +3455,9 @@ var require_Document = __commonJS({
           this.contents.add(value2);
       }
       /** Adds a value to the document. */
-      addIn(path12, value2) {
+      addIn(path14, value2) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path12, value2);
+          this.contents.addIn(path14, value2);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3532,14 +3532,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path12) {
-        if (Collection.isEmptyPath(path12)) {
+      deleteIn(path14) {
+        if (Collection.isEmptyPath(path14)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path12) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path14) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3554,10 +3554,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path12, keepScalar) {
-        if (Collection.isEmptyPath(path12))
+      getIn(path14, keepScalar) {
+        if (Collection.isEmptyPath(path14))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path12, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path14, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3568,10 +3568,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path12) {
-        if (Collection.isEmptyPath(path12))
+      hasIn(path14) {
+        if (Collection.isEmptyPath(path14))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path12) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path14) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3588,13 +3588,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path12, value2) {
-        if (Collection.isEmptyPath(path12)) {
+      setIn(path14, value2) {
+        if (Collection.isEmptyPath(path14)) {
           this.contents = value2;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path12), value2);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path14), value2);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path12, value2);
+          this.contents.setIn(path14, value2);
         }
       }
       /**
@@ -5546,9 +5546,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path12) => {
+    visit.itemAtPath = (cst, path14) => {
       let item = cst;
-      for (const [field, index] of path12) {
+      for (const [field, index] of path14) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5557,23 +5557,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path12) => {
-      const parent = visit.itemAtPath(cst, path12.slice(0, -1));
-      const field = path12[path12.length - 1][0];
+    visit.parentCollection = (cst, path14) => {
+      const parent = visit.itemAtPath(cst, path14.slice(0, -1));
+      const field = path14[path14.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path12, item, visitor) {
-      let ctrl = visitor(item, path12);
+    function _visit(path14, item, visitor) {
+      let ctrl = visitor(item, path14);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path12.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path14.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5584,10 +5584,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path12);
+            ctrl = ctrl(item, path14);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path12) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path14) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7179,7 +7179,7 @@ var require_public_api = __commonJS({
     var composer = require_composer();
     var Document = require_Document();
     var errors = require_errors();
-    var log2 = require_log();
+    var log3 = require_log();
     var identity = require_identity();
     var lineCounter = require_line_counter();
     var parser = require_parser();
@@ -7231,7 +7231,7 @@ var require_public_api = __commonJS({
       const doc = parseDocument(src, options);
       if (!doc)
         return null;
-      doc.warnings.forEach((warning) => log2.warn(doc.options.logLevel, warning));
+      doc.warnings.forEach((warning) => log3.warn(doc.options.logLevel, warning));
       if (doc.errors.length > 0) {
         if (doc.options.logLevel !== "silent")
           throw doc.errors[0];
@@ -7519,8 +7519,8 @@ import { fileURLToPath } from "node:url";
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path12, fromOffset = 0) {
-  const fd = openSync(path12, "r");
+function readTranscript(path14, fromOffset = 0) {
+  const fd = openSync(path14, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -7567,13 +7567,13 @@ SUBAGENT=<the subagent's reply on one line>
 DONE`;
 function liveSettings(hookJs, probe, logFile) {
   const plugin = (event, timeout) => ({ type: "command", command: "node", args: ["--disable-warning=ExperimentalWarning", hookJs, event], timeout });
-  const log2 = { type: "command", command: "node", args: [probe, "log", logFile], timeout: 10 };
+  const log3 = { type: "command", command: "node", args: [probe, "log", logFile], timeout: 10 };
   return { hooks: {
-    SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "node", args: [probe, "brief", logFile], timeout: 10 }] }, { matcher: "compact|resume", hooks: [log2] }],
-    PostToolUse: [{ matcher: "Bash", hooks: [plugin("post-tool-use", 10)] }, { matcher: "Read", hooks: [log2] }],
+    SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "node", args: [probe, "brief", logFile], timeout: 10 }] }, { matcher: "compact|resume", hooks: [log3] }],
+    PostToolUse: [{ matcher: "Bash", hooks: [plugin("post-tool-use", 10)] }, { matcher: "Read", hooks: [log3] }],
     SubagentStart: [{ hooks: [plugin("subagent-start", 5)] }],
-    PreCompact: [{ hooks: [plugin("pre-compact", 30), log2] }],
-    PostCompact: [{ hooks: [plugin("post-compact", 15), log2] }]
+    PreCompact: [{ hooks: [plugin("pre-compact", 30), log3] }],
+    PostCompact: [{ hooks: [plugin("post-compact", 15), log3] }]
   } };
 }
 function userTexts(entries) {
@@ -7665,6 +7665,44 @@ function installedPlugins(home2) {
   const j = readJsonFile(path5.join(home2, ".claude", "plugins", "installed_plugins.json"));
   return Object.entries(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === "string").map((e) => ({ name, installPath: e.installPath })));
 }
+function bankChecks() {
+  const bank = paths.bankDir();
+  if (!existsSync3(path5.join(bank, ".git"))) return [{ status: "WARN", name: "bank", detail: `${bank} is not a git repository (run \`kb init\`)` }];
+  const g = (args2, timeout = 6e4) => spawnSync2("git", args2, { cwd: bank, encoding: "utf8", timeout });
+  const dirty = g(["status", "--porcelain"]).stdout.trim() ? "dirty" : "clean";
+  const ab = g(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]);
+  const [ahead, behind] = ab.stdout.trim().split(/\s+/);
+  const out = [{ status: "PASS", name: "bank", detail: `${bank}: ${dirty}, ${ab.status === 0 ? `ahead ${ahead} behind ${behind}` : "no upstream yet"}` }];
+  const remote = g(["remote"]).stdout.split("\n")[0].trim();
+  if (!remote) out.push({ status: "INFO", name: "bank-remote", detail: "no remote configured; kb sync stops at no-remote" });
+  else {
+    const ls = g(["ls-remote", "-q", remote], 1e4);
+    out.push(ls.status === 0 ? { status: "PASS", name: "bank-remote", detail: `${remote} reachable (${g(["remote", "get-url", remote]).stdout.trim()})` } : { status: "WARN", name: "bank-remote", detail: `${remote} unreachable: ${(ls.error?.message || ls.stderr || `exit ${ls.status}`).trim()}` });
+  }
+  return out;
+}
+function indexChecks() {
+  const file = path5.join(paths.stateDir(), "kb.sqlite"), at = paths.config().lastSyncAt ?? "unknown time";
+  if (!existsSync3(file)) return [{ status: "INFO", name: "index", detail: "no kb.sqlite yet (kb init builds it)" }, { status: "INFO", name: "last-sync", detail: "never" }];
+  let db;
+  try {
+    db = openDb(file);
+  } catch (e) {
+    return [{ status: "FAIL", name: "index", detail: `${file}: ${e?.message ?? e}` }];
+  }
+  try {
+    const counts = db.sql.prepare("SELECT kind, COUNT(*) AS n FROM note WHERE deleted_at IS NULL GROUP BY kind ORDER BY kind").all().map((r) => `${r.kind} ${r.n}`).join(", ") || "no notes";
+    const pending = db.sql.prepare("SELECT COUNT(*) AS n FROM pending_merge WHERE resolved IS NULL").get().n;
+    const result = db.sql.prepare("SELECT value FROM meta WHERE key='lastSyncResult'").get()?.value;
+    return [
+      { status: "INFO", name: "index", detail: `${file} ${(statSync2(file).size / 1048576).toFixed(1)} MB: ${counts}` },
+      { status: "INFO", name: "pending-merges", detail: pending ? `${pending} awaiting review (kb concepts review)` : "none" },
+      !result ? { status: "INFO", name: "last-sync", detail: "never" } : { status: result.startsWith("failed") ? "WARN" : result === "ok" ? "PASS" : "INFO", name: "last-sync", detail: `${result} at ${at}${result.includes("rebase conflict") ? ` \u2014 resolve with git in ${paths.bankDir()}, then kb sync` : ""}` }
+    ];
+  } finally {
+    db.sql.close();
+  }
+}
 var matchesAgent = (matcher) => {
   if (matcher === void 0 || matcher === "" || matcher === "*") return true;
   try {
@@ -7677,8 +7715,9 @@ function doctorChecks(home2) {
   const out = [];
   out.push({ status: "INFO", name: "node", detail: `${process.version} (>= 24.15 recommended)` });
   out.push(fts5Probe());
-  const git2 = spawnSync2("git", ["--version"], { encoding: "utf8" });
-  out.push(git2.status === 0 ? { status: "PASS", name: "git", detail: git2.stdout.trim() } : { status: "FAIL", name: "git", detail: "git not found on PATH" });
+  const git3 = spawnSync2("git", ["--version"], { encoding: "utf8" });
+  out.push(git3.status === 0 ? { status: "PASS", name: "git", detail: git3.stdout.trim() } : { status: "FAIL", name: "git", detail: "git not found on PATH" });
+  out.push(...bankChecks(), ...indexChecks());
   const state = paths.stateDir();
   try {
     const probe = path5.join(state, `.doctor-${process.pid}`);
@@ -8218,6 +8257,9 @@ function inTransaction(db, fn) {
     throw e;
   }
 }
+function importAll(db, bankDir) {
+  return inTransaction(db, () => importNotes(db, bankDir));
+}
 function rebuild(db, bankDir) {
   return inTransaction(db, () => {
     db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
@@ -8421,6 +8463,107 @@ function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()
   exportNote(db, bankDir, id);
 }
 
+// src/kb/sync.ts
+import { existsSync as existsSync10, mkdirSync as mkdirSync7, rmdirSync, statSync as statSync5 } from "node:fs";
+import { spawnSync as spawnSync4 } from "node:child_process";
+import path13 from "node:path";
+
+// src/lib/log.ts
+import { appendFileSync as appendFileSync3 } from "node:fs";
+import path12 from "node:path";
+function log2(level, msg, data) {
+  try {
+    appendFileSync3(path12.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+  } catch {
+  }
+}
+
+// src/kb/sync.ts
+var LOCK = ".kb-sync.lock";
+var LOCK_STALE_MS = 10 * 6e4;
+var git2 = (cwd, ...args2) => spawnSync4("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
+var errText = (r) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();
+function lock(bank) {
+  const dir = path13.join(bank, LOCK);
+  for (let i = 0; i < 2; i++) {
+    try {
+      mkdirSync7(dir);
+      return true;
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
+    }
+    try {
+      if (Date.now() - statSync5(dir).mtimeMs < LOCK_STALE_MS) return false;
+      rmdirSync(dir);
+      log2("warn", "sync: removed stale lock", dir);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+function steps(db, bank) {
+  const fail = (step, r2) => {
+    log2("error", `sync: ${step} failed`, { bank, detail: errText(r2) });
+    return { result: "failed", reason: `${step} failed` };
+  };
+  let r = git2(bank, "add", "-A");
+  if (r.status !== 0) return fail("git add", r);
+  r = git2(bank, "commit", "-q", "-m", `kb ${deviceId()} ${(/* @__PURE__ */ new Date()).toISOString()}`);
+  if (r.status !== 0 && r.status !== 1) return fail("git commit", r);
+  const remote = git2(bank, "remote").stdout.split("\n")[0].trim();
+  if (!remote) return { result: "no-remote" };
+  r = git2(bank, "fetch", "-q", remote);
+  if (r.status !== 0) return fail("git fetch", r);
+  const branch = git2(bank, "symbolic-ref", "--short", "-q", "HEAD").stdout.trim(), upstream = `refs/remotes/${remote}/${branch}`;
+  const before = git2(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim();
+  if (git2(bank, "rev-parse", "--verify", "-q", upstream).status === 0) {
+    r = before ? git2(bank, "rebase", "-q", upstream) : git2(bank, "reset", "-q", "--hard", upstream);
+    if (r.status !== 0) {
+      git2(bank, "rebase", "--abort");
+      log2("warn", "sync: rebase conflict, aborted; local commit intact", { bank, detail: errText(r) });
+      return { result: "failed", reason: "rebase conflict" };
+    }
+  } else if (!before) return { result: "ok" };
+  r = git2(bank, "push", "-q", "-u", remote, branch);
+  if (r.status !== 0) return fail("git push", r);
+  if (git2(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim() !== before) {
+    try {
+      log2("info", "sync: re-imported after pull", importAll(db, bank));
+    } catch (e) {
+      log2("error", "sync: import after pull failed", String(e));
+      return { result: "failed", reason: "import failed" };
+    }
+  }
+  return { result: "ok" };
+}
+function record(db, result, reason) {
+  paths.saveConfig({ lastSyncAt: (/* @__PURE__ */ new Date()).toISOString() });
+  db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)").run("lastSyncResult", reason ? `${result} (${reason})` : result);
+  return result;
+}
+function sync(bankDir) {
+  const bank = path13.resolve(bankDir), db = openDb();
+  try {
+    if (!existsSync10(path13.join(bank, ".git"))) {
+      log2("warn", "sync: bank is not a git repository", bank);
+      return record(db, "failed", "not a git repository");
+    }
+    if (!lock(bank)) return "busy";
+    try {
+      const { result, reason } = steps(db, bank);
+      return record(db, result, reason);
+    } finally {
+      try {
+        rmdirSync(path13.join(bank, LOCK));
+      } catch {
+      }
+    }
+  } finally {
+    db.sql.close();
+  }
+}
+
 // src/cli/index.ts
 var [cmd, ...args] = process.argv.slice(2);
 var has = (f) => args.includes(f);
@@ -8429,9 +8572,21 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os3.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept>\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb sync [--quiet]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
-else if (cmd === "cleanup") {
+else if (cmd === "sync") {
+  try {
+    const r = sync(paths.bankDir());
+    if (!has("--quiet")) process.stdout.write(r === "failed" ? `sync: failed (details in ${paths.logsDir()}/hooks.log)
+` : `sync: ${r}
+`);
+    if (r === "failed") process.exitCode = 1;
+  } catch (e) {
+    process.stderr.write(`kb sync: ${e.message}
+`);
+    process.exitCode = 1;
+  }
+} else if (cmd === "cleanup") {
   const actions = planCleanup(home);
   const apply = has("--apply");
   if (!actions.length) process.stdout.write("nothing to clean up\n");

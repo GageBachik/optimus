@@ -6,9 +6,10 @@ import { writeFileAtomic } from '../lib/atomic.js';
 import { redactJson } from '../lib/redaction.js';
 import { readTranscript } from '../lib/transcript.js';
 import { loadState } from '../lib/session-state.js';
+import { spawnKbSync } from '../lib/kb-sync.js';
 import { type LastSession, type TaskState, extractTaskState, recallPointers } from '../compaction/task-state.js';
 
-// DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample. No report files.
+// DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample; runs `kb sync` when the last one is older than 60 s. No report files.
 export async function stop(input: HookInput): Promise<undefined> {
   if (input.agent_id) return undefined;
   const sessionId = String(input.session_id ?? 'unknown'); const cwd = String(input.cwd ?? ''); const tp = String(input.transcript_path ?? '');
@@ -23,6 +24,8 @@ export async function stop(input: HookInput): Promise<undefined> {
   // Ruling R2: a turn without usage fields (or no transcript) still gets a line with nulls, so the measurement never skips a turn silently.
   const u = [...entries].reverse().find((e) => e.type === 'assistant' && e.message?.usage)?.message?.usage ?? {};
   appendFileSync(path.join(paths.stateDir(), 'metrics.jsonl'), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + '\n');
+  // DESIGN §4.4: sync when the last one is older than 60 s; never synced (unparsable date) counts as 0.
+  if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? '') || 0) > 60_000) spawnKbSync();
   return undefined;
 }
 export const handler = stop;

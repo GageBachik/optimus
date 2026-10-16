@@ -4,6 +4,7 @@ import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-'));
+process.env.PROJECT_MEMORY_BANK = mkdtempSync(path.join(tmpdir(), 'bank-')); // not a git repo: stop's kb sync spawn stays a no-op, and the real bank is never touched
 const { handler: sub } = await import('../../src/hooks/subagent-start.js');
 const { handler: stop } = await import('../../src/hooks/stop.js');
 const { handler: end } = await import('../../src/hooks/session-end.js');
