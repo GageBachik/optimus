@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -29,4 +29,16 @@ test('kb project init writes .kb.json with project_id defaulting to the lowercas
   assert.deepEqual(projectInit(dir, { domain: 'trading' }), { project_id: 'es-meanrev', domain: 'trading' });
   assert.deepEqual(JSON.parse(readFileSync(path.join(dir, '.kb.json'), 'utf8')), { project_id: 'es-meanrev', domain: 'trading' });
   assert.equal(projectInit(dir, { domain: 'gen-l1', id: 'genibook' }).project_id, 'genibook');
+});
+test('kb init never commits unrelated user work and refuses a non-empty non-git directory', () => {
+  const bank = path.join(mkdtempSync(path.join(tmpdir(), 'bank-')), 'kb');
+  initBank({ bank, print: () => {} });
+  writeFileSync(path.join(bank, 'notes', 'mine.md'), 'draft\n'); writeFileSync(path.join(bank, 'templates', 'trading.yaml'), readFileSync(path.join(bank, 'templates', 'trading.yaml'), 'utf8') + '# my edit\n');
+  git(bank, 'add', 'notes/mine.md');
+  initBank({ bank, print: () => {} });
+  assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1');
+  assert.equal(git(bank, 'status', '--porcelain'), 'A  notes/mine.md\n M templates/trading.yaml');
+  const stray = mkdtempSync(path.join(tmpdir(), 'stray-')); writeFileSync(path.join(stray, 'x.txt'), 'x');
+  assert.throws(() => initBank({ bank: stray, print: () => {} }), /not empty and not a git repository/);
+  assert.ok(!existsSync(path.join(stray, '.git')));
 });

@@ -24,28 +24,36 @@ function installBankTemplates(bank: string): string[] {
   for (const f of files) installTemplate(db, loadTemplate(path.join(dir, f)));
   db.sql.close(); return files;
 }
-/** DESIGN §4.3/§4.4 `kb init [--bank <dir>] [--clone <url>]`. Re-running on an existing bank is harmless. */
+/** DESIGN §4.3/§4.4 `kb init [--bank <dir>] [--clone <url>]`. Re-running on an existing bank only commits files it creates; user edits stay uncommitted. */
 export function initBank(opts: { bank?: string; clone?: string; print?: (line: string) => void } = {}): void {
   const print = opts.print ?? ((l: string) => process.stdout.write(l + '\n'));
   const bank = path.resolve(opts.bank ?? paths.bankDir());
+  const written: string[] = []; // bank-relative files this run created; the only ones it commits
   if (opts.clone) {
     mkdirSync(path.dirname(bank), { recursive: true }); git(path.dirname(bank), 'clone', '-q', opts.clone, bank);
     mkdirSync(path.join(bank, 'notes'), { recursive: true });
     print(`cloned ${opts.clone} into ${bank}`);
   } else {
     mkdirSync(bank, { recursive: true });
-    if (!existsSync(path.join(bank, '.git'))) git(bank, 'init', '-q', '-b', 'main');
-    writeFileSync(path.join(bank, '.gitattributes'), '* text=auto eol=lf\n');
+    if (!existsSync(path.join(bank, '.git'))) {
+      // Never sweep an unrelated directory into git.
+      if (readdirSync(bank).length) throw new Error(`${bank} is not empty and not a git repository; pick an empty directory or an existing bank`);
+      git(bank, 'init', '-q', '-b', 'main');
+    }
+    if (!existsSync(path.join(bank, '.gitattributes'))) { writeFileSync(path.join(bank, '.gitattributes'), '* text=auto eol=lf\n'); written.push('.gitattributes'); }
     for (const d of ['templates', 'notes']) mkdirSync(path.join(bank, d), { recursive: true });
     const src = shippedTemplatesDir();
-    for (const f of readdirSync(src).filter((f) => f.endsWith('.yaml'))) if (!existsSync(path.join(bank, 'templates', f))) copyFileSync(path.join(src, f), path.join(bank, 'templates', f));
+    for (const f of readdirSync(src).filter((f) => f.endsWith('.yaml'))) {
+      if (existsSync(path.join(bank, 'templates', f))) continue;
+      copyFileSync(path.join(src, f), path.join(bank, 'templates', f)); written.push(`templates/${f}`);
+    }
   }
   const installed = installBankTemplates(bank);
   paths.saveConfig({ bankDir: bank });
   print(`templates installed: ${installed.join(', ') || 'none'}`); print(`bankDir: ${bank} (${paths.configPath()})`);
-  if (!opts.clone) {
-    git(bank, 'add', '-A');
-    if (git(bank, 'status', '--porcelain').trim()) { git(bank, 'commit', '-q', '-m', 'kb init'); print('initial commit written'); }
+  if (written.length) {
+    // `--only` with explicit paths: other staged or dirty user work is left alone.
+    git(bank, 'add', '--', ...written); git(bank, 'commit', '-q', '-m', 'kb init', '--only', '--', ...written); print('initial commit written');
   }
 }
 /** DESIGN §4.5 `kb project init --domain <d> [--id <id>]`: writes (or updates) `.kb.json` in cwd, keeping other fields. */

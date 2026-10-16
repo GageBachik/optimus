@@ -8036,6 +8036,7 @@ function installBankTemplates(bank) {
 function initBank(opts = {}) {
   const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
   const bank = path9.resolve(opts.bank ?? paths.bankDir());
+  const written = [];
   if (opts.clone) {
     mkdirSync4(path9.dirname(bank), { recursive: true });
     git(path9.dirname(bank), "clone", "-q", opts.clone, bank);
@@ -8043,22 +8044,30 @@ function initBank(opts = {}) {
     print(`cloned ${opts.clone} into ${bank}`);
   } else {
     mkdirSync4(bank, { recursive: true });
-    if (!existsSync8(path9.join(bank, ".git"))) git(bank, "init", "-q", "-b", "main");
-    writeFileSync5(path9.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
+    if (!existsSync8(path9.join(bank, ".git"))) {
+      if (readdirSync4(bank).length) throw new Error(`${bank} is not empty and not a git repository; pick an empty directory or an existing bank`);
+      git(bank, "init", "-q", "-b", "main");
+    }
+    if (!existsSync8(path9.join(bank, ".gitattributes"))) {
+      writeFileSync5(path9.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
+      written.push(".gitattributes");
+    }
     for (const d of ["templates", "notes"]) mkdirSync4(path9.join(bank, d), { recursive: true });
     const src = shippedTemplatesDir();
-    for (const f of readdirSync4(src).filter((f2) => f2.endsWith(".yaml"))) if (!existsSync8(path9.join(bank, "templates", f))) copyFileSync2(path9.join(src, f), path9.join(bank, "templates", f));
+    for (const f of readdirSync4(src).filter((f2) => f2.endsWith(".yaml"))) {
+      if (existsSync8(path9.join(bank, "templates", f))) continue;
+      copyFileSync2(path9.join(src, f), path9.join(bank, "templates", f));
+      written.push(`templates/${f}`);
+    }
   }
   const installed = installBankTemplates(bank);
   paths.saveConfig({ bankDir: bank });
   print(`templates installed: ${installed.join(", ") || "none"}`);
   print(`bankDir: ${bank} (${paths.configPath()})`);
-  if (!opts.clone) {
-    git(bank, "add", "-A");
-    if (git(bank, "status", "--porcelain").trim()) {
-      git(bank, "commit", "-q", "-m", "kb init");
-      print("initial commit written");
-    }
+  if (written.length) {
+    git(bank, "add", "--", ...written);
+    git(bank, "commit", "-q", "-m", "kb init", "--only", "--", ...written);
+    print("initial commit written");
   }
 }
 function projectInit(cwd, opts) {
