@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.PROJECT_MEMORY_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
 const { openDb, getNote, getAttrs } = await import('../../src/kb/db.js');
 const { importSerena, importClaudeMemory } = await import('../../src/kb/import.js');
 const bank = process.env.PROJECT_MEMORY_BANK!;
+const snapshot = (dir: string) => Object.fromEntries((readdirSync(dir, { recursive: true }) as string[]).sort().filter((f) => !f.startsWith('.git')).map((f) => { try { return [f, readFileSync(path.join(dir, f), 'utf8')]; } catch { return [f, null]; } }));
 const put = (file: string, text: string) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
 
 test('Serena and auto-memory files become evidence notes: content-hash ids, project from .kb.json, idempotent, originals untouched', () => {
@@ -41,8 +42,10 @@ test('Serena and auto-memory files become evidence notes: content-hash ids, proj
   assert.equal(cn.project, 'demo'); assert.equal(cn.title, 'Prefer small diffs'); assert.equal(cn.body, memText);
   assert.deepEqual(ca.origin_type, ['feedback']); assert.deepEqual(ca.source_dir, [projDir]); assert.deepEqual(ca.source_path, [path.join(projDir, 'memory', 'small-diffs.md')]);
 
+  const before = snapshot(bank);
   assert.deepEqual(importSerena(db, bank, [root], home), { files: 2, created: 0, unchanged: 2 });
   assert.deepEqual(importClaudeMemory(db, bank, home), { files: 1, created: 0, unchanged: 1 });
+  assert.deepEqual(snapshot(bank), before, 'a rerun leaves every bank file byte-identical');
   assert.equal(readFileSync(serenaFile, 'utf8'), serenaText); assert.equal(readFileSync(path.join(projDir, 'memory', 'small-diffs.md'), 'utf8'), memText);
 });
 
