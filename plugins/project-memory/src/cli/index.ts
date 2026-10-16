@@ -6,8 +6,8 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb doctor [--baseline] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md]\n';
-if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline') });
+const usage = 'usage: kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md]\n';
+if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'cleanup') {
   const actions = planCleanup(home); const apply = has('--apply');
   if (!actions.length) process.stdout.write('nothing to clean up\n');

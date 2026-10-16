@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { paths } from '../lib/paths.js';
 import { computeBaseline } from './baseline.js';
+import { runLiveTest, type LiveResult } from './live-test.js';
 export type Check = { status: 'PASS' | 'WARN' | 'FAIL' | 'INFO'; name: string; detail: string };
 const readJsonFile = (f: string): any => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
 /** DESIGN §7 hard check: node:sqlite creates an FTS5 table. Its ExperimentalWarning is swallowed for the probe only. */
@@ -51,9 +52,31 @@ export function doctorChecks(home: string): Check[] {
   else out.push({ status: 'PASS', name: 'collision', detail: 'no other enabled plugin hooks PreToolUse Agent or SubagentStart' });
   return out;
 }
-export function doctor(home: string, opts: { baseline?: boolean } = {}): number {
+/** DESIGN §7 `--live`: PASS/FAIL per behaviour the plugin depends on, measured on this machine. */
+function liveChecks(r: LiveResult): Check[] {
+  const pf = (ok: boolean, name: string, pass: string, fail: string): Check => ({ status: ok ? 'PASS' : 'FAIL', name, detail: ok ? pass : fail });
+  return [
+    pf(r.postToolUseReplaced, 'live:offload', 'PostToolUse replaced the 24K-char `seq 1 5000` output with the head+tail placeholder', 'placeholder not found in the Bash tool result (see log)'),
+    pf(r.subagentBriefSeen, 'live:subagent', 'subagent echoed the pointer brief (recall(id))', 'subagent reply did not carry recall(id) (see log)'),
+    pf(r.capTruncates, 'live:10k-cap', '12,000-char SessionStart brief: head marker seen, tail marker lost; fit-by-measure stays mandatory', 'cap behaviour differs from DESIGN §1 rule 5 (see log)'),
+    !r.auditWritten ? { status: 'FAIL', name: 'live:audit', detail: 'PostCompact did not write audit.json after the forced /compact (see log)' }
+      : r.auditBeforeRestore ? { status: 'PASS', name: 'live:audit-order', detail: 'forced /compact: PostCompact wrote audit.json before SessionStart(compact), so omissions reach the restore brief' }
+      : { status: 'INFO', name: 'live:audit-order', detail: 'forced /compact: SessionStart(compact) fired before PostCompact on this Claude Code, so the restore brief is built from task-state.json alone (DESIGN §3.5 fallback); audit.json was written afterwards' },
+    { status: 'INFO', name: 'live:wall', detail: `${(r.wallMs / 1000).toFixed(1)} s for two headless claude-haiku-5-5 runs` },
+  ];
+}
+export function doctor(home: string, opts: { baseline?: boolean; live?: boolean } = {}): number {
   const checks = doctorChecks(home);
-  for (const c of checks) process.stdout.write(`${c.status.padEnd(4)}  ${c.name.padEnd(18)} ${c.detail}\n`);
+  const print = (c: Check) => process.stdout.write(`${c.status.padEnd(4)}  ${c.name.padEnd(18)} ${c.detail}\n`);
+  for (const c of checks) print(c);
+  if (opts.live) {
+    const v = spawnSync('claude', ['--version'], { encoding: 'utf8' });
+    process.stdout.write(`\nlive marker test (two headless runs, about two minutes)...\n`);
+    const r = runLiveTest(); const live = liveChecks(r); checks.push(...live);
+    print({ status: 'INFO', name: 'live:claude', detail: v.status === 0 ? v.stdout.trim() : 'claude not found on PATH' });
+    for (const c of live) print(c);
+    process.stdout.write(`${live.some((c) => c.status === 'FAIL') ? r.log : r.log.split('\n')[0]}\n`);
+  }
   if (opts.baseline) {
     const dir = path.join(home, '.claude', 'projects');
     if (!existsSync(dir)) process.stdout.write(`\nbaseline: ${dir} not found\n`);
