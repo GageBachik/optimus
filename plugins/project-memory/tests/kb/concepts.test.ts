@@ -1,0 +1,38 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.PROJECT_MEMORY_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
+const { openDb, upsertNote, addRel, getRels, getNote, getAttrs } = await import('../../src/kb/db.js');
+const { installTemplate, conceptNoteId } = await import('../../src/kb/templates.js');
+const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
+const { resolveConcept, pendingQuestions, acceptMerge, rejectMerge, splitAlias } = await import('../../src/kb/concepts.js');
+const bank = process.env.PROJECT_MEMORY_BANK!, now = '2026-10-16T00:00:00Z';
+test('alias → silent; exact → silent; strong overlap → auto-alias; weak → pending; else new (review focus 1, 6)', () => {
+  const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const a = resolveConcept(db, bank, 'position sizing', now); assert.equal(a.how, 'alias');
+  const b = resolveConcept(db, bank, 'risk sizings', now); assert.equal(b.how, 'exact'); assert.equal(a.conceptId, b.conceptId);
+  const c = resolveConcept(db, bank, 'risk sizing rule', now); assert.equal(c.how, 'auto-alias'); assert.equal(c.conceptId, a.conceptId);
+  const d = resolveConcept(db, bank, 'risk parity', now); assert.equal(d.how, 'pending'); assert.notEqual(d.conceptId, a.conceptId);
+  const e = resolveConcept(db, bank, 'kelly criterion', now); assert.equal(e.how, 'new'); assert.equal(e.conceptId, conceptNoteId('kelly criterion'));
+  const q = pendingQuestions(db); assert.equal(q.length, 1); assert.match(q[0], /Merge "risk parity" into "risk sizing"\?/);
+});
+
+test('accept re-points about rels and aliases; reject resolves; split undoes an auto-alias', () => {
+  const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'b.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const risk = conceptNoteId('risk sizing');
+  const parity = resolveConcept(db, bank, 'risk parity', now).conceptId;
+  upsertNote(db, { id: 'f_01', kind: 'finding', domain: 'trading', project: 'p', title: 'F', body: '', created_at: now, updated_at: now, deleted_at: null, device_id: 'd' });
+  addRel(db, { id: 'l_x', src: 'f_01', type: 'about', dst: parity, props: {}, created_at: now, deleted_at: null });
+  const id = (db.sql.prepare('SELECT id FROM pending_merge WHERE a=?').get(parity) as { id: string }).id;
+  acceptMerge(db, bank, id, now);
+  assert.equal(getRels(db, 'f_01')[0].dst, risk); assert.ok(getNote(db, parity)!.deleted_at); assert.ok(getAttrs(db, risk).alias.includes('risk parity'));
+  assert.equal(resolveConcept(db, bank, 'risk parity', now).how, 'alias'); assert.equal(pendingQuestions(db).length, 0);
+  assert.throws(() => rejectMerge(db, id), /already accepted/);
+  const auto = resolveConcept(db, bank, 'risk sizing rule', now); assert.equal(auto.how, 'auto-alias');
+  assert.match(readFileSync(path.join(bank, 'concept-merges.md'), 'utf8'), /auto-merged "risk sizing rule" into risk sizing \(dice 0\.80\) · undo: kb concepts split "risk-rule-size"/);
+  const split = splitAlias(db, bank, 'risk-rule-size', now);
+  assert.ok(!getAttrs(db, risk).alias.includes('risk sizing rule'));
+  assert.deepEqual(resolveConcept(db, bank, 'risk sizing rule', now), { conceptId: split, how: 'exact' });
+});
