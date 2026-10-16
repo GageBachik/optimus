@@ -200,6 +200,9 @@ function loadState(sessionId, agentId = "main") {
 function saveState(sessionId, s, agentId = "main") {
   writeFileAtomic(path4.join(paths.sessionDir(sessionId, agentId), "state.json"), JSON.stringify(s, null, 2) + "\n");
 }
+function deleteSession(sessionId) {
+  rmSync(path4.dirname(paths.sessionDir(sessionId)), { recursive: true, force: true });
+}
 var empty;
 var init_session_state = __esm({
   "src/lib/session-state.ts"() {
@@ -212,8 +215,8 @@ var init_session_state = __esm({
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path11, fromOffset = 0) {
-  const fd = openSync(path11, "r");
+function readTranscript(path14, fromOffset = 0) {
+  const fd = openSync(path14, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -322,7 +325,7 @@ function extractTaskState(entries, pointers) {
     goalLatest: cap(users.at(-1) ? textOf(users.at(-1)) : "", 600),
     constraints: uniq(constraints).slice(0, 12),
     decisions: uniq(decisions).slice(0, 12),
-    files: [...files.entries()].map(([path11, v]) => ({ path: path11, ...v })).slice(-40),
+    files: [...files.entries()].map(([path14, v]) => ({ path: path14, ...v })).slice(-40),
     commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
     tests: tests.slice(-10),
     openItems: openItems.slice(0, 20),
@@ -465,6 +468,51 @@ var init_session_start = __esm({
   }
 });
 
+// src/offload/blobs.ts
+import { createHash as createHash2 } from "node:crypto";
+import { existsSync as existsSync4, readFileSync as readFileSync4, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import path7 from "node:path";
+function storeBlob(text, meta) {
+  const id = createHash2("sha256").update(text, "utf8").digest("hex");
+  const file = path7.join(paths.blobsDir(), id);
+  const created = !existsSync4(file);
+  const lines = text.split("\n").length;
+  if (created) {
+    writeFileAtomic(file, text);
+    const m = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, " "), sessionId: meta.sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), command: meta.command === void 0 ? void 0 : redactSensitive(meta.command).text.slice(0, 120) };
+    appendFileSync2(path7.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
+  }
+  return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
+}
+function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024) {
+  const dir = paths.blobsDir();
+  const now = Date.now();
+  let removed = 0;
+  const files = readdirSync(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path7.join(dir, f)) }));
+  const kept = files.filter(({ f, st }) => {
+    if (now - st.mtimeMs <= maxAgeDays * 864e5) return true;
+    unlinkSync2(path7.join(dir, f));
+    removed++;
+    return false;
+  });
+  let total = kept.reduce((n, x) => n + x.st.size, 0);
+  for (const { f, st } of kept.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs)) {
+    if (total <= maxBytes) break;
+    unlinkSync2(path7.join(dir, f));
+    total -= st.size;
+    removed++;
+  }
+  return { removed };
+}
+var init_blobs = __esm({
+  "src/offload/blobs.ts"() {
+    "use strict";
+    init_paths();
+    init_atomic();
+    init_redaction();
+  }
+});
+
 // src/hooks/session-sync.ts
 var session_sync_exports = {};
 __export(session_sync_exports, {
@@ -472,12 +520,15 @@ __export(session_sync_exports, {
   sessionSync: () => sessionSync
 });
 async function sessionSync(_input) {
+  log("info", "blob gc", gcBlobs());
   return void 0;
 }
 var handler2;
 var init_session_sync = __esm({
   "src/hooks/session-sync.ts"() {
     "use strict";
+    init_blobs();
+    init_log();
     handler2 = sessionSync;
   }
 });
@@ -496,31 +547,6 @@ var init_user_prompt = __esm({
   "src/hooks/user-prompt.ts"() {
     "use strict";
     handler3 = userPrompt;
-  }
-});
-
-// src/offload/blobs.ts
-import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync4, readFileSync as readFileSync4, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
-import path7 from "node:path";
-function storeBlob(text, meta) {
-  const id = createHash2("sha256").update(text, "utf8").digest("hex");
-  const file = path7.join(paths.blobsDir(), id);
-  const created = !existsSync4(file);
-  const lines = text.split("\n").length;
-  if (created) {
-    writeFileAtomic(file, text);
-    const m = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, " "), sessionId: meta.sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), command: meta.command === void 0 ? void 0 : redactSensitive(meta.command).text.slice(0, 120) };
-    appendFileSync2(path7.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
-  }
-  return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
-}
-var init_blobs = __esm({
-  "src/offload/blobs.ts"() {
-    "use strict";
-    init_paths();
-    init_atomic();
-    init_redaction();
   }
 });
 
@@ -722,13 +748,17 @@ __export(subagent_start_exports, {
   handler: () => handler7,
   subagentStart: () => subagentStart
 });
-async function subagentStart(_input) {
-  return void 0;
+import path11 from "node:path";
+async function subagentStart(input) {
+  const proj = path11.basename(String(input.cwd ?? "")) || "this project";
+  const text = `Project memory: project ${proj}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`;
+  return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(text, 1500) } };
 }
 var handler7;
 var init_subagent_start = __esm({
   "src/hooks/subagent-start.ts"() {
     "use strict";
+    init_budget();
     handler7 = subagentStart;
   }
 });
@@ -739,13 +769,34 @@ __export(stop_exports, {
   handler: () => handler8,
   stop: () => stop
 });
-async function stop(_input) {
+import path12 from "node:path";
+import { appendFileSync as appendFileSync3, existsSync as existsSync5 } from "node:fs";
+async function stop(input) {
+  if (input.agent_id) return void 0;
+  const sessionId = String(input.session_id ?? "unknown");
+  const cwd = String(input.cwd ?? "");
+  const tp = String(input.transcript_path ?? "");
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  const entries = tp && existsSync5(tp) ? readTranscript(tp, 0).entries : [];
+  if (entries.length) {
+    const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
+    const last = { at, sessionId, cwd, taskState };
+    writeFileAtomic(path12.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
+  }
+  const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
+  appendFileSync3(path12.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
   return void 0;
 }
 var handler8;
 var init_stop = __esm({
   "src/hooks/stop.ts"() {
     "use strict";
+    init_paths();
+    init_atomic();
+    init_redaction();
+    init_transcript();
+    init_session_state();
+    init_task_state();
     handler8 = stop;
   }
 });
@@ -756,13 +807,22 @@ __export(session_end_exports, {
   handler: () => handler9,
   sessionEnd: () => sessionEnd
 });
-async function sessionEnd(_input) {
+import path13 from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync5 } from "node:fs";
+async function sessionEnd(input) {
+  const sessionId = String(input.session_id ?? "unknown");
+  const ts = path13.join(paths.sessionDir(sessionId), "task-state.md");
+  if (existsSync6(ts)) storeBlob(readFileSync5(ts, "utf8"), { tool: "task-state", sessionId });
+  deleteSession(sessionId);
   return void 0;
 }
 var handler9;
 var init_session_end = __esm({
   "src/hooks/session-end.ts"() {
     "use strict";
+    init_paths();
+    init_blobs();
+    init_session_state();
     handler9 = sessionEnd;
   }
 });
