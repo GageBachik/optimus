@@ -20,7 +20,7 @@ test('alias → silent; exact → silent; strong overlap → auto-alias; weak �
   const q = pendingQuestions(db); assert.equal(q.length, 1); assert.match(q[0], /Merge "risk parity" into "risk sizing"\?/);
 });
 
-test('accept re-points about rels and aliases; reject resolves; split undoes an auto-alias', () => {
+test('accept re-points about rels and aliases; reject resolves; split undoes an auto-alias', async () => {
   const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'b.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
   const risk = conceptNoteId('risk sizing');
   const parity = resolveConcept(db, bank, 'risk parity', now).conceptId;
@@ -28,7 +28,8 @@ test('accept re-points about rels and aliases; reject resolves; split undoes an 
   addRel(db, { id: 'l_x', src: 'f_01', type: 'about', dst: parity, props: {}, created_at: now, deleted_at: null });
   const id = (db.sql.prepare('SELECT id FROM pending_merge WHERE a=?').get(parity) as { id: string }).id;
   acceptMerge(db, bank, id, now);
-  assert.equal(getRels(db, 'f_01')[0].dst, risk); assert.ok(getNote(db, parity)!.deleted_at); assert.ok(getAttrs(db, risk).alias.includes('risk parity'));
+  assert.equal(getRels(db, 'f_01')[0].dst, risk);
+  const { relId } = await import('../../src/kb/export.js'); assert.equal(getRels(db, 'f_01')[0].id, relId('f_01', 'about', risk, {}), 'a re-pointed rel takes the id an import derives'); assert.ok(getNote(db, parity)!.deleted_at); assert.ok(getAttrs(db, risk).alias.includes('risk parity'));
   assert.equal(resolveConcept(db, bank, 'risk parity', now).how, 'alias'); assert.equal(pendingQuestions(db).length, 0);
   assert.throws(() => rejectMerge(db, id), /already accepted/);
   const auto = resolveConcept(db, bank, 'risk sizing rule', now); assert.equal(auto.how, 'auto-alias');

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Db, upsertNote, setAttrs, addRel, getNote, getAttrs, getRels, softDeleteNote, deviceId } from './db.js';
-import { exportNote, relId } from './export.js';
+import { exportNote, relId, rekeyRel } from './export.js';
 import { type Kind, noteId, evidenceId, kindOfId } from './ids.js';
 import { resolveConcept } from './concepts.js';
 import { validateApproachFacets, gateRank } from './templates.js';
@@ -95,7 +95,7 @@ export function applyProvisionalVerdicts(db: Db, bankDir: string, findingId: str
     WHERE t.type='transfer' AND t.deleted_at IS NULL AND t.src<>? AND a.project=? AND c.dst IN (${concepts.map(() => '?').join(',')}) ORDER BY t.id`)
     .all(findingId, g.project, ...concepts) as { id: string; src: string; props: string }[];
   const mine: FindingLite = { metrics: metricsOf(getAttrs(db, findingId)) };
-  const setState = (t: { id: string; props: string }, state: string) => db.sql.prepare('UPDATE rel SET props=? WHERE id=?').run(JSON.stringify({ ...JSON.parse(t.props), state }), t.id);
+  const setState = (t: { id: string; props: string }, state: string) => rekeyRel(db, t.id, { props: { ...JSON.parse(t.props), state } });
   const touched = new Set<string>();
   for (const t of rows) {
     const state = (JSON.parse(t.props) as { state?: string }).state;
@@ -165,12 +165,14 @@ export function kbLink(db: Db, bankDir: string, l: { src: string; type: string; 
   return { rel_id };
 }
 
-/** DESIGN §4.8: `kb transfer <id> confirm|refute` is the only path to a final state. */
-export function setTransfer(db: Db, bankDir: string, transferId: string, state: 'confirmed' | 'refuted', now = new Date().toISOString()): void {
+/** DESIGN §4.8: `kb transfer <id> confirm|refute` is the only path to a final state. The id is a hash of the props (§4.3), so the
+ *  settled transfer gets a new id, the one every machine derives from the file; it is returned. */
+export function setTransfer(db: Db, bankDir: string, transferId: string, state: 'confirmed' | 'refuted', now = new Date().toISOString()): string {
   const t = db.sql.prepare(`SELECT src, props FROM rel WHERE id=? AND type='transfer' AND deleted_at IS NULL`).get(transferId) as { src: string; props: string } | undefined;
   if (!t) throw new Error(`no transfer ${transferId}`);
-  db.sql.prepare('UPDATE rel SET props=? WHERE id=?').run(JSON.stringify({ ...JSON.parse(t.props), state }), transferId);
+  const next = rekeyRel(db, transferId, { props: { ...JSON.parse(t.props), state } });
   touch(db, t.src, now); exportNote(db, bankDir, t.src);
+  return next;
 }
 
 /** `kb retract <id>`: soft-deletes the note; the exported `deleted_at` is how the retraction syncs (DESIGN §4.3) and ranking drops it (§4.6). */

@@ -12,10 +12,18 @@ function fts5Probe(): Check {
   try { const { DatabaseSync } = loadSqlite(); const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE t USING fts5(x)'); db.close(); return { status: 'PASS', name: 'sqlite-fts5', detail: 'node:sqlite creates an FTS5 table' }; }
   catch (e: any) { return { status: 'FAIL', name: 'sqlite-fts5', detail: `node:sqlite FTS5 probe failed: ${e?.message ?? e}` }; }
 }
-/** Installed plugins as `{ name, installPath }` from `~/.claude/plugins/installed_plugins.json` (version 2: `plugins: { name: [{ installPath }] }`). */
-function installedPlugins(home: string): { name: string; installPath: string }[] {
-  const j = readJsonFile(path.join(home, '.claude', 'plugins', 'installed_plugins.json'));
-  return Object.entries<any>(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === 'string').map((e) => ({ name, installPath: e.installPath as string })));
+/** Installed plugins as `{ name, installPath }` from `~/.claude/plugins/installed_plugins.json` (version 2: `plugins: { name: [{ installPath }] }`).
+ *  installPath is the folder Claude Code runs the plugin from: for a `directory` marketplace that is the plugin's `source` inside the marketplace
+ *  folder (CLAUDE_PLUGIN_ROOT points there; the cache copy is not refreshed), otherwise the recorded cache path. */
+export function installedPlugins(home: string): { name: string; installPath: string }[] {
+  const dir = path.join(home, '.claude', 'plugins'), j = readJsonFile(path.join(dir, 'installed_plugins.json')), markets = readJsonFile(path.join(dir, 'known_marketplaces.json')) ?? {};
+  const runDir = (name: string, cached: string) => {
+    const [plugin, market] = name.split('@'), m = markets[market];
+    if (m?.source?.source !== 'directory') return cached;
+    const root = m.installLocation ?? m.source.path, src = readJsonFile(path.join(root, '.claude-plugin', 'marketplace.json'))?.plugins?.find((p: any) => p?.name === plugin)?.source;
+    return typeof src === 'string' ? path.resolve(root, src) : cached;
+  };
+  return Object.entries<any>(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === 'string').map((e) => ({ name, installPath: runDir(name, e.installPath) })));
 }
 /** DESIGN §7: bank repo present, clean/dirty, ahead/behind, remote reachable (`git ls-remote`, 10 s). */
 function bankChecks(): Check[] {
@@ -68,7 +76,7 @@ export function doctorChecks(home: string): Check[] {
   const enabled: Record<string, boolean> = settings.enabledPlugins ?? {}; const installed = installedPlugins(home);
   const ours = installed.filter((p) => p.name.startsWith('project-memory@'));
   const live = ours.find((p) => enabled[p.name] && existsSync(path.join(p.installPath, 'hooks', 'hooks.json')) && existsSync(path.join(p.installPath, 'dist', 'hook.js')));
-  out.push(live ? { status: 'PASS', name: 'hooks', detail: `${live.name} hooks present in ${live.installPath}` } : { status: 'WARN', name: 'hooks', detail: ours.length ? `${ours[0].name} installed but not enabled or its cache lacks hooks/hooks.json + dist/hook.js` : 'project-memory plugin not installed in the plugin cache' });
+  out.push(live ? { status: 'PASS', name: 'hooks', detail: `${live.name} hooks present in ${live.installPath}` } : { status: 'WARN', name: 'hooks', detail: ours.length ? `${ours[0].name} installed but not enabled or ${ours[0].installPath} lacks hooks/hooks.json + dist/hook.js` : 'project-memory plugin not installed in the plugin cache' });
   const collisions: string[] = [];
   for (const p of installed) {
     if (!enabled[p.name] || p.name.startsWith('project-memory@')) continue;

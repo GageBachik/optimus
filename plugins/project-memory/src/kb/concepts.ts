@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { type Db, upsertNote, getNote, getAttrs, setAttrs, softDeleteNote, deviceId } from './db.js';
-import { exportNote } from './export.js';
+import { exportNote, rekeyRel } from './export.js';
 import { ulid } from './ids.js';
 import { normalizeName, tokens, dice } from './normalize.js';
 import { conceptNoteId } from './templates.js';
@@ -74,8 +74,9 @@ function openPending(db: Db, id: string): PendingRow {
 export function acceptMerge(db: Db, bankDir: string, id: string, now = new Date().toISOString()): void {
   const p = openPending(db, id), a = getNote(db, p.a)!, b = getNote(db, p.b)!;
   addAlias(db, b.id, [a.title, ...(getAttrs(db, a.id).alias ?? [])], now);
-  const srcs = (db.sql.prepare(`SELECT DISTINCT src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id) as { src: string }[]).map((r) => r.src);
-  db.sql.prepare(`UPDATE rel SET dst=? WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).run(b.id, a.id);
+  const moved = db.sql.prepare(`SELECT id, src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id) as { id: string; src: string }[];
+  for (const r of moved) rekeyRel(db, r.id, { dst: b.id });
+  const srcs = [...new Set(moved.map((r) => r.src))];
   softDeleteNote(db, a.id, now);
   db.sql.prepare('UPDATE pending_merge SET resolved=? WHERE id=?').run('accepted', id);
   for (const n of [a.id, b.id, ...srcs]) { touch(db, n, now); exportNote(db, bankDir, n); }

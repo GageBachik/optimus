@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import { writeFileAtomic } from '../lib/atomic.js';
-import { type Db, type NoteRow, type RelRow, upsertNote, setAttrs, getNote, getAttrs, getRels } from './db.js';
+import { type Db, type NoteRow, type RelRow, upsertNote, setAttrs, getNote, getAttrs, getRels, addRel } from './db.js';
 import type { Kind } from './ids.js';
 import { normalizeName } from './normalize.js';
 import { installTemplate } from './templates.js';
@@ -13,7 +13,19 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 /** Code-point order, like yaml's sortMapEntries; localeCompare would make the file depend on the host locale. */
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /** DESIGN §4.3: `l_` + 26 chars of sha256(src|type|dst|props), so two machines importing the same file produce the same row. */
-export const relId = (src: string, type: string, dst: string, props: Record<string, unknown>) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(props)}`).slice(0, 26)}`;
+/** Props keys are hashed in code-point order: the file stores them sorted, so a local row and its import agree whatever order the caller used. */
+export const relId = (src: string, type: string, dst: string, props: Record<string, unknown>) =>
+  `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(Object.fromEntries(Object.entries(props).sort(([a], [b]) => cmp(a, b))))}`).slice(0, 26)}`;
+/** Changes a rel's dst and/or props and re-derives its id (DESIGN §4.3), so the row keeps the id every other machine derives from the file.
+ *  INSERT OR REPLACE folds it into an identical rel that already exists. Returns the new id. */
+export function rekeyRel(db: Db, id: string, change: { dst?: string; props?: Record<string, unknown> }): string {
+  const r = db.sql.prepare('SELECT * FROM rel WHERE id=?').get(id) as (Omit<RelRow, 'props'> & { props: string }) | undefined;
+  if (!r) throw new Error(`no rel ${id}`);
+  const dst = change.dst ?? r.dst, props = change.props ?? JSON.parse(r.props), next = relId(r.src, r.type, dst, props);
+  db.sql.prepare('DELETE FROM rel WHERE id=?').run(id);
+  addRel(db, { ...r, id: next, dst, props });
+  return next;
+}
 
 /** DESIGN §4.3: a pure function of the rows — sorted keys, rels sorted by (type, dst), single values as scalars, LF only. */
 export function renderNoteFile(n: NoteRow, attrs: Record<string, string[]>, rels: RelRow[]): string {

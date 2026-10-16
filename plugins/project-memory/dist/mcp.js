@@ -21522,7 +21522,15 @@ var import_yaml = __toESM(require_dist(), 1);
 // src/kb/export.ts
 var sha256 = (s) => createHash2("sha256").update(s).digest("hex");
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(props)}`).slice(0, 26)}`;
+var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(Object.fromEntries(Object.entries(props).sort(([a], [b]) => cmp(a, b))))}`).slice(0, 26)}`;
+function rekeyRel(db2, id, change) {
+  const r = db2.sql.prepare("SELECT * FROM rel WHERE id=?").get(id);
+  if (!r) throw new Error(`no rel ${id}`);
+  const dst = change.dst ?? r.dst, props = change.props ?? JSON.parse(r.props), next = relId(r.src, r.type, dst, props);
+  db2.sql.prepare("DELETE FROM rel WHERE id=?").run(id);
+  addRel(db2, { ...r, id: next, dst, props });
+  return next;
+}
 function renderNoteFile(n, attrs, rels) {
   const fm = {
     id: n.id,
@@ -21712,7 +21720,7 @@ function applyProvisionalVerdicts(db2, bankDir, findingId, now = (/* @__PURE__ *
     JOIN rel c ON c.src=t.src AND c.type='about' AND c.deleted_at IS NULL
     WHERE t.type='transfer' AND t.deleted_at IS NULL AND t.src<>? AND a.project=? AND c.dst IN (${concepts2.map(() => "?").join(",")}) ORDER BY t.id`).all(findingId, g.project, ...concepts2);
   const mine = { metrics: metricsOf(getAttrs(db2, findingId)) };
-  const setState = (t, state) => db2.sql.prepare("UPDATE rel SET props=? WHERE id=?").run(JSON.stringify({ ...JSON.parse(t.props), state }), t.id);
+  const setState = (t, state) => rekeyRel(db2, t.id, { props: { ...JSON.parse(t.props), state } });
   const touched = /* @__PURE__ */ new Set();
   for (const t of rows) {
     const state = JSON.parse(t.props).state;

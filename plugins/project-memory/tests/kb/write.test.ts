@@ -31,12 +31,12 @@ test('R4 revert; a person\'s verdict is final; kb_link; retract soft-deletes; se
   const a1 = kbWrite(db, bank2, { kind: 'approach', title: 'A', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' } }, now);
   const a2 = kbWrite(db, bank2, { kind: 'approach', title: 'B', domain: 'trading', project: 'spy', facets: { risk: 'fixed-lot' } }, now);
   const f = (project: string, value: number, baseline: number) => kbWrite(db, bank2, { kind: 'finding', title: `${project} ${value}`, domain: 'trading', project, tags: ['risk sizing'], attrs: { gate: 'in-sample' }, metrics: [{ name: 'sharpe', value, better: 'higher', baseline }], evidence: [{ kind: 'commit', ref: `${project}${value}` }], rels: [{ type: 'about', dst: project === 'es' ? a1.id : a2.id, props: { facet_key: 'risk' } }] }, now);
-  const f1 = f('es', 1.4, 0.9); const tid = f1.transfers[0];
-  const state = () => getRels(db, f1.id).find((r) => r.id === tid)!.props.state;
+  const f1 = f('es', 1.4, 0.9);
+  const state = () => getRels(db, f1.id).find((r) => r.type === 'transfer')!.props.state, tid = () => getRels(db, f1.id).find((r) => r.type === 'transfer')!.id;
   f('spy', 1.1, 0.8); assert.equal(state(), 'confirmed_provisional');
   const f3 = f('spy', 0.7, 0.9); assert.equal(state(), 'proposed', 'R4: a disagreement reverts the provisional verdict');
   assert.ok(getRels(db, f1.id).some((r) => r.type === 'conflicts_with' && r.dst === f3.id)); assert.deepEqual(getAttrs(db, f1.id).state, ['conflicting']);
-  setTransfer(db, bank2, tid, 'confirmed'); const f4 = f('spy', 0.5, 0.9); assert.equal(state(), 'confirmed', 'confirmed is never touched by the rule');
+  setTransfer(db, bank2, tid(), 'confirmed'); const f4 = f('spy', 0.5, 0.9); assert.equal(state(), 'confirmed', 'confirmed is never touched by the rule');
   assert.ok(!getRels(db, f4.id).some((r) => r.type === 'conflicts_with'));
   assert.match(readFileSync(path.join(bank2, 'notes', 'finding', `${f1.id}.md`), 'utf8'), /state: confirmed\n/);
   const { rel_id } = kbLink(db, bank2, { src: f4.id, type: 'supersedes', dst: f3.id }); assert.ok(getRels(db, f4.id).some((r) => r.id === rel_id && r.type === 'supersedes'));
@@ -69,4 +69,19 @@ test('fix round 1: only user-authored kinds are writable; transfers cannot be fo
   assert.ok(!file.includes('c'.repeat(20)) && !file.includes(key) && !file.includes('d'.repeat(20)), file);
   assert.ok(!JSON.stringify(getRels(db, f.id)).includes(key));
   assert.ok(getRels(db, f.id).some((r) => r.id === rel_id), 'the rel id is computed from the redacted props');
+});
+
+test('a rel keeps the id an import of its file derives after a state change (DESIGN §4.3), so a command copied from another machine resolves', async () => {
+  const { parseNoteFile, relId } = await import('../../src/kb/export.js');
+  const db = openDb(path.join(process.env.PROJECT_MEMORY_HOME!, 'rekey.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const bank3 = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  const a1 = kbWrite(db, bank3, { kind: 'approach', title: 'A', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' } }, now);
+  kbWrite(db, bank3, { kind: 'approach', title: 'B', domain: 'trading', project: 'spy', facets: { risk: 'fixed-lot' } }, now);
+  const f1 = kbWrite(db, bank3, { kind: 'finding', title: 'F', domain: 'trading', project: 'es', tags: ['risk sizing'], attrs: { gate: 'in-sample' }, metrics: [{ name: 'sharpe', value: 1.4, better: 'higher', baseline: 0.9 }], evidence: [{ kind: 'commit', ref: 'r1' }], rels: [{ type: 'about', dst: a1.id, props: { facet_key: 'risk' } }] }, now);
+  const local = () => getRels(db, f1.id).find((r) => r.type === 'transfer')!;
+  const imported = () => parseNoteFile(readFileSync(path.join(bank3, 'notes', 'finding', `${f1.id}.md`), 'utf8')).rels.find((r) => r.type === 'transfer')!;
+  const next = setTransfer(db, bank3, f1.transfers[0], 'confirmed');
+  assert.equal(local().props.state, 'confirmed'); assert.equal(next, local().id); assert.equal(local().id, imported().id);
+  assert.notEqual(next, f1.transfers[0]); assert.throws(() => setTransfer(db, bank3, f1.transfers[0], 'refuted'), /no transfer/);
+  assert.equal(relId('s', 't', 'd', { b: 1, a: 2 }), relId('s', 't', 'd', { a: 2, b: 1 }), 'props key order does not change the id');
 });

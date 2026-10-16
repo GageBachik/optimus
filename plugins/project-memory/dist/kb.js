@@ -7443,6 +7443,9 @@ function setAttrs(db, noteId2, attrs) {
   const ins = db.sql.prepare("INSERT OR IGNORE INTO attr(note_id,key,value) VALUES(?,?,?)");
   for (const [k, v] of Object.entries(attrs)) for (const val of Array.isArray(v) ? v : [v]) ins.run(noteId2, k, String(val));
 }
+function addRel(db, r) {
+  db.sql.prepare("INSERT OR REPLACE INTO rel(id,src,type,dst,props,created_at,deleted_at) VALUES(?,?,?,?,?,?,?)").run(r.id, r.src, r.type, r.dst, JSON.stringify(r.props ?? {}), r.created_at, r.deleted_at);
+}
 function softDeleteNote(db, id, at = (/* @__PURE__ */ new Date()).toISOString()) {
   db.sql.prepare("UPDATE note SET deleted_at=?, updated_at=? WHERE id=?").run(at, at, id);
   reindexFts(db, id);
@@ -7663,8 +7666,14 @@ function fts5Probe() {
   }
 }
 function installedPlugins(home2) {
-  const j = readJsonFile(path5.join(home2, ".claude", "plugins", "installed_plugins.json"));
-  return Object.entries(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === "string").map((e) => ({ name, installPath: e.installPath })));
+  const dir = path5.join(home2, ".claude", "plugins"), j = readJsonFile(path5.join(dir, "installed_plugins.json")), markets = readJsonFile(path5.join(dir, "known_marketplaces.json")) ?? {};
+  const runDir = (name, cached) => {
+    const [plugin, market] = name.split("@"), m = markets[market];
+    if (m?.source?.source !== "directory") return cached;
+    const root = m.installLocation ?? m.source.path, src = readJsonFile(path5.join(root, ".claude-plugin", "marketplace.json"))?.plugins?.find((p) => p?.name === plugin)?.source;
+    return typeof src === "string" ? path5.resolve(root, src) : cached;
+  };
+  return Object.entries(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === "string").map((e) => ({ name, installPath: runDir(name, e.installPath) })));
 }
 function bankChecks() {
   const bank = paths.bankDir();
@@ -7740,7 +7749,7 @@ function doctorChecks(home2) {
   const installed = installedPlugins(home2);
   const ours = installed.filter((p) => p.name.startsWith("project-memory@"));
   const live2 = ours.find((p) => enabled[p.name] && existsSync3(path5.join(p.installPath, "hooks", "hooks.json")) && existsSync3(path5.join(p.installPath, "dist", "hook.js")));
-  out.push(live2 ? { status: "PASS", name: "hooks", detail: `${live2.name} hooks present in ${live2.installPath}` } : { status: "WARN", name: "hooks", detail: ours.length ? `${ours[0].name} installed but not enabled or its cache lacks hooks/hooks.json + dist/hook.js` : "project-memory plugin not installed in the plugin cache" });
+  out.push(live2 ? { status: "PASS", name: "hooks", detail: `${live2.name} hooks present in ${live2.installPath}` } : { status: "WARN", name: "hooks", detail: ours.length ? `${ours[0].name} installed but not enabled or ${ours[0].installPath} lacks hooks/hooks.json + dist/hook.js` : "project-memory plugin not installed in the plugin cache" });
   const collisions = [];
   for (const p of installed) {
     if (!enabled[p.name] || p.name.startsWith("project-memory@")) continue;
@@ -8089,7 +8098,15 @@ function loadTemplate(file) {
 // src/kb/export.ts
 var sha256 = (s) => createHash2("sha256").update(s).digest("hex");
 var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(props)}`).slice(0, 26)}`;
+var relId = (src, type, dst, props) => `l_${sha256(`${src}|${type}|${dst}|${JSON.stringify(Object.fromEntries(Object.entries(props).sort(([a], [b]) => cmp(a, b))))}`).slice(0, 26)}`;
+function rekeyRel(db, id, change) {
+  const r = db.sql.prepare("SELECT * FROM rel WHERE id=?").get(id);
+  if (!r) throw new Error(`no rel ${id}`);
+  const dst = change.dst ?? r.dst, props = change.props ?? JSON.parse(r.props), next = relId(r.src, r.type, dst, props);
+  db.sql.prepare("DELETE FROM rel WHERE id=?").run(id);
+  addRel(db, { ...r, id: next, dst, props });
+  return next;
+}
 function renderNoteFile(n, attrs, rels) {
   const fm = {
     id: n.id,
@@ -8450,8 +8467,9 @@ function openPending(db, id) {
 function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const p = openPending(db, id), a = getNote(db, p.a), b = getNote(db, p.b);
   addAlias(db, b.id, [a.title, ...getAttrs(db, a.id).alias ?? []], now);
-  const srcs = db.sql.prepare(`SELECT DISTINCT src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id).map((r) => r.src);
-  db.sql.prepare(`UPDATE rel SET dst=? WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).run(b.id, a.id);
+  const moved = db.sql.prepare(`SELECT id, src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id);
+  for (const r of moved) rekeyRel(db, r.id, { dst: b.id });
+  const srcs = [...new Set(moved.map((r) => r.src))];
   softDeleteNote(db, a.id, now);
   db.sql.prepare("UPDATE pending_merge SET resolved=? WHERE id=?").run("accepted", id);
   for (const n of [a.id, b.id, ...srcs]) {
@@ -8557,9 +8575,10 @@ var must = (db, id) => {
 function setTransfer(db, bankDir, transferId, state, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const t = db.sql.prepare(`SELECT src, props FROM rel WHERE id=? AND type='transfer' AND deleted_at IS NULL`).get(transferId);
   if (!t) throw new Error(`no transfer ${transferId}`);
-  db.sql.prepare("UPDATE rel SET props=? WHERE id=?").run(JSON.stringify({ ...JSON.parse(t.props), state }), transferId);
+  const next = rekeyRel(db, transferId, { props: { ...JSON.parse(t.props), state } });
   touch2(db, t.src, now);
   exportNote(db, bankDir, t.src);
+  return next;
 }
 function retractNote(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
   must(db, id);
@@ -9140,8 +9159,8 @@ else if (cmd === "sync") {
   try {
     if (cmd === "transfer") {
       const state = a === "confirm" ? "confirmed" : "refuted";
-      setTransfer(db, bank, id, state);
-      process.stdout.write(`transfer ${id} ${state}
+      const next = setTransfer(db, bank, id, state);
+      process.stdout.write(`transfer ${id} ${state}; its id is now ${next}
 `);
     } else if (cmd === "retract") {
       retractNote(db, bank, id);

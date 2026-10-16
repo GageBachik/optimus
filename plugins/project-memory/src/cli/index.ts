@@ -64,7 +64,7 @@ else if (cmd === 'cleanup') {
 } else if ((cmd === 'transfer' && args[0] && ['confirm', 'refute'].includes(args[1])) || (cmd === 'retract' && args[0]) || (cmd === 'set' && args.length >= 3)) {
   const db = openDb(), bank = paths.bankDir(), [id, a, b] = args;
   try {
-    if (cmd === 'transfer') { const state = a === 'confirm' ? 'confirmed' : 'refuted'; setTransfer(db, bank, id, state); process.stdout.write(`transfer ${id} ${state}\n`); }
+    if (cmd === 'transfer') { const state = a === 'confirm' ? 'confirmed' : 'refuted'; const next = setTransfer(db, bank, id, state); process.stdout.write(`transfer ${id} ${state}; its id is now ${next}\n`); }
     else if (cmd === 'retract') { retractNote(db, bank, id); process.stdout.write(`retracted ${id}\n`); }
     else { setAttr(db, bank, id, a, b); process.stdout.write(`set ${a}=${b} on ${id}\n`); }
   } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
