@@ -226,11 +226,11 @@ baseline (${dir})
 }
 
 // src/cli/cleanup.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5, readdirSync as readdirSync3, statSync as statSync4, rmSync, mkdirSync as mkdirSync2, cpSync } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync6, readdirSync as readdirSync3, statSync as statSync4, rmSync, mkdirSync as mkdirSync2, cpSync } from "node:fs";
 import path5 from "node:path";
 
 // src/cli/backup.ts
-import { copyFileSync, existsSync as existsSync4 } from "node:fs";
+import { copyFileSync, existsSync as existsSync4, readFileSync as readFileSync5 } from "node:fs";
 
 // src/lib/atomic.ts
 import { writeFileSync as writeFileSync3, readFileSync as readFileSync4, renameSync as renameSync2, realpathSync, existsSync as existsSync3, statSync as statSync3, chmodSync, unlinkSync as unlinkSync2 } from "node:fs";
@@ -269,9 +269,14 @@ function backupAndWriteJson(file, value2) {
   backupFile(file);
   writeFileAtomic(file, JSON.stringify(value2, null, 2) + "\n");
 }
+function editJson(file, mutate) {
+  const j = existsSync4(file) ? JSON.parse(readFileSync5(file, "utf8")) : {};
+  mutate(j);
+  backupAndWriteJson(file, j);
+}
 
 // src/cli/cleanup.ts
-var readJsonFile2 = (f) => existsSync5(f) ? JSON.parse(readFileSync5(f, "utf8")) : {};
+var readJsonFile2 = (f) => existsSync5(f) ? JSON.parse(readFileSync6(f, "utf8")) : {};
 function onPath(cmd2) {
   if (cmd2.includes("/") || cmd2.includes("\\")) return existsSync5(cmd2);
   const exts = process.platform === "win32" ? ["", ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")] : [""];
@@ -295,19 +300,17 @@ function planCleanup(home2) {
   const settings = readJsonFile2(settingsPath);
   const cj = readJsonFile2(claudeJson);
   const plugins = settings.enabledPlugins ?? {};
-  const disable = (name, reason) => actions.push({ id: `plugin:${name}`, kind: "disable-plugin", target: name, reason, apply: () => {
-    settings.enabledPlugins = { ...settings.enabledPlugins ?? {}, [name]: false };
-    backupAndWriteJson(settingsPath, settings);
-  } });
+  const disable = (name, reason) => actions.push({ id: `plugin:${name}`, kind: "disable-plugin", target: name, reason, apply: () => editJson(settingsPath, (s) => {
+    s.enabledPlugins = { ...s.enabledPlugins ?? {}, [name]: false };
+  }) });
   if (plugins["agentmemory@agentmemory"]) disable("agentmemory@agentmemory", "12 hooks post to a dead localhost:3111 on every prompt");
   if ("claude-supermemory@supermemory-plugins" in plugins) disable("claude-supermemory@supermemory-plugins", plugins["claude-supermemory@supermemory-plugins"] ? "unused hosted memory plugin" : "unused hosted memory plugin (already disabled)");
   if (plugins["context-mode@context-mode"]) actions.push(flag("plugin:context-mode", "context-mode@context-mode", "retire after offload passes acceptance (its PreToolUse Agent rewrite collides with subagent briefs)"));
   for (const [name, def] of Object.entries(cj.mcpServers ?? {})) {
     if (name === "agentmemory") {
-      actions.push({ id: `mcp:${name}`, kind: "remove-mcp", target: name, reason: "backend not running; replaced by project-memory", apply: () => {
-        delete cj.mcpServers[name];
-        backupAndWriteJson(claudeJson, cj);
-      } });
+      actions.push({ id: `mcp:${name}`, kind: "remove-mcp", target: name, reason: "backend not running; replaced by project-memory", apply: () => editJson(claudeJson, (j) => {
+        if (j.mcpServers) delete j.mcpServers[name];
+      }) });
       continue;
     }
     if (name === "serena") {
@@ -334,7 +337,7 @@ function planCleanup(home2) {
 // src/cli/setup.ts
 import os2 from "node:os";
 import path6 from "node:path";
-import { existsSync as existsSync6, readFileSync as readFileSync6, appendFileSync } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync7, appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 var defaultDeviceId = (host = os2.hostname()) => host.split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-");
 var HEADING = "## Compaction instructions (project-memory)";
@@ -345,11 +348,12 @@ function compactionInstructionsPath() {
 function setup(home2, opts = {}) {
   const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
   const settingsPath = path6.join(home2, ".claude", "settings.json");
-  const settings = existsSync6(settingsPath) ? JSON.parse(readFileSync6(settingsPath, "utf8")) : {};
+  const settings = existsSync6(settingsPath) ? JSON.parse(readFileSync7(settingsPath, "utf8")) : {};
   if (settings.autoCompactWindow === 2e5) print(`autoCompactWindow already 200000 in ${settingsPath}`);
   else {
-    settings.autoCompactWindow = 2e5;
-    backupAndWriteJson(settingsPath, settings);
+    editJson(settingsPath, (s) => {
+      s.autoCompactWindow = 2e5;
+    });
     print(`set autoCompactWindow: 200000 in ${settingsPath} (backup written)`);
   }
   const deviceId = defaultDeviceId(opts.device ?? os2.hostname());
@@ -362,7 +366,7 @@ function setup(home2, opts = {}) {
     print("  run `kb setup --append-claude-md` to append them to ~/.claude/CLAUDE.md");
     return;
   }
-  if (existsSync6(claudeMd) && readFileSync6(claudeMd, "utf8").includes(HEADING)) {
+  if (existsSync6(claudeMd) && readFileSync7(claudeMd, "utf8").includes(HEADING)) {
     print(`${claudeMd} already carries the compaction instructions`);
     return;
   }
@@ -370,7 +374,7 @@ function setup(home2, opts = {}) {
   appendFileSync(claudeMd, `
 ${HEADING}
 
-${readFileSync6(instructions, "utf8")}`);
+${readFileSync7(instructions, "utf8")}`);
   print(`appended compaction instructions to ${claudeMd} (backup written)`);
 }
 

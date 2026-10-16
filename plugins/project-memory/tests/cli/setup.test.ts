@@ -15,3 +15,9 @@ test('setup writes autoCompactWindow with a backup and persists deviceId', () =>
   assert.equal(JSON.parse(readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'config.json'), 'utf8')).deviceId, 'mac-mini');
   assert.equal(defaultDeviceId('Gages-MacBook-Pro.local'), 'gages-macbook-pro');
 });
+test('kb doctor prints no ExperimentalWarning from the FTS5 probe', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const home = mkdtempSync(path.join(tmpdir(), 'home-'));
+  const r = spawnSync(process.execPath, [path.join(import.meta.dirname, '..', '..', 'dist', 'kb.js'), 'doctor'], { encoding: 'utf8', env: { ...process.env, HOME: home, PROJECT_MEMORY_HOME: path.join(home, '.pm') } });
+  assert.match(r.stdout, /PASS\s+sqlite-fts5/); assert.doesNotMatch(r.stderr, /ExperimentalWarning/);
+});

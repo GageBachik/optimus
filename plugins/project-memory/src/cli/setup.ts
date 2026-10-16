@@ -3,7 +3,7 @@ import path from 'node:path';
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { paths } from '../lib/paths.js';
-import { backupAndWriteJson, backupFile } from './backup.js';
+import { editJson, backupFile } from './backup.js';
 /** Short lowercase hostname: `Gages-MacBook-Pro.local` → `gages-macbook-pro` (DESIGN §3.8). */
 export const defaultDeviceId = (host = os.hostname()) => host.split('.')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const HEADING = '## Compaction instructions (project-memory)';
@@ -18,7 +18,7 @@ export function setup(home: string, opts: { device?: string; appendClaudeMd?: bo
   const settingsPath = path.join(home, '.claude', 'settings.json');
   const settings = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, 'utf8')) : {};
   if (settings.autoCompactWindow === 200000) print(`autoCompactWindow already 200000 in ${settingsPath}`);
-  else { settings.autoCompactWindow = 200000; backupAndWriteJson(settingsPath, settings); print(`set autoCompactWindow: 200000 in ${settingsPath} (backup written)`); }
+  else { editJson(settingsPath, (s) => { s.autoCompactWindow = 200000; }); print(`set autoCompactWindow: 200000 in ${settingsPath} (backup written)`); }
   const deviceId = defaultDeviceId(opts.device ?? os.hostname());
   paths.saveConfig({ deviceId }); print(`deviceId: ${deviceId} (${paths.configPath()})`);
   const instructions = compactionInstructionsPath(); const claudeMd = path.join(home, '.claude', 'CLAUDE.md');

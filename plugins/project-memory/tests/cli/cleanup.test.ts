@@ -30,3 +30,16 @@ test('cleanup copies the agentmemory backups before removing ~/.agentmemory; fla
   assert.ok(!existsSync(path.join(home, '.agentmemory')));
   assert.equal(readFileSync(path.join(home, '.project-memory', 'imports', 'agentmemory', 'backups', 'claude-code-1.json'), 'utf8'), '{"m":1}');
 });
+test('cleanup --apply re-reads each file at write time, keeping edits made after the plan (Claude Code rewrites ~/.claude.json live)', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')); mkdirSync(path.join(home, '.claude'));
+  const sp = path.join(home, '.claude', 'settings.json'); const cj = path.join(home, '.claude.json');
+  writeFileSync(sp, JSON.stringify({ enabledPlugins: { 'agentmemory@agentmemory': true, 'claude-supermemory@supermemory-plugins': true } }));
+  writeFileSync(cj, JSON.stringify({ numStartups: 1, mcpServers: { agentmemory: { command: 'npx', args: [] } } }));
+  const actions = planCleanup(home);
+  writeFileSync(cj, JSON.stringify({ numStartups: 2, mcpServers: { agentmemory: { command: 'npx', args: [] }, added: { command: 'npx', args: [] } } }));
+  for (const a of actions) if (a.kind !== 'flag') a.apply();
+  const j = JSON.parse(readFileSync(cj, 'utf8'));
+  assert.equal(j.numStartups, 2); assert.ok('added' in j.mcpServers); assert.ok(!('agentmemory' in j.mcpServers));
+  const s = JSON.parse(readFileSync(sp, 'utf8'));
+  assert.equal(s.enabledPlugins['agentmemory@agentmemory'], false); assert.equal(s.enabledPlugins['claude-supermemory@supermemory-plugins'], false);
+});

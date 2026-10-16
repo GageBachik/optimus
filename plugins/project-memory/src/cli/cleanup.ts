@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync, rmSync, mkdirSync, cpSync } from 'node:fs';
 import path from 'node:path';
-import { backupAndWriteJson } from './backup.js';
+import { editJson } from './backup.js';
 export type CleanupAction = { id: string; kind: 'disable-plugin' | 'remove-mcp' | 'remove-dir' | 'flag'; target: string; reason: string; apply: () => void };
 const readJsonFile = (f: string): any => (existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : {});
 /** True when `cmd` resolves to a file: an absolute/relative path that exists, or a name found in a PATH directory (PATHEXT on Windows). No shell. */
@@ -22,12 +22,12 @@ export function planCleanup(home: string): CleanupAction[] {
   const settingsPath = path.join(home, '.claude', 'settings.json'); const claudeJson = path.join(home, '.claude.json');
   const settings = readJsonFile(settingsPath); const cj = readJsonFile(claudeJson);
   const plugins: Record<string, boolean> = settings.enabledPlugins ?? {};
-  const disable = (name: string, reason: string) => actions.push({ id: `plugin:${name}`, kind: 'disable-plugin', target: name, reason, apply: () => { settings.enabledPlugins = { ...(settings.enabledPlugins ?? {}), [name]: false }; backupAndWriteJson(settingsPath, settings); } });
+  const disable = (name: string, reason: string) => actions.push({ id: `plugin:${name}`, kind: 'disable-plugin', target: name, reason, apply: () => editJson(settingsPath, (s) => { s.enabledPlugins = { ...(s.enabledPlugins ?? {}), [name]: false }; }) });
   if (plugins['agentmemory@agentmemory']) disable('agentmemory@agentmemory', '12 hooks post to a dead localhost:3111 on every prompt');
   if ('claude-supermemory@supermemory-plugins' in plugins) disable('claude-supermemory@supermemory-plugins', plugins['claude-supermemory@supermemory-plugins'] ? 'unused hosted memory plugin' : 'unused hosted memory plugin (already disabled)');
   if (plugins['context-mode@context-mode']) actions.push(flag('plugin:context-mode', 'context-mode@context-mode', 'retire after offload passes acceptance (its PreToolUse Agent rewrite collides with subagent briefs)'));
   for (const [name, def] of Object.entries<any>(cj.mcpServers ?? {})) {
-    if (name === 'agentmemory') { actions.push({ id: `mcp:${name}`, kind: 'remove-mcp', target: name, reason: 'backend not running; replaced by project-memory', apply: () => { delete cj.mcpServers[name]; backupAndWriteJson(claudeJson, cj); } }); continue; }
+    if (name === 'agentmemory') { actions.push({ id: `mcp:${name}`, kind: 'remove-mcp', target: name, reason: 'backend not running; replaced by project-memory', apply: () => editJson(claudeJson, (j) => { if (j.mcpServers) delete j.mcpServers[name]; }) }); continue; }
     if (name === 'serena') { actions.push(flag('mcp:serena', 'serena', 'remove after `kb import serena` has run')); continue; }
     const badArg = (Array.isArray(def?.args) ? def.args : []).find(deadPath);
     if (badArg) actions.push(flag(`mcp:${name}`, name, `argument path does not exist or is empty: ${badArg}`));
