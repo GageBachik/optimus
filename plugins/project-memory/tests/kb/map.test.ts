@@ -70,7 +70,7 @@ test('map: one lane per domain, a data-state badge per finding, data-type per ed
   for (const e of edges) assert.match(e, / data-motion="(draw|fade)"/);
   assert.ok(html.includes(`data-attach="${a1.id}"`) && new RegExp(`<div class="node" data-id="${a1.id}"[^>]*>(?:(?!</div>).)*class="badge"`, 's').test(html), 'attached finding is mounted inside its approach');
   assert.ok(/class="rail"/.test(html) && html.includes('class="concept multi hollow"') === false, 'rail rendered');
-  assert.ok(html.includes(`<section class="lane" data-domain="trading">`), 'lane section');
+  assert.ok(html.includes(`<section class="lane" data-domain="trading">`), 'lane section'); assert.ok(html.includes('data-project="es"'), 'project on the part');
 });
 
 test('map: an attached finding whose domain has no lane still gets a Domain checkbox', () => {

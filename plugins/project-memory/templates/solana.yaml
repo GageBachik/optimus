@@ -1,0 +1,13 @@
+domain: solana
+facets: [framework, client, token_standard, custody, settlement]
+methods: [localnet-test, devnet-test, bench, simulation, audit]
+gates: [unit, localnet, devnet, mainnet-small, mainnet]
+environment: cluster
+subject: program
+seed_concepts:
+  - { name: compute budget, aliases: [compute units, CU limit, cu budget, compute unit limit] }
+  - { name: account rent, aliases: [rent exemption, rent-exempt, rent exempt minimum] }
+  - { name: PDA derivation, aliases: [program derived address, pda seeds, pda bump] }
+  - { name: transaction size limit, aliases: [1232 bytes, tx size limit, transaction too large] }
+  - { name: idempotency, aliases: [retry-safe, idempotent replay, safe to retry] }
+  - { name: priority fees, aliases: [compute unit price, priority fee, tip] }

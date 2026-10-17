@@ -8140,6 +8140,13 @@ function tokens(name) {
   return [...new Set(parts.filter((t) => t && !STOP.has(t)).map(stem))].sort();
 }
 var normalizeName = (name) => tokens(name).join("-");
+function dice(a, b) {
+  const A = new Set(a), B = new Set(b);
+  if (!A.size && !B.size) return 0;
+  let shared = 0;
+  for (const t of A) if (B.has(t)) shared++;
+  return 2 * shared / (A.size + B.size);
+}
 
 // src/kb/templates.ts
 var slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -8167,6 +8174,12 @@ function templateFor(db, domain) {
   if (!a.facet) return null;
   const gates = Object.entries(a).filter(([k]) => k.startsWith("gate:")).sort(([x], [y]) => Number(x.slice(5)) - Number(y.slice(5))).map(([, v]) => v[0]);
   return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [] };
+}
+function validateApproachFacets(db, domain, facets) {
+  const t = templateFor(db, domain);
+  if (!t) throw new Error(`unknown domain ${domain}`);
+  const bad = Object.keys(facets).filter((k) => !t.facets.includes(k));
+  if (bad.length) throw new Error(`unknown facet keys ${bad.join(", ")} for ${domain}; allowed facet keys: ${t.facets.join(", ")}`);
 }
 function gateRank(db, domain, gate) {
   const t = templateFor(db, domain);
@@ -8486,9 +8499,39 @@ import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node
 import path14 from "node:path";
 
 // src/kb/ids.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+var ENC = "0123456789abcdefghjkmnpqrstvwxyz";
+var lastTime = 0;
+var lastRand = [];
+function ulid(now = Date.now()) {
+  let t = now, time = "";
+  for (let i = 0; i < 10; i++) {
+    time = ENC[t % 32] + time;
+    t = Math.floor(t / 32);
+  }
+  if (now === lastTime) {
+    for (let i = 15; i >= 0; i--) {
+      if (lastRand[i] < 31) {
+        lastRand[i]++;
+        break;
+      }
+      lastRand[i] = 0;
+    }
+  } else {
+    lastTime = now;
+    lastRand = [...randomBytes2(16)].map((b) => b % 32);
+  }
+  return time + lastRand.map((x) => ENC[x]).join("");
+}
 var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
 var KINDS = Object.keys(PREFIX);
-var evidenceId = (sha2563) => `e_${sha2563.slice(0, 16)}`;
+var noteId = (kind) => `${PREFIX[kind]}_${ulid()}`;
+var evidenceId = (sha2564) => `e_${sha2564.slice(0, 16)}`;
+function kindOfId(id) {
+  const k = Object.entries(PREFIX).find(([, p]) => id.startsWith(p + "_"))?.[0];
+  if (!k) throw new Error(`unknown id prefix: ${id}`);
+  return k;
+}
 
 // src/lib/redaction.ts
 var PATTERNS = [
@@ -8504,6 +8547,7 @@ var PATTERNS = [
   { kind: "generic", re: /\b(api[_-]?key|secret|token|passphrase|password)\s*[:=]\s*["']?([A-Za-z0-9\/+_\-]{16,})/gi, group: 2 }
 ];
 var MAX_CHARS = 1e6;
+var redactJson = (_k, v) => typeof v === "string" ? redactSensitive(v).text : v;
 function redactSensitive(text) {
   if (text.length > MAX_CHARS) return { text: `[REDACTED:oversize ${text.length} chars]`, count: 1 };
   let count = 0;
@@ -8518,6 +8562,7 @@ function redactSensitive(text) {
 }
 
 // src/kb/concepts.ts
+var concepts = (db) => db.sql.prepare(`SELECT id, title FROM note WHERE kind='concept' AND deleted_at IS NULL ORDER BY id`).all();
 var log2 = (bankDir, line) => {
   mkdirSync7(bankDir, { recursive: true });
   appendFileSync3(path14.join(bankDir, "concept-merges.md"), line + "\n");
@@ -8538,6 +8583,36 @@ function createConcept(db, name, now) {
   upsertNote(db, { id, kind: "concept", domain: null, project: null, title: name, body: "", created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
   db.sql.prepare("INSERT OR REPLACE INTO alias(name_norm, concept_id) VALUES(?,?)").run(normalizeName(name), id);
   return id;
+}
+function resolveConcept(db, bankDir, tag, now) {
+  tag = redactSensitive(tag).text;
+  const norm = normalizeName(tag), all = concepts(db);
+  const exact = all.find((c) => normalizeName(c.title) === norm);
+  if (exact) return { conceptId: exact.id, how: "exact" };
+  const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm);
+  if (hit) return { conceptId: hit.id, how: "alias" };
+  const t = tokens(tag), best = /* @__PURE__ */ new Map();
+  for (const c of all) for (const name of [c.title, ...getAttrs(db, c.id).alias ?? []]) {
+    const u = tokens(name), score = dice(t, u), shared = u.filter((x) => t.includes(x)).length;
+    if (score > (best.get(c.id)?.score ?? -1)) best.set(c.id, { score, shared });
+  }
+  const ranked = [...best.entries()].sort((x, y) => y[1].score - x[1].score);
+  const [top] = ranked;
+  if (top && top[1].score >= 0.8 && top[1].shared >= 2 && ranked.filter(([, s]) => s.score >= 0.8).length === 1) {
+    const [id2, { score }] = top;
+    addAlias(db, id2, [tag], now);
+    exportNote(db, bankDir, id2);
+    log2(bankDir, `- ${now.slice(0, 10)} auto-merged "${tag}" into ${getNote(db, id2).title} (dice ${score.toFixed(2)}) \xB7 undo: kb concepts split "${norm}"`);
+    return { conceptId: id2, how: "auto-alias", score };
+  }
+  const id = createConcept(db, tag, now);
+  exportNote(db, bankDir, id);
+  if (top && top[1].score >= 0.5) {
+    const tie = ranked.filter(([, s]) => s.score === top[1].score).length > 1;
+    db.sql.prepare("INSERT INTO pending_merge(id, a, b, score, reason, created_at, resolved) VALUES(?,?,?,?,?,?,NULL)").run(ulid(), id, top[0], top[1].score, tie ? "dice tie" : "dice", now);
+    return { conceptId: id, how: "pending", score: top[1].score };
+  }
+  return { conceptId: id, how: "new" };
 }
 function openPending(db, id) {
   const p = db.sql.prepare("SELECT * FROM pending_merge WHERE id=?").get(id);
@@ -8590,9 +8665,9 @@ function conceptIds(db, names) {
   const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
   return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
 }
-function findingsAbout(db, concepts) {
-  if (!concepts.length) return [];
-  return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
+function findingsAbout(db, concepts2) {
+  if (!concepts2.length) return [];
+  return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts2)}) AND ${LIVE_FINDING}`).all(...concepts2));
 }
 
 // src/kb/compare.ts
@@ -8646,13 +8721,153 @@ function pendingQuestions(db, max = 3) {
 }
 
 // src/kb/write.ts
+import { createHash as createHash3 } from "node:crypto";
 var red = (s) => redactSensitive(s).text;
+var sha2562 = (s) => createHash3("sha256").update(s).digest("hex");
 var touch2 = (db, id, now) => db.sql.prepare("UPDATE note SET updated_at=? WHERE id=?").run(now, id);
+var TARGET_FACETS = ["environment", "subject"];
 var must = (db, id) => {
   const n = getNote(db, id);
   if (!n || n.deleted_at) throw new Error(`no note ${id}`);
   return n;
 };
+var WRITABLE_KINDS = ["project", "theme", "approach", "experiment", "target", "finding"];
+function userRel(type, props = {}) {
+  if (type === "transfer") throw new Error("transfers are proposed by kb_write and settled by kb transfer");
+  return JSON.parse(JSON.stringify(props, redactJson));
+}
+function metricsOf(attrs) {
+  return Object.entries(attrs).filter(([k]) => k.startsWith("metric:")).map(([k, [v]]) => {
+    const [value2, unit, better, baseline] = v.split("|");
+    return { name: k.slice(7), value: Number(value2), unit: unit || void 0, better: better === "lower" ? "lower" : "higher", baseline: baseline ? Number(baseline) : void 0 };
+  });
+}
+var metricAttr = (m) => `${m.value}|${m.unit ?? ""}|${m.better}|${m.baseline ?? ""}`;
+function agrees(a, b) {
+  const move = (m) => Math.sign((m.value - m.baseline) * (m.better === "lower" ? -1 : 1));
+  let verdict = null;
+  for (const m of a.metrics) {
+    const n = b.metrics.find((x) => x.name === m.name);
+    if (!n || m.baseline === void 0 || n.baseline === void 0) continue;
+    const sa = move(m), sb = move(n);
+    if (!sa || !sb) continue;
+    if (sa !== sb) return false;
+    verdict = true;
+  }
+  return verdict;
+}
+function proposeTransfers(db, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const f = must(db, findingId), about = getRels(db, findingId).filter((r) => r.type === "about");
+  const concepts2 = about.map((r) => r.dst).filter((d) => kindOfId(d) === "concept");
+  const approaches = about.map((r) => r.dst).filter((d) => kindOfId(d) === "approach");
+  const keys = new Set(about.flatMap((r) => typeof r.props.facet_key === "string" ? [r.props.facet_key] : []));
+  for (const a of approaches) for (const k of Object.keys(getAttrs(db, a))) if (k.startsWith("facet:")) keys.add(k.slice(6));
+  const live2 = `n.kind='approach' AND n.deleted_at IS NULL AND n.project IS NOT NULL AND n.project IS NOT ?`;
+  const byConcept = db.sql.prepare(`SELECT DISTINCT r.src AS id FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND ${live2}`);
+  const byFacet = db.sql.prepare(`SELECT DISTINCT a.note_id AS id FROM attr a JOIN note n ON n.id=a.note_id WHERE a.key=? AND ${live2}`);
+  const candidates = /* @__PURE__ */ new Set();
+  for (const c of concepts2) for (const r of byConcept.all(c, f.project)) candidates.add(r.id);
+  for (const k of keys) for (const r of byFacet.all(`facet:${k}`, f.project)) candidates.add(r.id);
+  const existing = new Set(getRels(db, findingId).filter((r) => r.type === "transfer").map((r) => r.dst));
+  const made = [];
+  for (const dst of [...candidates].sort()) {
+    if (existing.has(dst) || approaches.includes(dst)) continue;
+    const props = { state: "proposed" }, id = relId(findingId, "transfer", dst, props);
+    addRel(db, { id, src: findingId, type: "transfer", dst, props, created_at: now, deleted_at: null });
+    made.push(id);
+  }
+  if (made.length) {
+    touch2(db, findingId, now);
+    exportNote(db, bankDir, findingId);
+  }
+  return made;
+}
+function applyProvisionalVerdicts(db, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const g = must(db, findingId);
+  if (!g.project) return;
+  const concepts2 = getRels(db, findingId).filter((r) => r.type === "about" && kindOfId(r.dst) === "concept").map((r) => r.dst);
+  if (!concepts2.length) return;
+  const rows = db.sql.prepare(`SELECT DISTINCT t.id, t.src, t.props FROM rel t JOIN note a ON a.id=t.dst JOIN note s ON s.id=t.src AND s.deleted_at IS NULL
+    JOIN rel c ON c.src=t.src AND c.type='about' AND c.deleted_at IS NULL
+    WHERE t.type='transfer' AND t.deleted_at IS NULL AND t.src<>? AND a.project=? AND c.dst IN (${concepts2.map(() => "?").join(",")}) ORDER BY t.id`).all(findingId, g.project, ...concepts2);
+  const mine = { metrics: metricsOf(getAttrs(db, findingId)) };
+  const setState = (t, state) => rekeyRel(db, t.id, { props: { ...JSON.parse(t.props), state } });
+  const touched = /* @__PURE__ */ new Set();
+  for (const t of rows) {
+    const state = JSON.parse(t.props).state;
+    if (state !== "proposed" && state !== "confirmed_provisional") continue;
+    const v = agrees({ metrics: metricsOf(getAttrs(db, t.src)) }, mine);
+    if (v === null) continue;
+    if (v) {
+      if (state === "proposed") {
+        setState(t, "confirmed_provisional");
+        touched.add(t.src);
+      }
+      continue;
+    }
+    if (state === "confirmed_provisional") setState(t, "proposed");
+    for (const [x, y] of [[t.src, findingId], [findingId, t.src]]) {
+      addRel(db, { id: relId(x, "conflicts_with", y, {}), src: x, type: "conflicts_with", dst: y, props: {}, created_at: now, deleted_at: null });
+      setAttrs(db, x, { ...getAttrs(db, x), state: "conflicting" });
+    }
+    touched.add(t.src);
+    touched.add(findingId);
+  }
+  for (const id of touched) {
+    touch2(db, id, now);
+    exportNote(db, bankDir, id);
+  }
+}
+function kbWrite(db, bankDir, rec, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  if (!WRITABLE_KINDS.includes(rec.kind)) throw new Error(`kb_write writes ${WRITABLE_KINDS.join(", ")}, not ${rec.kind}`);
+  const id = rec.id ?? noteId(rec.kind);
+  if (kindOfId(id) !== rec.kind) throw new Error(`id ${id} is not a ${rec.kind}`);
+  const prev = getNote(db, id), domain = rec.domain ?? prev?.domain ?? null, project = rec.project ?? prev?.project ?? null, facets = rec.facets ?? {};
+  if (Object.keys(facets).length) {
+    if (rec.kind === "approach") {
+      if (!domain) throw new Error("facets need a domain");
+      validateApproachFacets(db, domain, facets);
+    } else if (rec.kind === "target") {
+      const bad = Object.keys(facets).filter((k) => !TARGET_FACETS.includes(k));
+      if (bad.length) throw new Error(`a target's facets are environment and subject, not ${bad.join(", ")}`);
+    } else throw new Error(`facets belong on an approach or a target, not a ${rec.kind}`);
+  }
+  const attrs = prev ? getAttrs(db, id) : {};
+  for (const [k, v] of Object.entries(rec.attrs ?? {})) attrs[k] = (Array.isArray(v) ? v : [v]).map(red);
+  if (attrs.gate) {
+    if (!domain) throw new Error("gate needs a domain");
+    attrs.gate_rank = [String(gateRank(db, domain, attrs.gate[0]))];
+  }
+  const rels = (rec.rels ?? []).map((r) => ({ type: r.type, dst: must(db, r.dst).id, props: userRel(r.type, r.props) }));
+  upsertNote(db, { id, kind: rec.kind, domain, project, title: red(rec.title), body: red(rec.body ?? prev?.body ?? ""), created_at: prev?.created_at ?? now, updated_at: now, deleted_at: null, device_id: deviceId() });
+  for (const [k, v] of Object.entries(facets)) attrs[`facet:${k}`] = [red(v)];
+  for (const m of rec.metrics ?? []) attrs[`metric:${m.name}`] = [metricAttr(m)];
+  if (rec.method !== void 0) attrs.method = [red(rec.method)];
+  if (rec.objective !== void 0) attrs.objective = [red(rec.objective)];
+  if (rec.trials !== void 0) attrs.trials = [String(rec.trials)];
+  const concepts2 = (rec.tags ?? []).map((tag) => {
+    const r = resolveConcept(db, bankDir, tag, now);
+    return { tag, conceptId: r.conceptId, how: r.how };
+  });
+  const rel = (type, dst, props = {}) => addRel(db, { id: relId(id, type, dst, props), src: id, type, dst, props, created_at: now, deleted_at: null });
+  for (const c of concepts2) rel("about", c.conceptId);
+  for (const r of rels) rel(r.type, r.dst, r.props);
+  for (const e of rec.evidence ?? []) {
+    const eid = evidenceId(e.sha256 ?? sha2562(`${e.kind}|${e.ref}`));
+    if (!getNote(db, eid)) {
+      upsertNote(db, { id: eid, kind: "evidence", domain, project, title: red(`${e.kind}: ${e.ref}`), body: "", created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
+      setAttrs(db, eid, { origin: e.kind, ref: red(e.ref), ...e.sha256 ? { sha256: e.sha256 } : {} });
+      exportNote(db, bankDir, eid);
+    }
+    rel("backed_by", eid);
+  }
+  if (rec.kind === "finding" && !getRels(db, id).some((r) => r.type === "backed_by")) attrs.state = ["unverified"];
+  setAttrs(db, id, attrs);
+  exportNote(db, bankDir, id);
+  const transfers = rec.kind === "finding" ? proposeTransfers(db, bankDir, id, now) : [];
+  if (rec.kind === "finding") applyProvisionalVerdicts(db, bankDir, id, now);
+  return { id, created: !prev, concepts: concepts2, transfers, questions: db.sql.prepare("SELECT COUNT(*) AS n FROM pending_merge WHERE resolved IS NULL").get().n };
+}
 function setTransfer(db, bankDir, transferId, state, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const t = db.sql.prepare(`SELECT src, props FROM rel WHERE id=? AND type='transfer' AND deleted_at IS NULL`).get(transferId);
   if (!t) throw new Error(`no transfer ${transferId}`);
@@ -8678,13 +8893,16 @@ function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()
   exportNote(db, bankDir, id);
 }
 
+// src/cli/index.ts
+import { readFileSync as readFileSync14 } from "node:fs";
+
 // src/kb/import.ts
 var import_yaml3 = __toESM(require_dist(), 1);
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { closeSync as closeSync2, existsSync as existsSync12, openSync as openSync2, readdirSync as readdirSync6, readFileSync as readFileSync13, readSync as readSync2, statSync as statSync6 } from "node:fs";
 import os3 from "node:os";
 import path15 from "node:path";
-var sha2562 = (b) => createHash3("sha256").update(b).digest("hex");
+var sha2563 = (b) => createHash4("sha256").update(b).digest("hex");
 var projectOf = (dir) => {
   const c = loadProjectConfig(dir);
   return { project: c?.project_id ?? path15.basename(dir), domain: c?.domain ?? null };
@@ -8693,7 +8911,7 @@ var mdFiles = (dir) => readdirSync6(dir, { recursive: true }).filter((f) => f.en
 function importSources(db, bankDir, sources, now) {
   let created = 0;
   for (const s of sources) {
-    const bytes = readFileSync13(s.file), sha = sha2562(bytes), id = evidenceId(sha);
+    const bytes = readFileSync13(s.file), sha = sha2563(bytes), id = evidenceId(sha);
     if (getNote(db, id)) continue;
     upsertNote(db, { id, kind: "evidence", domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString("utf8")).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
     setAttrs(db, id, { ...s.attrs, source_path: s.file, sha256: sha });
@@ -8887,7 +9105,9 @@ body.lod-low .edge path.vis { stroke-width:2 } body.lod-low .edge.lit path.vis {
 .lane { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
 .lane > header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px } .lane h2 { font:600 15px/1.3 var(--sans) }
 .cols { display:grid; gap:12px 40px }
-.col .parts { display:grid; gap:8px; align-content:start } .col .stage-sm { display:none }
+.col .parts { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:8px; align-content:start } .col .stage-sm { display:none }
+.lane h2 { cursor:pointer } .lane.folded .cols { display:none } .lane.folded h2::after { content:" +"; color:var(--soft) }
+.node .proj { display:block; margin-top:4px; font:500 10px/1.2 var(--mono); letter-spacing:.08em; color:var(--soft); font-style:normal } body.lod-mid .node .proj, body.lod-low .node .proj { display:none }
 .node { position:relative; border:1px solid var(--rule-solid); border-radius:6px; background:var(--paper); transition:border-color .15s, opacity .18s }
 .node[data-kind="target"] { background:transparent; border-style:dashed } .node[data-kind="theme"] { background:var(--paper-3) }
 .node:hover, .node.near { border-color:var(--muted) }
@@ -9033,7 +9253,7 @@ __BOARD__
   }
   function search(q) {
     q = q.trim().toLowerCase();
-    for (const el of $('.node, .badge, .concept')) el.classList.toggle('dim', !!q && !el.textContent.toLowerCase().includes(q));
+    for (const el of $('.node, .badge, .concept')) el.classList.toggle('dim', !!q && !(el.textContent + ' ' + (el.dataset.project || '')).toLowerCase().includes(q));
   }
 
   // --- traces: orthogonal, rounded elbows, fanned attach points, routed from the measured parts ----------------------------------
@@ -9245,6 +9465,7 @@ __BOARD__
   const target = (ev) => ev.target.closest && ev.target.closest('[data-id]');
   document.addEventListener('click', (ev) => {
     if (suppressClick) { suppressClick = false; return; }
+    const laneTitle = ev.target.closest && ev.target.closest('.lane > header h2'); if (laneTitle) { laneTitle.closest('.lane').classList.toggle('folded'); return; }
     const more = ev.target.closest && ev.target.closest('.more');
     if (more) { const box = more.closest('.node, li'); const open = box.classList.toggle('expanded'); more.textContent = open ? 'fewer' : more.dataset.label; return; }
     const t = target(ev); if (t) { show(t.dataset.id); return; } if (ev.target.closest('#panel, #filters, .top')) return; if (selected) clear();
@@ -9340,11 +9561,11 @@ function graphData(db, today = /* @__PURE__ */ new Date()) {
     top += height + LANE_GAP;
   }
   const pending = db.sql.prepare("SELECT id FROM pending_merge WHERE resolved IS NULL AND (a=? OR b=?) ORDER BY created_at, id");
-  const concepts = conceptNotes.map((c, i) => {
+  const concepts2 = conceptNotes.map((c, i) => {
     const touching = rels.filter((r) => r.dst === c.id && (r.type === "about" || r.type === "relies_on")).map((r) => getNote(db, r.src)?.domain ?? NO_DOMAIN);
     return { ...node(c, colX(CONCEPT_COL), HEADER + LANE_PAD + i * ROW_H), lanes: new Set(touching).size, pending: pending.get(c.id, c.id)?.id ?? null };
   });
-  const conceptById = new Map(concepts.map((c) => [c.id, c]));
+  const conceptById = new Map(concepts2.map((c) => [c.id, c]));
   const perAnchor = /* @__PURE__ */ new Map(), looseUsed = /* @__PURE__ */ new Map();
   const findings = findingNotes.map((f) => {
     const attach = attachOf(f), attrs = getAttrs(db, f.id), from = attrs.valid_from?.[0]?.slice(0, 10), to = attrs.valid_to?.[0]?.slice(0, 10);
@@ -9389,7 +9610,7 @@ function graphData(db, today = /* @__PURE__ */ new Date()) {
     if (!Number.isInteger(i)) continue;
     gates[i] = gates[i] ? gates[i].split(" / ").includes(r.value) ? gates[i] : `${gates[i]} / ${r.value}` : r.value;
   }
-  return { lanes, concepts, findings, edges, gates: Array.from(gates, (g) => g ?? "") };
+  return { lanes, concepts: concepts2, findings, edges, gates: Array.from(gates, (g) => g ?? "") };
 }
 var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 var attr = (k, v) => ` ${k}="${esc(v)}"`;
@@ -9413,7 +9634,7 @@ function renderBoard(g) {
   }
   const badge = (b) => `<li><button class="badge" type="button"${attr("data-id", b.id)}${attr("data-state", b.state)}${attr("data-domain", b.domain ?? NO_DOMAIN)}${attr("data-gate-rank", b.gateRank)}${attr("data-valid-today", flag2(b.validToday))}${attr("data-evidence", flag2(b.evidence.length > 0))}${attr("data-expired", flag2(b.expired))}${attr("data-superseded", flag2(b.superseded))}${b.attach ? attr("data-attach", b.attach) : ""}${list("data-environment", b.environment)}${list("data-subject", b.subject)}${attr("title", `${b.title} (${b.state})`)}><i class="led"></i><span>${esc(b.title)}</span></button></li>`;
   const findings = (bs) => bs.length ? `<ul class="findings">${bs.map((b, i) => i < SHOW ? badge(b) : badge(b).replace("<li>", '<li class="hidden-more">')).join("")}${bs.length > SHOW ? `<li class="more-row"><button class="more eyebrow" type="button">+${bs.length - SHOW} more</button></li>` : ""}</ul>` : "";
-  const node = (n) => `<div class="node"${attr("data-id", n.id)}${attr("data-kind", n.kind)}${list("data-environment", n.environment)}${list("data-subject", n.subject)}><button class="part" type="button"${attr("title", n.title)}><span>${esc(n.title)}</span></button>${findings(byAttach.get(n.id) ?? [])}</div>`;
+  const node = (n) => `<div class="node"${attr("data-id", n.id)}${attr("data-kind", n.kind)}${n.project ? attr("data-project", n.project) : ""}${list("data-environment", n.environment)}${list("data-subject", n.subject)}><button class="part" type="button"${attr("title", n.title)}><span>${esc(n.title)}</span>${n.project ? `<em class="proj">${esc(n.project)}</em>` : ""}</button>${findings(byAttach.get(n.id) ?? [])}</div>`;
   const used = COLUMNS.filter((c) => g.lanes.some((l) => l.columns[c].length)), template = used.map(() => "minmax(0,1fr)").join(" ") || "1fr";
   const out = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold: two or more domains. Hollow: merge pending.</p></header><ul>'];
   for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? " multi" : ""}${c.pending ? " hollow" : ""}" type="button"${attr("data-id", c.id)}${attr("data-lanes", c.lanes)}${attr("data-pending", flag2(!!c.pending))}><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="n">${c.lanes}\xD7</span>` : ""}<i class="hub"></i></button>${findings(byAttach.get(c.id) ?? [])}</li>`);
@@ -9422,7 +9643,7 @@ function renderBoard(g) {
   if (used.length) out.push(`<div class="stages" style="grid-template-columns:${template}">${used.map((c) => `<span class="eyebrow">${LABEL[c]}</span>`).join("")}</div>`);
   for (const l of g.lanes) {
     const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings2 = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
-    out.push(`<section class="lane"${attr("data-domain", l.domain)}><header><h2>${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, "part")} \xB7 ${plural(findings2, "finding")}</span></header><div class="cols" style="grid-template-columns:${template}">`);
+    out.push(`<section class="lane"${attr("data-domain", l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, "part")} \xB7 ${plural(findings2, "finding")}</span></header><div class="cols" style="grid-template-columns:${template}">`);
     for (const c of used) {
       const ns = l.columns[c];
       out.push(`<div class="col${ns.length ? "" : " is-empty"}"${attr("data-col", c)}><h3 class="eyebrow stage-sm">${LABEL[c]}</h3><div class="parts">${ns.map(node).join("")}</div></div>`);
@@ -9524,7 +9745,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|->\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
@@ -9658,6 +9879,39 @@ else if (cmd === "sync") {
     } finally {
       db.sql.close();
     }
+  }
+} else if (cmd === "write" && args[0]) {
+  const db = openDb(), bank = paths.bankDir();
+  try {
+    const spec = JSON.parse(readFileSync14(args[0] === "-" ? 0 : args[0], "utf8"));
+    const defaults = spec.defaults ?? {}, records = spec.records ?? spec;
+    const ids2 = /* @__PURE__ */ new Map(), now = (/* @__PURE__ */ new Date()).toISOString();
+    let written = 0, failed = 0;
+    for (const { key, ...r } of records) {
+      try {
+        const rels = (r.rels ?? []).map((l) => ({ ...l, dst: l.dst.startsWith("@") ? ids2.get(l.dst.slice(1)) ?? (() => {
+          throw new Error(`unknown key ${l.dst}`);
+        })() : l.dst }));
+        const res = kbWrite(db, bank, { domain: defaults.domain, project: defaults.project, ...r, rels }, now);
+        if (key) ids2.set(key, res.id);
+        written++;
+        process.stdout.write(`${res.created ? "created" : "updated"}  ${res.id}  ${r.kind}  ${r.title}${res.transfers.length ? `  (${res.transfers.length} transfer${res.transfers.length === 1 ? "" : "s"} proposed)` : ""}
+`);
+      } catch (e) {
+        failed++;
+        process.stdout.write(`error    ${r.kind}  ${r.title}: ${e.message}
+`);
+      }
+    }
+    process.stdout.write(`${written} written, ${failed} failed
+`);
+    if (failed) process.exitCode = 1;
+  } catch (e) {
+    process.stderr.write(`kb write: ${e.message}
+`);
+    process.exitCode = 1;
+  } finally {
+    db.sql.close();
   }
 } else if (cmd === "map") {
   const db = openDb();

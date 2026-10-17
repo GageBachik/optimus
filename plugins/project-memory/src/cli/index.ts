@@ -10,7 +10,8 @@ import { exportAll, rebuild } from '../kb/export.js';
 import { acceptMerge, rejectMerge, splitAlias } from '../kb/concepts.js';
 import { pendingQuestions } from '../kb/brief.js';
 import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js';
-import { setTransfer, retractNote, setAttr } from '../kb/write.js';
+import { setTransfer, retractNote, setAttr, kbWrite, type WriteRecord } from '../kb/write.js';
+import { readFileSync } from 'node:fs';
 import { sync } from '../kb/sync.js';
 import { importSerena, importClaudeMemory } from '../kb/import.js';
 import { generateMap } from '../kb/map.js';
@@ -19,7 +20,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|->\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${paths.logsDir()}/hooks.log)\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -79,6 +80,23 @@ else if (cmd === 'cleanup') {
       if (args[0] !== 'serena') line('claude-memory', importClaudeMemory(db, bank));
     } catch (e) { process.stderr.write(`kb import: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
   }
+} else if (cmd === 'write' && args[0]) {
+  // Bulk import: a JSON file {defaults?: {domain, project}, records: [{key?, ...WriteRecord}]}; a rel dst of "@key" points at a record written earlier in the file.
+  const db = openDb(), bank = paths.bankDir();
+  try {
+    const spec = JSON.parse(readFileSync(args[0] === '-' ? 0 : args[0], 'utf8'));
+    const defaults = (spec.defaults ?? {}) as { domain?: string; project?: string }, records = (spec.records ?? spec) as (WriteRecord & { key?: string })[];
+    const ids = new Map<string, string>(), now = new Date().toISOString(); let written = 0, failed = 0;
+    for (const { key, ...r } of records) {
+      try {
+        const rels = (r.rels ?? []).map((l) => ({ ...l, dst: l.dst.startsWith('@') ? (ids.get(l.dst.slice(1)) ?? (() => { throw new Error(`unknown key ${l.dst}`); })()) : l.dst }));
+        const res = kbWrite(db, bank, { domain: defaults.domain, project: defaults.project, ...r, rels }, now);
+        if (key) ids.set(key, res.id); written++;
+        process.stdout.write(`${res.created ? 'created' : 'updated'}  ${res.id}  ${r.kind}  ${r.title}${res.transfers.length ? `  (${res.transfers.length} transfer${res.transfers.length === 1 ? '' : 's'} proposed)` : ''}\n`);
+      } catch (e) { failed++; process.stdout.write(`error    ${r.kind}  ${r.title}: ${(e as Error).message}\n`); }
+    }
+    process.stdout.write(`${written} written, ${failed} failed\n`); if (failed) process.exitCode = 1;
+  } catch (e) { process.stderr.write(`kb write: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else if (cmd === 'map') {
   const db = openDb();
   try {

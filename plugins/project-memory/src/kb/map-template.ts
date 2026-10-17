@@ -89,7 +89,9 @@ body.lod-low .edge path.vis { stroke-width:2 } body.lod-low .edge.lit path.vis {
 .lane { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
 .lane > header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px } .lane h2 { font:600 15px/1.3 var(--sans) }
 .cols { display:grid; gap:12px 40px }
-.col .parts { display:grid; gap:8px; align-content:start } .col .stage-sm { display:none }
+.col .parts { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:8px; align-content:start } .col .stage-sm { display:none }
+.lane h2 { cursor:pointer } .lane.folded .cols { display:none } .lane.folded h2::after { content:" +"; color:var(--soft) }
+.node .proj { display:block; margin-top:4px; font:500 10px/1.2 var(--mono); letter-spacing:.08em; color:var(--soft); font-style:normal } body.lod-mid .node .proj, body.lod-low .node .proj { display:none }
 .node { position:relative; border:1px solid var(--rule-solid); border-radius:6px; background:var(--paper); transition:border-color .15s, opacity .18s }
 .node[data-kind="target"] { background:transparent; border-style:dashed } .node[data-kind="theme"] { background:var(--paper-3) }
 .node:hover, .node.near { border-color:var(--muted) }
@@ -235,7 +237,7 @@ __BOARD__
   }
   function search(q) {
     q = q.trim().toLowerCase();
-    for (const el of $('.node, .badge, .concept')) el.classList.toggle('dim', !!q && !el.textContent.toLowerCase().includes(q));
+    for (const el of $('.node, .badge, .concept')) el.classList.toggle('dim', !!q && !(el.textContent + ' ' + (el.dataset.project || '')).toLowerCase().includes(q));
   }
 
   // --- traces: orthogonal, rounded elbows, fanned attach points, routed from the measured parts ----------------------------------
@@ -447,6 +449,7 @@ __BOARD__
   const target = (ev) => ev.target.closest && ev.target.closest('[data-id]');
   document.addEventListener('click', (ev) => {
     if (suppressClick) { suppressClick = false; return; }
+    const laneTitle = ev.target.closest && ev.target.closest('.lane > header h2'); if (laneTitle) { laneTitle.closest('.lane').classList.toggle('folded'); return; }
     const more = ev.target.closest && ev.target.closest('.more');
     if (more) { const box = more.closest('.node, li'); const open = box.classList.toggle('expanded'); more.textContent = open ? 'fewer' : more.dataset.label; return; }
     const t = target(ev); if (t) { show(t.dataset.id); return; } if (ev.target.closest('#panel, #filters, .top')) return; if (selected) clear();

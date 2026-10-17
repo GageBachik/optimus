@@ -1,0 +1,11 @@
+domain: tooling
+facets: [stack, runtime, interface, persistence, distribution]
+methods: [prototype, benchmark, dogfood, load-test, audit]
+gates: [local, dogfood, shared, published]
+environment: runtime
+subject: component
+seed_concepts:
+  - { name: idempotency, aliases: [retry-safe, idempotent replay, safe to retry] }
+  - { name: context window budget, aliases: [token budget, context budget, context cost] }
+  - { name: hot path latency, aliases: [p50 latency, latency budget, startup latency] }
+  - { name: single source of truth, aliases: [one source of truth, canonical store] }

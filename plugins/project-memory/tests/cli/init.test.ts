@@ -11,11 +11,11 @@ const { kbWrite } = await import('../../src/kb/write.js');
 const { gateRank } = await import('../../src/kb/templates.js');
 const config = () => JSON.parse(readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'config.json'), 'utf8'));
 const git = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' }).stdout.trim();
-test('kb init creates a committed bank with the three templates installed; --clone rebuilds from it', () => {
+test('kb init creates a committed bank with the five templates installed; --clone rebuilds from it', () => {
   const bank = path.join(mkdtempSync(path.join(tmpdir(), 'bank-')), 'kb');
   initBank({ bank, print: () => {} });
   assert.equal(readFileSync(path.join(bank, '.gitattributes'), 'utf8'), '* text=auto eol=lf\n');
-  assert.deepEqual(readdirSync(path.join(bank, 'templates')).sort(), ['gen-l1.yaml', 'ios.yaml', 'trading.yaml']);
+  assert.deepEqual(readdirSync(path.join(bank, 'templates')).sort(), ['gen-l1.yaml', 'ios.yaml', 'solana.yaml', 'tooling.yaml', 'trading.yaml']);
   assert.ok(existsSync(path.join(bank, 'notes'))); assert.equal(git(bank, 'branch', '--show-current'), 'main');
   assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1'); assert.equal(git(bank, 'status', '--porcelain'), '');
   assert.equal(config().bankDir, bank); assert.equal(gateRank(openDb(), 'ios', 'testflight'), 2);
