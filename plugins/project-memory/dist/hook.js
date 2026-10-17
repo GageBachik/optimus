@@ -1331,6 +1331,7 @@ __export(session_end_exports, {
 import path17 from "node:path";
 import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
 async function sessionEnd(input) {
+  if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const ts = path17.join(paths.sessionDir(sessionId), "task-state.md");
   if (existsSync8(ts)) storeBlob(readFileSync6(ts, "utf8"), { tool: "task-state", sessionId });
@@ -1394,7 +1395,10 @@ async function runHook(event2, fn) {
   }
   try {
     const out2 = await fn(input);
-    if (out2 !== void 0) process.stdout.write(JSON.stringify(out2));
+    if (out2 !== void 0) {
+      process.stdout.write(JSON.stringify(out2), () => process.exit(0));
+      return;
+    }
   } catch (e) {
     log("error", `handler threw in ${event2}`, String(e));
   }

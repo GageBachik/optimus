@@ -8291,13 +8291,12 @@ function steps(db, bank) {
   } else if (!before) return { result: "ok" };
   r = git(bank, "push", "-q", "-u", remote, branch);
   if (r.status !== 0) return fail("git push", r);
-  if (git(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim() !== before) {
-    try {
-      log("info", "sync: re-imported after pull", importAll(db, bank));
-    } catch (e) {
-      log("error", "sync: import after pull failed", String(e));
-      return { result: "failed", reason: "import failed" };
-    }
+  try {
+    const im = importAll(db, bank);
+    if (im.imported) log("info", "sync: re-imported after pull", im);
+  } catch (e) {
+    log("error", "sync: import after pull failed", String(e));
+    return { result: "failed", reason: "import failed" };
   }
   return { result: "ok" };
 }

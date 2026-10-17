@@ -40,9 +40,8 @@ function steps(db: Db, bank: string): { result: SyncResult; reason?: string } {
     if (r.status !== 0) { git(bank, 'rebase', '--abort'); log('warn', 'sync: rebase conflict, aborted; local commit intact', { bank, detail: errText(r) }); return { result: 'failed', reason: 'rebase conflict' }; }
   } else if (!before) return { result: 'ok' }; // nothing here, nothing there
   r = git(bank, 'push', '-q', '-u', remote, branch); if (r.status !== 0) return fail('git push', r);
-  if (git(bank, 'rev-parse', '--verify', '-q', 'HEAD').stdout.trim() !== before) { // the pull brought commits: re-index what they changed (importAll skips files whose hash is unchanged)
-    try { log('info', 'sync: re-imported after pull', importAll(db, bank)); } catch (e) { log('error', 'sync: import after pull failed', String(e)); return { result: 'failed', reason: 'import failed' }; }
-  }
+  // Re-index unconditionally: HEAD may have moved before this sync started (a hand-resolved rebase, the `kb doctor` recovery path), and importAll skips files whose hash is unchanged.
+  try { const im = importAll(db, bank); if (im.imported) log('info', 'sync: re-imported after pull', im); } catch (e) { log('error', 'sync: import after pull failed', String(e)); return { result: 'failed', reason: 'import failed' }; }
   return { result: 'ok' };
 }
 

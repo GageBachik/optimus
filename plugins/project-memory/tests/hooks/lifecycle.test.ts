@@ -19,5 +19,7 @@ test('stop appends a metrics line (main only); session-end removes the session d
   const m = readFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'metrics.jsonl'), 'utf8').trim().split('\n'); assert.equal(m.length, 1);
   const { paths } = await import('../../src/lib/paths.js');
   const ls = JSON.parse(readFileSync(path.join(paths.projectDir(paths.projectKey('/w')), 'last-session.json'), 'utf8')); assert.equal(ls.sessionId, 's2'); assert.match(ls.taskState.goalFirst, /Fix the ES backtest/);
-  await end({ session_id: 's2', cwd: '/w' }); assert.ok(!existsSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'sessions', 's2')));
+  const s2 = path.join(process.env.PROJECT_MEMORY_HOME!, 'sessions', 's2');
+  await end({ session_id: 's2', cwd: '/w', agent_id: 'a9' }); assert.ok(existsSync(s2), "a subagent's SessionEnd leaves the main agent's session state in place (DESIGN §3.1)");
+  await end({ session_id: 's2', cwd: '/w' }); assert.ok(!existsSync(s2));
 });
