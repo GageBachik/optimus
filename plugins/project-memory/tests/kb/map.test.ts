@@ -52,7 +52,7 @@ test('map: one lane per domain, a data-state badge per finding, data-type per ed
   assert.equal(generateMap(db, out, today), out);
   const html = readFileSync(out, 'utf8');
   assert.equal(html.match(/class="lane"/g)!.length, 2);
-  const badges = html.match(/<g class="badge"[^>]*>/g)!; assert.equal(badges.length, 3);
+  const badges = html.match(/<button class="badge"[^>]*>/g)!; assert.equal(badges.length, 3);
   for (const [id, state] of [[f1.id, 'reproduced'], [f2.id, 'observed'], [guess.id, 'unverified']]) assert.ok(badges.some((b) => b.includes(`data-id="${id}"`) && b.includes(`data-state="${state}"`)), `${id} ${state}`);
   assert.ok(badges.find((b) => b.includes(f2.id))!.includes('data-expired="1"'), 'past valid_to is hatched');
   const edges = html.match(/<g class="edge"[^>]*>/g)!; assert.ok(edges.length >= 7, `${edges.length} edges`);
@@ -63,6 +63,12 @@ test('map: one lane per domain, a data-state badge per finding, data-type per ed
   for (const cmd of [`kb transfer ${tid} confirm`, `kb transfer ${tid} refute`, `kb concepts accept ${pid}`, `kb retract ${f1.id}`, `kb set ${f1.id} valid_to`]) assert.ok(html.includes(cmd), cmd);
   for (const f of ['domain', 'environment', 'subject', 'state']) assert.ok(html.includes(`data-filter="${f}"`), f);
   for (const id of ['gate-min', 'valid-today', 'has-evidence', 'show-proposed', 'panel']) assert.ok(html.includes(`id="${id}"`), id);
+  for (const id of ['search', 'filters-toggle', 'board']) assert.ok(html.includes(`id="${id}"`), id);
+  assert.ok(html.includes('<svg class="wires">'), 'trace overlay present');
+  for (const e of edges) assert.match(e, / data-motion="(draw|fade)"/);
+  assert.ok(html.includes(`data-attach="${a1.id}"`) && new RegExp(`<div class="node" data-id="${a1.id}"[^>]*>(?:(?!</div>).)*class="badge"`, 's').test(html), 'attached finding is mounted inside its approach');
+  assert.ok(/class="rail"/.test(html) && html.includes('class="concept multi hollow"') === false, 'rail rendered');
+  assert.ok(html.includes(`<section class="lane" data-domain="trading">`), 'lane section');
 });
 
 test('map: an attached finding whose domain has no lane still gets a Domain checkbox', () => {
@@ -71,7 +77,7 @@ test('map: an attached finding whose domain has no lane still gets a Domain chec
   const f = kbWrite(db, bank, { kind: 'finding', title: 'no-domain finding', rels: [{ type: 'about', dst: a.id }] }, now);
   const out = path.join(process.env.PROJECT_MEMORY_HOME!, 'out', 'map2.html'); generateMap(db, out, today);
   const html = readFileSync(out, 'utf8');
-  const dom = html.match(new RegExp(`<g class="badge"[^>]*data-id="${f.id}"[^>]*>`))![0].match(/data-domain="([^"]*)"/)![1];
+  const dom = html.match(new RegExp(`<button class="badge"[^>]*data-id="${f.id}"[^>]*>`))![0].match(/data-domain="([^"]*)"/)![1];
   assert.ok(html.includes(`data-filter="domain" value="${dom}"`), `a domain box for ${dom}`);
 });
 

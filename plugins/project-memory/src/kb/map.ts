@@ -87,51 +87,63 @@ export function graphData(db: Db, today = new Date()): Graph {
 }
 
 const esc = (s: unknown) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-const clip = (s: string, n = 26) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const attr = (k: string, v: unknown) => ` ${k}="${esc(v)}"`;
 const list = (k: string, vs: string[]) => (vs.length ? attr(k, vs.join('|')) : ''); // ponytail: `|` separates values; a facet value containing `|` would split
 const flag = (b: boolean) => (b ? '1' : '0');
 
 type Item = { id: string; kind: string; title: string; domain: string | null; project: string | null; attrs: Record<string, string[]>; evidence: string[]; rels: { dir: 'in' | 'out'; type: string; other: string; otherId: string; props: string }[]; commands: string[] };
 
-function renderSvg(g: Graph): string {
-  const all = new Map<string, { l: [number, number]; r: [number, number]; title: string }>();
-  for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) all.set(n.id, { l: [n.x, n.y], r: [n.x + NODE_W, n.y], title: n.title });
-  for (const c of g.concepts) all.set(c.id, { l: [c.x + 1, c.y], r: [c.x + 15, c.y], title: c.title });
-  for (const b of g.findings) all.set(b.id, { l: [b.x - 6, b.y], r: [b.x + 6, b.y], title: b.title });
-  const width = colX(CONCEPT_COL) + 260, height = Math.max(g.lanes.at(-1) ? g.lanes.at(-1)!.top + g.lanes.at(-1)!.height : HEADER, HEADER + LANE_PAD + g.concepts.length * ROW_H) + 16;
-  const out: string[] = [`<svg width="${width + 32}" height="${height}"><defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4"></line></pattern></defs><g transform="translate(16,0)">`];
-  for (const [i, label] of ['Theme', 'Approach', 'Experiment', 'Target', 'Concept'].entries()) out.push(`<text class="col" x="${colX(i)}" y="18">${label}</text>`);
+const LABEL: Record<Column, string> = { theme: 'Theme', approach: 'Approach', experiment: 'Experiment', target: 'Target' };
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+function titlesOf(g: Graph): Map<string, string> {
+  const titles = new Map<string, string>();
+  for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) titles.set(n.id, n.title);
+  for (const n of [...g.concepts, ...g.findings]) titles.set(n.id, n.title);
+  return titles;
+}
+
+/** The boards: HTML so the parts reflow at any width. One <section class="lane"> per domain with the four pipeline columns, an LED per
+ *  finding mounted on the part it is about (or in a loose row of its lane), and the concept rail. The script routes the traces from
+ *  the measured positions of these elements. */
+function renderBoard(g: Graph): string {
+  const byAttach = new Map<string, Badge[]>(), loose = new Map<string, Badge[]>();
+  for (const b of g.findings) { const m = b.attach ? byAttach : loose, k = b.attach ?? (b.domain ?? NO_DOMAIN); (m.get(k) ?? m.set(k, []).get(k)!).push(b); }
+  const badge = (b: Badge) => `<li><button class="badge" type="button"${attr('data-id', b.id)}${attr('data-state', b.state)}${attr('data-domain', b.domain ?? NO_DOMAIN)}${attr('data-gate-rank', b.gateRank)}${attr('data-valid-today', flag(b.validToday))}${attr('data-evidence', flag(b.evidence.length > 0))}${attr('data-expired', flag(b.expired))}${attr('data-superseded', flag(b.superseded))}${b.attach ? attr('data-attach', b.attach) : ''}${list('data-environment', b.environment)}${list('data-subject', b.subject)}${attr('title', `${b.title} (${b.state})`)}><i class="led"></i><span>${esc(b.title)}</span></button></li>`;
+  const node = (n: Node) => { const bs = byAttach.get(n.id) ?? []; return `<div class="node"${attr('data-id', n.id)}${attr('data-kind', n.kind)}${list('data-environment', n.environment)}${list('data-subject', n.subject)}><button class="part" type="button"${attr('title', n.title)}><span>${esc(n.title)}</span></button>${bs.length ? `<ul class="findings">${bs.map(badge).join('')}</ul>` : ''}</div>`; };
+  const out: string[] = ['<div class="lanes">'];
   for (const l of g.lanes) {
-    out.push(`<g class="lane"${attr('data-domain', l.domain)}><rect class="bg" x="-12" y="${l.top}" width="${width + 8}" height="${l.height}" rx="6"></rect><text class="label" x="0" y="${l.top + 20}">${esc(l.domain)}</text>`);
-    for (const c of COLUMNS) for (const n of l.columns[c])
-      out.push(`<g class="node"${attr('data-id', n.id)}${attr('data-kind', n.kind)}${list('data-environment', n.environment)}${list('data-subject', n.subject)} tabindex="0" role="button"><rect x="${n.x}" y="${n.y - 11}" width="${NODE_W}" height="22" rx="4"></rect><text x="${n.x + 6}" y="${n.y + 4}">${esc(clip(n.title))}</text><title>${esc(n.title)}</title></g>`);
-    out.push('</g>');
+    const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
+    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2>${esc(l.domain)}</h2><span class="count">${plural(parts, 'part')}, ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${COLUMNS.map((c) => (l.columns[c].length ? 'minmax(0,1fr)' : 'minmax(0,.45fr)')).join(' ')}">`); // empty stages stay visible but narrow
+    for (const c of COLUMNS) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3>${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
+    if (lo.length) out.push(`<div class="loose"><h3>Findings not tied to a part</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
+    if (!parts && !lo.length) out.push('<p class="empty">Nothing recorded in this domain yet. Write an approach or a finding and it appears here.</p>');
+    out.push('</div></section>');
   }
-  for (const e of g.edges) {
-    const a = all.get(e.src)!, b = all.get(e.dst)!, [p, q] = a.l[0] < b.l[0] ? [a.r, b.l] : a.l[0] > b.l[0] ? [a.l, b.r] : [a.r, b.r];
-    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, state = typeof e.props.state === 'string' ? e.props.state : '', gate = typeof e.props.gate === 'string' ? e.props.gate : '';
-    const line = (cls: string) => `<line class="${cls}" x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}"></line>`;
-    out.push(`<g class="edge"${attr('data-id', e.id)}${attr('data-type', e.type)}${attr('data-src', e.src)}${attr('data-dst', e.dst)}${state ? attr('data-state', state) : ''}${gate ? attr('data-gate', gate) : ''} tabindex="0" role="button">${line('vis')}${line('hit')}`
-      + (e.type === 'validated_in' && gate ? `<text x="${q[0] - 6}" y="${q[1] - 12}" text-anchor="end">${esc(gate)}</text>` : '') // at the target end: the midpoint is the experiment column
-      + (e.type === 'transfer' && state === 'refuted' ? `<text class="x" x="${mx}" y="${my + 5}" text-anchor="middle">×</text>` : '')
-      + `<title>${esc(`${e.type}: ${a.title} → ${b.title}`)}</title></g>`);
-  }
-  for (const b of g.findings) {
-    const hatched = b.expired || b.superseded;
-    out.push(`<g class="badge"${attr('data-id', b.id)}${attr('data-state', b.state)}${attr('data-domain', b.domain ?? NO_DOMAIN)}${attr('data-gate-rank', b.gateRank)}${attr('data-valid-today', flag(b.validToday))}${attr('data-evidence', flag(b.evidence.length > 0))}${attr('data-expired', flag(b.expired))}${attr('data-superseded', flag(b.superseded))}${b.attach ? attr('data-attach', b.attach) : ''}${list('data-environment', b.environment)}${list('data-subject', b.subject)} tabindex="0" role="button">`
-      + `<circle class="fill" cx="${b.x}" cy="${b.y}" r="6"></circle>${hatched ? `<circle class="hatch" cx="${b.x}" cy="${b.y}" r="6"></circle>` : ''}`
-      + (b.attach ? '' : `<text x="${b.x + 12}" y="${b.y + 4}">${esc(clip(b.title, 40))}</text>`) + `<title>${esc(`${b.title} (${b.state})`)}</title></g>`);
-  }
-  for (const c of g.concepts)
-    out.push(`<g class="concept${c.lanes >= 2 ? ' multi' : ''}${c.pending ? ' hollow' : ''}"${attr('data-id', c.id)}${attr('data-lanes', c.lanes)}${attr('data-pending', flag(!!c.pending))} tabindex="0" role="button"><circle cx="${c.x + 8}" cy="${c.y}" r="7"></circle><text x="${c.x + 22}" y="${c.y + 4}">${esc(clip(c.title, 30))}</text><title>${esc(c.title)}</title></g>`);
-  out.push('</g></svg>');
+  out.push('</div>', '<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold when two or more domains touch one, hollow while a merge is pending.</p></header><ul>');
+  for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? ' multi' : ''}${c.pending ? ' hollow' : ''}" type="button"${attr('data-id', c.id)}${attr('data-lanes', c.lanes)}${attr('data-pending', flag(!!c.pending))}><i class="hub"></i><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="lanes-n">${plural(c.lanes, 'domain')}</span>` : ''}</button>${(byAttach.get(c.id) ?? []).length ? `<ul class="findings">${byAttach.get(c.id)!.map(badge).join('')}</ul>` : ''}</li>`);
+  if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
+  out.push('</ul></aside>');
   return out.join('\n');
+}
+
+/** The trace overlay: one <g class="edge"> per relation between drawn elements, with its type, state and gate as data attributes.
+ *  Geometry is left empty; the script sets the path once it has measured the parts. Solid traces draw themselves on load, patterned
+ *  ones fade in (a dash pattern cannot also carry the draw animation). */
+function renderEdges(g: Graph): string {
+  const titles = titlesOf(g);
+  return g.edges.map((e) => {
+    const state = typeof e.props.state === 'string' ? e.props.state : '', gate = typeof e.props.gate === 'string' ? e.props.gate : '';
+    const patterned = e.type === 'discovered_in' || e.type === 'conflicts_with' || (e.type === 'transfer' && state !== 'confirmed');
+    return `<g class="edge"${attr('data-id', e.id)}${attr('data-type', e.type)}${attr('data-src', e.src)}${attr('data-dst', e.dst)}${state ? attr('data-state', state) : ''}${gate ? attr('data-gate', gate) : ''}${attr('data-motion', patterned ? 'fade' : 'draw')} tabindex="0" role="button"><path class="vis"></path><path class="hit"></path>`
+      + (e.type === 'validated_in' && gate ? `<text class="gate">${esc(gate)}</text>` : '')
+      + (e.type === 'transfer' && state === 'refuted' ? '<text class="x">×</text>' : '')
+      + `<title>${esc(`${e.type}: ${titles.get(e.src) ?? e.src} → ${titles.get(e.dst) ?? e.dst}`)}</title></g>`;
+  }).join('\n');
 }
 
 function renderFilters(g: Graph): string {
   const box = (name: string, v: string, label = v, checked = true) => `<label><input type="checkbox"${attr('data-filter', name)}${attr('value', v)}${checked ? ' checked' : ''}> ${esc(label)}</label>`;
-  const group = (legend: string, name: string, values: string[]) => `<fieldset><legend>${legend}</legend>${values.length ? values.map((v) => box(name, v)).join('') : '<div class="muted">none</div>'}</fieldset>`;
+  const group = (legend: string, name: string, values: string[]) => `<fieldset><legend>${legend}</legend>${values.length ? values.map((v) => box(name, v)).join('') : '<div class="none">none</div>'}</fieldset>`;
   const targets = g.lanes.flatMap((l) => l.columns.target);
   const distinct = (xs: string[]) => [...new Set(xs)].sort();
   const states = distinct(['unverified', 'observed', 'reproduced', 'conflicting', ...g.findings.map((b) => b.state)]);
@@ -147,9 +159,7 @@ function renderFilters(g: Graph): string {
 
 /** Side-panel data: every drawn element and edge by id, with the exact commands DESIGN §4.11 says to show. */
 function items(db: Db, g: Graph): Record<string, Item> {
-  const titles = new Map<string, string>();
-  for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) titles.set(n.id, n.title);
-  for (const n of [...g.concepts, ...g.findings]) titles.set(n.id, n.title);
+  const titles = titlesOf(g);
   const relsOf = (id: string) => g.edges.filter((e) => e.src === id || e.dst === id).map((e) => {
     const dir = e.src === id ? 'out' as const : 'in' as const, otherId = dir === 'out' ? e.dst : e.src;
     return { dir, type: e.type, other: titles.get(otherId) ?? otherId, otherId, props: Object.keys(e.props).length ? JSON.stringify(e.props) : '' };
@@ -171,11 +181,11 @@ function items(db: Db, g: Graph): Record<string, Item> {
 export function generateMap(db: Db, outFile = path.join(paths.stateDir(), 'map.html'), today = new Date()): string {
   const g = graphData(db, today);
   const parts: Record<string, string> = {
-    META: esc(`generated ${today.toISOString().slice(0, 10)} · ${g.lanes.length} lanes · ${g.concepts.length} concepts · ${g.findings.length} findings · ${g.edges.length} edges`),
-    FILTERS: renderFilters(g), SVG: renderSvg(g),
+    META: esc(`Generated ${today.toISOString().slice(0, 10)}. ${plural(g.lanes.length, 'domain')}, ${plural(g.concepts.length, 'concept')}, ${plural(g.findings.length, 'finding')}, ${plural(g.edges.length, 'relation')}.`),
+    FILTERS: renderFilters(g), BOARD: renderBoard(g), EDGES: renderEdges(g),
     DATA: JSON.stringify({ items: items(db, g) }).replace(/</g, '\\u003c'), // `</script>` can never close the data block
   };
-  const html = TEMPLATE.replace(/__(META|FILTERS|SVG|DATA)__/g, (_, k: string) => parts[k]);
+  const html = TEMPLATE.replace(/__(META|FILTERS|BOARD|EDGES|DATA)__/g, (_, k: string) => parts[k]);
   mkdirSync(path.dirname(outFile), { recursive: true }); writeFileSync(outFile, html);
   return outFile;
 }
