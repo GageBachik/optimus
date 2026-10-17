@@ -8855,8 +8855,23 @@ body.filters-open #filters { transform:none }
 .legend svg { width:40px; height:12px; display:block } .legend .led { display:block; margin:0 auto; opacity:1 }
 
 /* board */
-.board { grid-area:board; position:relative; overflow:auto; padding:24px 24px 48px }
-.layout { display:grid; grid-template-columns:232px minmax(0,1fr); gap:24px 72px; align-items:start; position:relative }
+.board { grid-area:board; position:relative; overflow:hidden; touch-action:none; cursor:grab; background:var(--paper) }
+.board.dragging { cursor:grabbing; user-select:none } body.space .board { cursor:grab }
+.canvas { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform } .canvas.animate { transition:transform .4s var(--ease) }
+.layout { display:grid; grid-template-columns:232px minmax(0,1fr); gap:24px 72px; align-items:start; position:relative; padding:24px 24px 48px }
+.zoom { position:absolute; right:16px; bottom:16px; display:flex; gap:2px; z-index:6; background:var(--paper-2); border:1px solid var(--rule); border-radius:8px; padding:4px }
+.zoom button { padding:6px 10px; border-radius:6px; font:500 11px/1 var(--mono); letter-spacing:.08em; color:var(--muted); transition:background .15s, color .15s }
+.zoom button:hover:not(:disabled) { background:var(--paper-3); color:var(--ink) } .zoom button:disabled { opacity:.35; cursor:default } .zoom .pct { min-width:56px; text-align:center }
+/* semantic zoom: zoomed out, the parts shed detail and their names grow, so a title stays readable at any zoom */
+/* terse by default: a part shows its name and a row of LEDs; the finding text appears where you drill in (select it), or everywhere with the Text switch */
+.findings.dots { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 10px } .findings.dots > li, .findings.dots > li.hidden-more { display:block }
+.findings.dots .badge > span, .findings.dots .more-row, .findings.dots + .loose .eyebrow { display:none } .findings.dots .badge { width:auto; padding:0 } .findings.dots .badge .led { margin:0 }
+.loose .findings.dots { padding:4px 4px 0 } body.lod-mid .loose .eyebrow, body.lod-low .loose .eyebrow { display:none }
+body.lod-mid .node .part > span { -webkit-line-clamp:2 }
+body.lod-low .node .part { font-size:22px; padding:10px 14px } body.lod-low .node .part > span { -webkit-line-clamp:2 } body.lod-low .led { width:12px; height:12px }
+body.lod-low .lane h2, body.lod-low .rail h2 { font-size:28px } body.lod-low .lane > header .eyebrow, body.lod-low .stages .eyebrow { font-size:15px } body.lod-low .lane { padding:20px }
+body.lod-low .concept { font-size:21px; padding:8px 0 8px 10px } body.lod-low .concept .hub { width:12px; height:12px } body.lod-low .rail .hint, body.lod-low .rail .findings { display:none }
+body.lod-low .edge path.vis { stroke-width:2 } body.lod-low .edge.lit path.vis { stroke-width:3 } body.lod-low .edge text { font-size:15px }
 .rail { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
 .rail > header { margin-bottom:12px } .rail h2 { font:600 15px/1.3 var(--sans) } .rail .hint { color:var(--soft); font-size:12px; margin-top:4px }
 .rail ul { list-style:none; margin:0; padding:0; display:grid; gap:2px }
@@ -8951,7 +8966,7 @@ body.panel-open #panel { width:360px; overflow:auto; border-left-color:var(--rul
 }
 @media (max-width: 720px) {
   .top { padding:10px 16px; gap:10px } .brand .eyebrow { display:none } .brand h1 { font-size:20px } #search { width:auto; flex:1; min-width:0 }
-  .board { padding:16px 12px 120px } .lanes { gap:12px } .lane { padding:12px }
+  .layout { padding:16px 12px 120px } .lanes { gap:12px } .lane { padding:12px } .zoom { bottom:12px; right:12px }
   .stages { display:none } .cols { grid-template-columns:1fr !important; gap:12px } .col.is-empty { display:none } .col .stage-sm { display:block; margin-bottom:6px }
   .edge:not(.lit):not(.selected) { display:none } /* on a phone the traces appear for the part you touch, not all at once */
 }
@@ -8974,19 +8989,22 @@ __FILTERS__
 </aside>
 <div id="scrim"></div>
 <main class="board" id="board">
+<div class="canvas" id="canvas">
 <div class="layout">
 __BOARD__
 </div>
 <svg class="wires">__EDGES__</svg>
+</div>
+<div class="zoom" role="toolbar" aria-label="Zoom"><button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out (\u2212)">\u2212</button><button class="pct" id="zoom-pct" type="button" title="100% (Shift+0)">100%</button><button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button><button id="zoom-fit" type="button" title="Fit everything (Shift+1)">Fit</button><button id="zoom-focus" type="button" title="Fit the selection and its neighbours (Shift+2)" disabled>Focus</button></div>
 </main>
-<aside id="panel"><div class="in show"><button class="close" type="button" aria-label="Close inspector">\xD7</button><p class="placeholder">Select a part, an LED, a concept or a trace to inspect it. Hover anything to light up what it connects to.<br><br>Type in the search box to find a part by name. <kbd>Esc</kbd> clears the selection.</p></div></aside>
+<aside id="panel"><div class="in show"><button class="close" type="button" aria-label="Close inspector">\xD7</button><p class="placeholder">Click anything to inspect it. Hover to light its connections.<br><br>Scroll pans \xB7 pinch or <kbd>\u2318</kbd>+scroll zooms \xB7 drag empty space moves \xB7 <kbd>Shift</kbd>+<kbd>1</kbd> fits all \xB7 <kbd>Shift</kbd>+<kbd>2</kbd> fits the selection \xB7 <kbd>Esc</kbd> clears.</p></div></aside>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 (() => {
   const data = JSON.parse(document.getElementById('data').textContent);
   const $ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const byId = (id) => document.querySelector('[data-id="' + CSS.escape(id) + '"]:not(.edge)');
-  const board = document.getElementById('board'), wires = document.querySelector('.wires'), panel = document.getElementById('panel'), body = document.body;
+  const board = document.getElementById('board'), canvas = document.getElementById('canvas'), wires = document.querySelector('.wires'), panel = document.getElementById('panel'), body = document.body;
   const edges = $('.edge');
   const adj = new Map();
   for (const e of edges) { const { src, dst } = e.dataset; (adj.get(src) ?? adj.set(src, []).get(src)).push({ e, other: dst }); (adj.get(dst) ?? adj.set(dst, []).get(dst)).push({ e, other: src }); }
@@ -9009,7 +9027,8 @@ __BOARD__
     }
     for (const e of edges) { const d = e.dataset; e.classList.toggle('off', hidden.has(d.src) || hidden.has(d.dst) || (d.type === 'transfer' && d.state === 'proposed' && !proposed)); }
     body.classList.toggle('quiet', !document.getElementById('show-traces').checked);
-    layout();
+    body.classList.toggle('terse', !document.getElementById('show-text').checked);
+    presentation(); layout();
   }
   function search(q) {
     q = q.trim().toLowerCase();
@@ -9018,7 +9037,8 @@ __BOARD__
 
   // --- traces: orthogonal, rounded elbows, fanned attach points, routed from the measured parts ----------------------------------
   const R = 8;
-  function rect(el) { const b = board.getBoundingClientRect(), r = el.getBoundingClientRect(); const l = r.left - b.left + board.scrollLeft, t = r.top - b.top + board.scrollTop; return { l, t, r: l + r.width, b: t + r.height, w: r.width, h: r.height, cx: l + r.width / 2, cy: t + r.height / 2 }; }
+  // canvas coordinates, measured through whatever transform is on screen at this instant (so a running zoom cannot skew the routing)
+  function rect(el) { const c = canvas.getBoundingClientRect(), kk = c.width / canvas.offsetWidth || 1, r = el.getBoundingClientRect(); const l = (r.left - c.left) / kk, t = (r.top - c.top) / kk, w = r.width / kk, h = r.height / kk; return { l, t, r: l + w, b: t + h, w, h, cx: l + w / 2, cy: t + h / 2 }; }
   const visible = (el) => !!el && el.getClientRects().length > 0;
   const sgn = (v) => (v < 0 ? -1 : 1);
   // horizontal \u2192 vertical \u2192 horizontal through x = mx (or straight when the ends share a row)
@@ -9035,8 +9055,8 @@ __BOARD__
   }
   let drawn = false;
   function layout() {
-    wires.setAttribute('width', board.scrollWidth); wires.setAttribute('height', board.scrollHeight);
-    wires.style.width = board.scrollWidth + 'px'; wires.style.height = board.scrollHeight + 'px';
+    wires.setAttribute('width', canvas.offsetWidth); wires.setAttribute('height', canvas.offsetHeight);
+    wires.style.width = canvas.offsetWidth + 'px'; wires.style.height = canvas.offsetHeight + 'px';
     const lanesEl = board.querySelector('.lanes'), railEl = board.querySelector('.rail');
     const lanesR = rect(lanesEl), railR = railEl && visible(railEl) ? rect(railEl) : null, hubs = $('.concept');
     const busOk = !!railR && lanesR.l >= railR.r + 40;
@@ -9099,15 +9119,81 @@ __BOARD__
     if (!drawn) body.style.setProperty('--stagger', Math.max(6, Math.min(25, 600 / Math.max(1, i))) + 'ms');
   }
 
+  // --- canvas: pan, zoom, fit, semantic zoom ---------------------------------------------------------------------------------------
+  let k = 1, tx = 0, ty = 0, lod = 'full', refits = 0, pendingFit = null, suppressClick = false, space = false;
+  const pct = document.getElementById('zoom-pct'), focusBtn = document.getElementById('zoom-focus');
+  const clamp = (v) => Math.min(3, Math.max(.2, v));
+  const lodFor = (z, cur) => (cur === 'low' ? (z >= .55 ? (z >= .85 ? 'full' : 'mid') : 'low') : cur === 'mid' ? (z < .5 ? 'low' : z >= .85 ? 'full' : 'mid') : (z < .5 ? 'low' : z < .8 ? 'mid' : 'full'));
+  let lodTimer;
+  function applyView(animate) {
+    canvas.classList.toggle('animate', !!animate);
+    canvas.style.transform = 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + k.toFixed(4) + ')';
+    pct.textContent = Math.round(k * 100) + '%';
+    clearTimeout(lodTimer);
+    lodTimer = setTimeout(() => { const n = lodFor(k, lod); if (n !== lod) { lod = n; body.classList.toggle('lod-mid', n === 'mid'); body.classList.toggle('lod-low', n === 'low'); presentation(); } else pendingFit = null; }, 80);
+  }
+  function sizeCanvas() { canvas.style.width = Math.max(320, board.clientWidth) + 'px'; }
+  function zoomAt(f, cx, cy) { pendingFit = null; const b = board.getBoundingClientRect(), px = cx - b.left, py = cy - b.top, nk = clamp(k * f); f = nk / k; tx = px - (px - tx) * f; ty = py - (py - ty) * f; k = nk; applyView(false); }
+  function fit(bx, animate, pad, maxK) {
+    if (!bx || bx.r <= bx.l || bx.b <= bx.t) return;
+    const vw = Math.max(80, board.clientWidth - pad * 2), vh = Math.max(80, board.clientHeight - pad * 2);
+    k = clamp(Math.min(vw / (bx.r - bx.l), vh / (bx.b - bx.t), maxK));
+    tx = pad + (vw - (bx.r - bx.l) * k) / 2 - bx.l * k; ty = pad + (vh - (bx.b - bx.t) * k) / 2 - bx.t * k;
+    applyView(animate);
+  }
+  function fitAll(animate) { refits = 2; pendingFit = 'all'; fit({ l: 0, t: 0, r: canvas.offsetWidth, b: canvas.offsetHeight }, animate, 16, 1); }
+  function bounds(els) { let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity; for (const el of els) { const R = rect(el); l = Math.min(l, R.l); t = Math.min(t, R.t); r = Math.max(r, R.r); b = Math.max(b, R.b); } return isFinite(l) ? { l, t, r, b } : null; }
+  function fitSelection(animate) { if (!selected) return; const els = neighbours(selected).filter(visible); if (!els.length) return; refits = 2; pendingFit = 'sel'; fit(bounds(els), animate, 40, 1); }
+  function refit() { if (!pendingFit || refits-- <= 0) { pendingFit = null; return; } (pendingFit === 'all' ? fitAll : fitSelection)(true); } // a fit may change the level of detail, which changes the sizes: settle in at most two more passes
+  // scroll pans, pinch or Cmd/Ctrl+scroll zooms at the cursor (a trackpad pinch arrives as a wheel event with ctrlKey)
+  board.addEventListener('wheel', (ev) => { ev.preventDefault(); if (ev.ctrlKey || ev.metaKey) zoomAt(Math.exp(-ev.deltaY * 0.01), ev.clientX, ev.clientY); else { pendingFit = null; tx -= ev.deltaX; ty -= ev.deltaY; applyView(false); } }, { passive: false });
+  let gestureK = 1; // Safari sends its own pinch events
+  board.addEventListener('gesturestart', (ev) => { ev.preventDefault(); gestureK = k; });
+  board.addEventListener('gesturechange', (ev) => { ev.preventDefault(); zoomAt((gestureK * ev.scale) / k, ev.clientX, ev.clientY); });
+  // drag on empty space (or anywhere with Space held) pans; two pointers pinch
+  const pointers = new Map(); let drag = null, pinch = null;
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  board.addEventListener('pointerdown', (ev) => {
+    pointers.set(ev.pointerId, ev);
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()], bl = board.getBoundingClientRect(); const mx = (a.clientX + b.clientX) / 2 - bl.left, my = (a.clientY + b.clientY) / 2 - bl.top; pinch = { d: dist(a, b), k, px: (mx - tx) / k, py: (my - ty) / k }; drag = null; board.classList.remove('dragging'); return; }
+    if (ev.button !== 0 || ev.target.closest('.zoom')) return;
+    if (ev.target.closest('[data-id], button, input, select, a') && !space) return;
+    drag = { x: ev.clientX, y: ev.clientY, tx, ty, moved: false }; board.classList.add('dragging'); board.setPointerCapture(ev.pointerId);
+  });
+  board.addEventListener('pointermove', (ev) => {
+    if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, ev);
+    if (pinch && pointers.size === 2) { const [a, b] = [...pointers.values()], bl = board.getBoundingClientRect(); const mx = (a.clientX + b.clientX) / 2 - bl.left, my = (a.clientY + b.clientY) / 2 - bl.top; k = clamp(pinch.k * dist(a, b) / pinch.d); tx = mx - pinch.px * k; ty = my - pinch.py * k; applyView(false); return; }
+    if (!drag) return; const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y; if (Math.hypot(dx, dy) > 3) { drag.moved = true; pendingFit = null; } tx = drag.tx + dx; ty = drag.ty + dy; applyView(false);
+  });
+  const endPointer = (ev) => { pointers.delete(ev.pointerId); if (pointers.size < 2) pinch = null; if (drag) { if (drag.moved) suppressClick = true; drag = null; board.classList.remove('dragging'); } };
+  board.addEventListener('pointerup', endPointer); board.addEventListener('pointercancel', endPointer);
+  document.getElementById('zoom-in').addEventListener('click', () => { const b = board.getBoundingClientRect(); zoomAt(1.25, b.left + b.width / 2, b.top + b.height / 2); });
+  document.getElementById('zoom-out').addEventListener('click', () => { const b = board.getBoundingClientRect(); zoomAt(0.8, b.left + b.width / 2, b.top + b.height / 2); });
+  pct.addEventListener('click', () => { const b = board.getBoundingClientRect(); zoomAt(1 / k, b.left + b.width / 2, b.top + b.height / 2); });
+  document.getElementById('zoom-fit').addEventListener('click', () => fitAll(true));
+  focusBtn.addEventListener('click', () => fitSelection(true));
+
+  // --- presentation: LEDs as dots unless you drill in -----------------------------------------------------------------------------
+  function presentation() {
+    const terse = body.classList.contains('terse');
+    for (const f of $('.findings')) { const box = f.closest('.node, .rail li, .loose'); f.classList.toggle('dots', lod !== 'full' || (terse && !(box && box.classList.contains('drill')))); }
+  }
+
   // --- neighbourhood highlight --------------------------------------------------------------------------------------------------
   let selected = null;
+  function neighbours(id) {
+    const out = new Set(); const self = byId(id); if (self) out.add(self);
+    for (const { other } of adj.get(id) ?? []) { const o = byId(other); if (o) out.add(o); }
+    const edge = edges.find((e) => e.dataset.id === id); if (edge) for (const k of ['src', 'dst']) { const o = byId(edge.dataset[k]); if (o) out.add(o); }
+    return [...out];
+  }
   function highlight(id, expand = false) { // a selection may unfold collapsed findings; a hover never shifts the layout
     for (const el of $('.near, .lit')) el.classList.remove('near', 'lit');
     body.classList.toggle('focus', !!id);
     if (!id) return;
     const self = byId(id); if (self) self.classList.add('near');
     for (const { e, other } of adj.get(id) ?? []) { e.classList.add('lit'); const o = byId(other); if (o) o.classList.add('near'); }
-    if (expand) for (const b of $('.badge.near, .badge.selected')) { const li = b.closest('li.hidden-more'); if (li) { const box = li.parentElement.parentElement; box.classList.add('expanded'); const m = box.querySelector('.more'); if (m) m.textContent = 'fewer'; } }
+    if (expand) for (const b of $('.badge.selected')) { const li = b.closest('li.hidden-more'); // only a selected finding unfolds its row; a selected part keeps its +N more if (li) { const box = li.parentElement.parentElement; box.classList.add('expanded'); const m = box.querySelector('.more'); if (m) m.textContent = 'fewer'; } }
     body.classList.toggle('dense', $('.edge.lit').length > 12);
     const edge = edges.find((e) => e.dataset.id === id);
     if (edge) { edge.classList.add('lit'); for (const k of ['src', 'dst']) { const o = byId(edge.dataset[k]); if (o) o.classList.add('near'); } }
@@ -9121,7 +9207,9 @@ __BOARD__
     const it = data.items[id]; if (!it) return;
     for (const e of $('.selected')) e.classList.remove('selected');
     const el = document.querySelector('[data-id="' + CSS.escape(id) + '"]'); if (el) el.classList.add('selected');
-    selected = id; highlight(id, true);
+    for (const d of $('.drill')) d.classList.remove('drill');
+    const host = el && !el.classList.contains('edge') ? el.closest('.node, .rail li, .loose') : null; if (host) host.classList.add('drill');
+    selected = id; highlight(id, true); presentation();
     const box = document.createElement('div'); box.className = 'in';
     const add = (tag, text, cls, parent = box) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; parent.appendChild(e); return e; };
     const close = add('button', '\xD7', 'close'); close.type = 'button'; close.setAttribute('aria-label', 'Close inspector'); close.onclick = clear;
@@ -9131,7 +9219,7 @@ __BOARD__
     if (it.evidence.length) { add('h3', 'Evidence', 'eyebrow'); const ul = add('ul'); for (const e of it.evidence) add('li', e, null, ul); }
     if (it.rels.length) {
       add('h3', 'Relations', 'eyebrow'); const ul = add('ul');
-      for (const r of it.rels) { const li = add('li', null, 'rel', ul); add('span', r.dir === 'out' ? '\u2192' : '\u2190', 'arrow', li); const t = add('span', null, null, li); add('span', r.type.replace(/_/g, ' ') + ' ', 'type', t); t.appendChild(document.createTextNode(r.other)); if (r.props) add('span', ' ' + r.props, 'props', t); li.onclick = () => { show(r.otherId); const o = byId(r.otherId); if (o) o.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }; }
+      for (const r of it.rels) { const li = add('li', null, 'rel', ul); add('span', r.dir === 'out' ? '\u2192' : '\u2190', 'arrow', li); const t = add('span', null, null, li); add('span', r.type.replace(/_/g, ' ') + ' ', 'type', t); t.appendChild(document.createTextNode(r.other)); if (r.props) add('span', ' ' + r.props, 'props', t); li.onclick = () => show(r.otherId); }
     }
     if (it.commands.length) {
       add('h3', 'Commands', 'eyebrow');
@@ -9140,18 +9228,21 @@ __BOARD__
     }
     const old = panel.querySelector('.in'); if (old) old.remove();
     panel.appendChild(box); requestAnimationFrame(() => box.classList.add('show'));
-    openPanel(true); panel.scrollTop = 0;
+    openPanel(true); panel.scrollTop = 0; focusBtn.disabled = false;
+    setTimeout(() => fitSelection(true), 280); // after the inspector has made room
   }
   const placeholder = panel.querySelector('.in');
   function clear() {
     for (const e of $('.selected')) e.classList.remove('selected');
-    selected = null; highlight(null); openPanel(false);
+    selected = null; highlight(null); openPanel(false); focusBtn.disabled = true;
+    for (const d of $('.drill')) d.classList.remove('drill'); presentation();
     const cur = panel.querySelector('.in'); if (cur !== placeholder) { if (cur) cur.remove(); panel.appendChild(placeholder); }
   }
 
   // --- wiring ----------------------------------------------------------------------------------------------------------------------
   const target = (ev) => ev.target.closest && ev.target.closest('[data-id]');
   document.addEventListener('click', (ev) => {
+    if (suppressClick) { suppressClick = false; return; }
     const more = ev.target.closest && ev.target.closest('.more');
     if (more) { const box = more.closest('.node, li'); const open = box.classList.toggle('expanded'); more.textContent = open ? 'fewer' : more.dataset.label; return; }
     const t = target(ev); if (t) { show(t.dataset.id); return; } if (ev.target.closest('#panel, #filters, .top')) return; if (selected) clear();
@@ -9159,8 +9250,16 @@ __BOARD__
   for (const m of $('.more')) m.dataset.label = m.textContent;
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') { if (body.classList.contains('filters-open')) setFilters(false); else clear(); return; }
+    const typing = ev.target.matches && ev.target.matches('input, select, textarea');
+    if (ev.key === ' ' && !typing && !target(ev)) { ev.preventDefault(); space = true; body.classList.add('space'); return; }
+    if (!typing && ev.shiftKey && ev.key === '!') { ev.preventDefault(); fitAll(true); return; } // Shift+1
+    if (!typing && ev.shiftKey && ev.key === '@') { ev.preventDefault(); fitSelection(true); return; } // Shift+2
+    if (!typing && ev.shiftKey && ev.key === ')') { ev.preventDefault(); pct.click(); return; } // Shift+0
+    if (!typing && (ev.key === '+' || ev.key === '=')) { ev.preventDefault(); document.getElementById('zoom-in').click(); return; }
+    if (!typing && (ev.key === '-' || ev.key === '_')) { ev.preventDefault(); document.getElementById('zoom-out').click(); return; }
     if (ev.key !== 'Enter' && ev.key !== ' ') return; const t = target(ev); if (t && t.classList.contains('edge')) { ev.preventDefault(); show(t.dataset.id); }
   });
+  document.addEventListener('keyup', (ev) => { if (ev.key === ' ') { space = false; body.classList.remove('space'); } });
   board.addEventListener('pointerover', (ev) => { const t = target(ev); if (t) highlight(t.dataset.id); });
   board.addEventListener('pointerout', (ev) => { const t = target(ev); if (t && !(ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('[data-id]') === t)) highlight(selected); });
   board.addEventListener('focusin', (ev) => { const t = target(ev); if (t) highlight(t.dataset.id); });
@@ -9174,11 +9273,13 @@ __BOARD__
   filtersBtn.addEventListener('click', () => setFilters(!body.classList.contains('filters-open')));
   document.getElementById('scrim').addEventListener('click', () => setFilters(false));
   document.querySelector('#filters .close').addEventListener('click', () => setFilters(false));
-  new ResizeObserver(() => layout()).observe(board.querySelector('.layout'));
-  addEventListener('resize', layout);
+  new ResizeObserver(() => { layout(); refit(); }).observe(board.querySelector('.layout'));
+  addEventListener('resize', () => { sizeCanvas(); layout(); });
   $('.lane, .rail').forEach((el, i) => el.style.setProperty('--i', i));
   $('.led').forEach((el, i) => el.style.setProperty('--i', i));
+  sizeCanvas();
   apply();
+  if (board.clientWidth >= 720) fitAll(false); else applyView(false); // a phone starts at 100% and pinches from there
   requestAnimationFrame(() => requestAnimationFrame(() => { body.classList.add('ready'); setTimeout(() => { drawn = true; }, 1500); }));
 })();
 </script>
@@ -9312,7 +9413,7 @@ function renderBoard(g) {
   const findings = (bs) => bs.length ? `<ul class="findings">${bs.map((b, i) => i < SHOW ? badge(b) : badge(b).replace("<li>", '<li class="hidden-more">')).join("")}${bs.length > SHOW ? `<li class="more-row"><button class="more eyebrow" type="button">+${bs.length - SHOW} more</button></li>` : ""}</ul>` : "";
   const node = (n) => `<div class="node"${attr("data-id", n.id)}${attr("data-kind", n.kind)}${list("data-environment", n.environment)}${list("data-subject", n.subject)}><button class="part" type="button"${attr("title", n.title)}><span>${esc(n.title)}</span></button>${findings(byAttach.get(n.id) ?? [])}</div>`;
   const used = COLUMNS.filter((c) => g.lanes.some((l) => l.columns[c].length)), template = used.map(() => "minmax(0,1fr)").join(" ") || "1fr";
-  const out = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold when two or more domains touch one, hollow while a merge is pending.</p></header><ul>'];
+  const out = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold: two or more domains. Hollow: merge pending.</p></header><ul>'];
   for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? " multi" : ""}${c.pending ? " hollow" : ""}" type="button"${attr("data-id", c.id)}${attr("data-lanes", c.lanes)}${attr("data-pending", flag2(!!c.pending))}><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="n">${c.lanes}\xD7</span>` : ""}<i class="hub"></i></button>${findings(byAttach.get(c.id) ?? [])}</li>`);
   if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
   out.push("</ul></aside>", '<div class="lanes">');
@@ -9324,8 +9425,8 @@ function renderBoard(g) {
       const ns = l.columns[c];
       out.push(`<div class="col${ns.length ? "" : " is-empty"}"${attr("data-col", c)}><h3 class="eyebrow stage-sm">${LABEL[c]}</h3><div class="parts">${ns.map(node).join("")}</div></div>`);
     }
-    if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Findings not tied to a part</h3><ul class="findings">${lo.map(badge).join("")}</ul></div>`);
-    if (!parts && !lo.length) out.push('<p class="empty">Nothing recorded in this domain yet. Write an approach or a finding and it appears here.</p>');
+    if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Unattached</h3><ul class="findings">${lo.map(badge).join("")}</ul></div>`);
+    if (!parts && !lo.length) out.push('<p class="empty">Nothing here yet.</p>');
     out.push("</div></section>");
   }
   out.push("</div>");
@@ -9353,7 +9454,7 @@ function renderFilters(g) {
     group("State", "state", states),
     `<fieldset><legend class="eyebrow">Gate \u2265</legend><select id="gate-min"><option value="-1">any</option>${g.gates.map((name, i) => `<option value="${i}">${esc(`${i}: ${name}`)}</option>`).join("")}</select></fieldset>`,
     `<fieldset><legend class="eyebrow">Findings</legend><label><input type="checkbox" id="valid-today"> valid today</label><label><input type="checkbox" id="has-evidence"> has evidence</label><label><input type="checkbox" id="show-proposed" checked> show proposed transfers</label></fieldset>`,
-    `<fieldset><legend class="eyebrow">Traces</legend><label><input type="checkbox" id="show-traces"${g.edges.length <= QUIET_ABOVE ? " checked" : ""}> show every trace at rest (${g.edges.length}); otherwise traces appear for what you hover or select</label></fieldset>`,
+    `<fieldset><legend class="eyebrow">Detail</legend><label><input type="checkbox" id="show-text"> finding text on every part (otherwise only where you drill in)</label><label><input type="checkbox" id="show-traces"${g.edges.length <= QUIET_ABOVE ? " checked" : ""}> every trace at rest (${g.edges.length}); otherwise traces follow your hover or selection</label></fieldset>`,
     `<fieldset><legend class="eyebrow">Legend</legend><div class="legend">${renderLegend(g)}</div></fieldset>`
   ].join("\n");
 }

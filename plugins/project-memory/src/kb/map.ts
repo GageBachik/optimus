@@ -114,7 +114,7 @@ function renderBoard(g: Graph): string {
   const findings = (bs: Badge[]) => bs.length ? `<ul class="findings">${bs.map((b, i) => (i < SHOW ? badge(b) : badge(b).replace('<li>', '<li class="hidden-more">'))).join('')}${bs.length > SHOW ? `<li class="more-row"><button class="more eyebrow" type="button">+${bs.length - SHOW} more</button></li>` : ''}</ul>` : '';
   const node = (n: Node) => `<div class="node"${attr('data-id', n.id)}${attr('data-kind', n.kind)}${list('data-environment', n.environment)}${list('data-subject', n.subject)}><button class="part" type="button"${attr('title', n.title)}><span>${esc(n.title)}</span></button>${findings(byAttach.get(n.id) ?? [])}</div>`;
   const used = COLUMNS.filter((c) => g.lanes.some((l) => l.columns[c].length)), template = used.map(() => 'minmax(0,1fr)').join(' ') || '1fr';
-  const out: string[] = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold when two or more domains touch one, hollow while a merge is pending.</p></header><ul>'];
+  const out: string[] = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold: two or more domains. Hollow: merge pending.</p></header><ul>'];
   for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? ' multi' : ''}${c.pending ? ' hollow' : ''}" type="button"${attr('data-id', c.id)}${attr('data-lanes', c.lanes)}${attr('data-pending', flag(!!c.pending))}><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="n">${c.lanes}×</span>` : ''}<i class="hub"></i></button>${findings(byAttach.get(c.id) ?? [])}</li>`);
   if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
   out.push('</ul></aside>', '<div class="lanes">');
@@ -123,8 +123,8 @@ function renderBoard(g: Graph): string {
     const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
     out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2>${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, 'part')} · ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${template}">`);
     for (const c of used) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3 class="eyebrow stage-sm">${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
-    if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Findings not tied to a part</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
-    if (!parts && !lo.length) out.push('<p class="empty">Nothing recorded in this domain yet. Write an approach or a finding and it appears here.</p>');
+    if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Unattached</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
+    if (!parts && !lo.length) out.push('<p class="empty">Nothing here yet.</p>');
     out.push('</div></section>');
   }
   out.push('</div>');
@@ -161,7 +161,7 @@ function renderFilters(g: Graph): string {
     group('State', 'state', states),
     `<fieldset><legend class="eyebrow">Gate ≥</legend><select id="gate-min"><option value="-1">any</option>${g.gates.map((name, i) => `<option value="${i}">${esc(`${i}: ${name}`)}</option>`).join('')}</select></fieldset>`,
     `<fieldset><legend class="eyebrow">Findings</legend><label><input type="checkbox" id="valid-today"> valid today</label><label><input type="checkbox" id="has-evidence"> has evidence</label><label><input type="checkbox" id="show-proposed" checked> show proposed transfers</label></fieldset>`,
-    `<fieldset><legend class="eyebrow">Traces</legend><label><input type="checkbox" id="show-traces"${g.edges.length <= QUIET_ABOVE ? ' checked' : ''}> show every trace at rest (${g.edges.length}); otherwise traces appear for what you hover or select</label></fieldset>`,
+    `<fieldset><legend class="eyebrow">Detail</legend><label><input type="checkbox" id="show-text"> finding text on every part (otherwise only where you drill in)</label><label><input type="checkbox" id="show-traces"${g.edges.length <= QUIET_ABOVE ? ' checked' : ''}> every trace at rest (${g.edges.length}); otherwise traces follow your hover or selection</label></fieldset>`,
     `<fieldset><legend class="eyebrow">Legend</legend><div class="legend">${renderLegend(g)}</div></fieldset>`,
   ].join('\n');
 }
