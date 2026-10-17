@@ -93,6 +93,7 @@ const flag = (b: boolean) => (b ? '1' : '0');
 
 type Item = { id: string; kind: string; title: string; domain: string | null; project: string | null; attrs: Record<string, string[]>; evidence: string[]; rels: { dir: 'in' | 'out'; type: string; other: string; otherId: string; props: string }[]; commands: string[] };
 
+const SHOW = 2, QUIET_ABOVE = 60; // above this many relations the traces wait for a hover or a selection // findings shown per part before the "more" row
 const LABEL: Record<Column, string> = { theme: 'Theme', approach: 'Approach', experiment: 'Experiment', target: 'Target' };
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 function titlesOf(g: Graph): Map<string, string> {
@@ -102,27 +103,31 @@ function titlesOf(g: Graph): Map<string, string> {
   return titles;
 }
 
-/** The boards: HTML so the parts reflow at any width. One <section class="lane"> per domain with the four pipeline columns, an LED per
- *  finding mounted on the part it is about (or in a loose row of its lane), and the concept rail. The script routes the traces from
- *  the measured positions of these elements. */
+/** The boards: HTML so the parts reflow at any width. The concept rail comes first (it sits to the left of the lanes, where the
+ *  bus runs), then one <section class="lane"> per domain. Stages nobody has used yet are left out everywhere, and a shared header
+ *  row names the ones in use; an LED per finding is mounted on the part it is about (or in a loose row of its lane). */
 function renderBoard(g: Graph): string {
   const byAttach = new Map<string, Badge[]>(), loose = new Map<string, Badge[]>();
   for (const b of g.findings) { const m = b.attach ? byAttach : loose, k = b.attach ?? (b.domain ?? NO_DOMAIN); (m.get(k) ?? m.set(k, []).get(k)!).push(b); }
   const badge = (b: Badge) => `<li><button class="badge" type="button"${attr('data-id', b.id)}${attr('data-state', b.state)}${attr('data-domain', b.domain ?? NO_DOMAIN)}${attr('data-gate-rank', b.gateRank)}${attr('data-valid-today', flag(b.validToday))}${attr('data-evidence', flag(b.evidence.length > 0))}${attr('data-expired', flag(b.expired))}${attr('data-superseded', flag(b.superseded))}${b.attach ? attr('data-attach', b.attach) : ''}${list('data-environment', b.environment)}${list('data-subject', b.subject)}${attr('title', `${b.title} (${b.state})`)}><i class="led"></i><span>${esc(b.title)}</span></button></li>`;
-  const node = (n: Node) => { const bs = byAttach.get(n.id) ?? []; return `<div class="node"${attr('data-id', n.id)}${attr('data-kind', n.kind)}${list('data-environment', n.environment)}${list('data-subject', n.subject)}><button class="part" type="button"${attr('title', n.title)}><span>${esc(n.title)}</span></button>${bs.length ? `<ul class="findings">${bs.map(badge).join('')}</ul>` : ''}</div>`; };
-  const out: string[] = ['<div class="lanes">'];
+  // ponytail: the first two findings show, the rest sit behind a "+N more" row; the row's count is static (state filters do not recount it)
+  const findings = (bs: Badge[]) => bs.length ? `<ul class="findings">${bs.map((b, i) => (i < SHOW ? badge(b) : badge(b).replace('<li>', '<li class="hidden-more">'))).join('')}${bs.length > SHOW ? `<li class="more-row"><button class="more eyebrow" type="button">+${bs.length - SHOW} more</button></li>` : ''}</ul>` : '';
+  const node = (n: Node) => `<div class="node"${attr('data-id', n.id)}${attr('data-kind', n.kind)}${list('data-environment', n.environment)}${list('data-subject', n.subject)}><button class="part" type="button"${attr('title', n.title)}><span>${esc(n.title)}</span></button>${findings(byAttach.get(n.id) ?? [])}</div>`;
+  const used = COLUMNS.filter((c) => g.lanes.some((l) => l.columns[c].length)), template = used.map(() => 'minmax(0,1fr)').join(' ') || '1fr';
+  const out: string[] = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold when two or more domains touch one, hollow while a merge is pending.</p></header><ul>'];
+  for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? ' multi' : ''}${c.pending ? ' hollow' : ''}" type="button"${attr('data-id', c.id)}${attr('data-lanes', c.lanes)}${attr('data-pending', flag(!!c.pending))}><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="n">${c.lanes}×</span>` : ''}<i class="hub"></i></button>${findings(byAttach.get(c.id) ?? [])}</li>`);
+  if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
+  out.push('</ul></aside>', '<div class="lanes">');
+  if (used.length) out.push(`<div class="stages" style="grid-template-columns:${template}">${used.map((c) => `<span class="eyebrow">${LABEL[c]}</span>`).join('')}</div>`);
   for (const l of g.lanes) {
     const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
-    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2>${esc(l.domain)}</h2><span class="count">${plural(parts, 'part')}, ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${COLUMNS.map((c) => (l.columns[c].length ? 'minmax(0,1fr)' : 'minmax(0,.45fr)')).join(' ')}">`); // empty stages stay visible but narrow
-    for (const c of COLUMNS) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3>${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
-    if (lo.length) out.push(`<div class="loose"><h3>Findings not tied to a part</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
+    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2>${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, 'part')} · ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${template}">`);
+    for (const c of used) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3 class="eyebrow stage-sm">${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
+    if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Findings not tied to a part</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
     if (!parts && !lo.length) out.push('<p class="empty">Nothing recorded in this domain yet. Write an approach or a finding and it appears here.</p>');
     out.push('</div></section>');
   }
-  out.push('</div>', '<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold when two or more domains touch one, hollow while a merge is pending.</p></header><ul>');
-  for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? ' multi' : ''}${c.pending ? ' hollow' : ''}" type="button"${attr('data-id', c.id)}${attr('data-lanes', c.lanes)}${attr('data-pending', flag(!!c.pending))}><i class="hub"></i><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="lanes-n">${plural(c.lanes, 'domain')}</span>` : ''}</button>${(byAttach.get(c.id) ?? []).length ? `<ul class="findings">${byAttach.get(c.id)!.map(badge).join('')}</ul>` : ''}</li>`);
-  if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
-  out.push('</ul></aside>');
+  out.push('</div>');
   return out.join('\n');
 }
 
@@ -143,18 +148,43 @@ function renderEdges(g: Graph): string {
 
 function renderFilters(g: Graph): string {
   const box = (name: string, v: string, label = v, checked = true) => `<label><input type="checkbox"${attr('data-filter', name)}${attr('value', v)}${checked ? ' checked' : ''}> ${esc(label)}</label>`;
-  const group = (legend: string, name: string, values: string[]) => `<fieldset><legend>${legend}</legend>${values.length ? values.map((v) => box(name, v)).join('') : '<div class="none">none</div>'}</fieldset>`;
+  const group = (legend: string, name: string, values: string[], on: (v: string) => boolean = () => true) => `<fieldset><legend class="eyebrow">${legend}</legend>${values.length ? values.map((v) => box(name, v, v, on(v))).join('') : '<div class="none">none</div>'}</fieldset>`;
   const targets = g.lanes.flatMap((l) => l.columns.target);
   const distinct = (xs: string[]) => [...new Set(xs)].sort();
   const states = distinct(['unverified', 'observed', 'reproduced', 'conflicting', ...g.findings.map((b) => b.state)]);
+  // a domain with nothing in it starts unchecked: the map shows what is in use
+  const used = new Set(g.lanes.filter((l) => COLUMNS.some((c) => l.columns[c].length) || g.findings.some((b) => (b.domain ?? NO_DOMAIN) === l.domain)).map((l) => l.domain));
   return [
-    group('Domain', 'domain', g.lanes.map((l) => l.domain)),
+    group('Domain', 'domain', g.lanes.map((l) => l.domain), (d) => used.has(d)),
     group('Environment', 'environment', distinct(targets.flatMap((t) => t.environment))),
     group('Subject', 'subject', distinct(targets.flatMap((t) => t.subject))),
     group('State', 'state', states),
-    `<fieldset><legend>Gate ≥</legend><select id="gate-min"><option value="-1">any</option>${g.gates.map((name, i) => `<option value="${i}">${esc(`${i}: ${name}`)}</option>`).join('')}</select></fieldset>`,
-    `<fieldset><legend>Findings</legend><label><input type="checkbox" id="valid-today"> valid today</label><label><input type="checkbox" id="has-evidence"> has evidence</label><label><input type="checkbox" id="show-proposed" checked> show proposed transfers</label></fieldset>`,
+    `<fieldset><legend class="eyebrow">Gate ≥</legend><select id="gate-min"><option value="-1">any</option>${g.gates.map((name, i) => `<option value="${i}">${esc(`${i}: ${name}`)}</option>`).join('')}</select></fieldset>`,
+    `<fieldset><legend class="eyebrow">Findings</legend><label><input type="checkbox" id="valid-today"> valid today</label><label><input type="checkbox" id="has-evidence"> has evidence</label><label><input type="checkbox" id="show-proposed" checked> show proposed transfers</label></fieldset>`,
+    `<fieldset><legend class="eyebrow">Traces</legend><label><input type="checkbox" id="show-traces"${g.edges.length <= QUIET_ABOVE ? ' checked' : ''}> show every trace at rest (${g.edges.length}); otherwise traces appear for what you hover or select</label></fieldset>`,
+    `<fieldset><legend class="eyebrow">Legend</legend><div class="legend">${renderLegend(g)}</div></fieldset>`,
   ].join('\n');
+}
+
+/** Legend rows only for what the data uses: states present among the findings, relation types and transfer states present among the edges. */
+function renderLegend(g: Graph): string {
+  const rows: string[] = [];
+  const led = (c: string, label: string, hatched = false) => rows.push(`<i class="led" style="--c:var(--${c})${hatched ? `;background:repeating-linear-gradient(45deg, var(--${c}) 0 2px, var(--paper-2) 2px 4px);border-color:var(--${c})` : ''}"></i><span>${label}</span>`);
+  const line = (stroke: string, label: string, extra = '') => rows.push(`<svg viewBox="0 0 40 12"><path d="M1 6H39" ${stroke} stroke-linecap="round"></path>${extra}</svg><span>${label}</span>`);
+  for (const s of ['reproduced', 'observed', 'unverified', 'conflicting']) if (g.findings.some((b) => b.state === s)) led(s, s);
+  if (g.findings.some((b) => b.expired || b.superseded)) led('observed', 'past valid_to or superseded', true);
+  const types = new Set(g.edges.map((e) => e.type)), transfer = new Set(g.edges.filter((e) => e.type === 'transfer').map((e) => String(e.props.state ?? '')));
+  const plain = 'stroke="var(--muted)" stroke-width="1.5"';
+  if (types.has('about')) line(plain, 'about');
+  if (types.has('discovered_in')) line(`${plain} stroke-dasharray="2 4"`, 'discovered in');
+  if (types.has('validated_in')) line(plain, 'validated in, labelled with the gate', '<text x="20" y="4" text-anchor="middle" font-size="6" fill="var(--soft)" font-family="ui-monospace, monospace" letter-spacing="1">GATE</text>');
+  if (transfer.has('proposed')) line(`${plain} stroke-dasharray="5 4"`, 'transfer proposed');
+  if (transfer.has('confirmed') || transfer.has('confirmed_provisional')) line('stroke="var(--ink)" stroke-width="1.75"', 'transfer confirmed');
+  if (transfer.has('refuted')) line(`${plain} stroke-dasharray="5 4" opacity=".5"`, 'transfer refuted', '<text x="20" y="10" text-anchor="middle" font-size="11" font-weight="700" fill="var(--conflicting)">×</text>');
+  if (types.has('supersedes')) line(`${plain} opacity=".3"`, 'supersedes');
+  if (types.has('conflicts_with')) line('stroke="var(--conflicting)" stroke-width="1.5" stroke-dasharray="1 4"', 'conflicts with');
+  for (const t of [...types].filter((t) => !['about', 'discovered_in', 'validated_in', 'transfer', 'supersedes', 'conflicts_with'].includes(t)).sort()) line(plain, t.replace(/_/g, ' '));
+  return rows.length ? rows.join('\n') : '<div class="none">nothing drawn yet</div>';
 }
 
 /** Side-panel data: every drawn element and edge by id, with the exact commands DESIGN §4.11 says to show. */
@@ -181,7 +211,7 @@ function items(db: Db, g: Graph): Record<string, Item> {
 export function generateMap(db: Db, outFile = path.join(paths.stateDir(), 'map.html'), today = new Date()): string {
   const g = graphData(db, today);
   const parts: Record<string, string> = {
-    META: esc(`Generated ${today.toISOString().slice(0, 10)}. ${plural(g.lanes.length, 'domain')}, ${plural(g.concepts.length, 'concept')}, ${plural(g.findings.length, 'finding')}, ${plural(g.edges.length, 'relation')}.`),
+    META: esc(`Generated ${today.toISOString().slice(0, 10)} · ${plural(g.lanes.length, 'domain')} · ${plural(g.concepts.length, 'concept')} · ${plural(g.findings.length, 'finding')} · ${plural(g.edges.length, 'relation')}`),
     FILTERS: renderFilters(g), BOARD: renderBoard(g), EDGES: renderEdges(g),
     DATA: JSON.stringify({ items: items(db, g) }).replace(/</g, '\\u003c'), // `</script>` can never close the data block
   };

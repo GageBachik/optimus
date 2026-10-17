@@ -63,7 +63,7 @@ test('map: one lane per domain, a data-state badge per finding, data-type per ed
   for (const cmd of [`kb transfer ${tid} confirm`, `kb transfer ${tid} refute`, `kb concepts accept ${pid}`, `kb retract ${f1.id}`, `kb set ${f1.id} valid_to`]) assert.ok(html.includes(cmd), cmd);
   for (const f of ['domain', 'environment', 'subject', 'state']) assert.ok(html.includes(`data-filter="${f}"`), f);
   for (const id of ['gate-min', 'valid-today', 'has-evidence', 'show-proposed', 'panel']) assert.ok(html.includes(`id="${id}"`), id);
-  for (const id of ['search', 'filters-toggle', 'board']) assert.ok(html.includes(`id="${id}"`), id);
+  for (const id of ['search', 'filters-toggle', 'panel-toggle', 'show-traces', 'board']) assert.ok(html.includes(`id="${id}"`), id);
   assert.ok(html.includes('<svg class="wires">'), 'trace overlay present');
   for (const e of edges) assert.match(e, / data-motion="(draw|fade)"/);
   assert.ok(html.includes(`data-attach="${a1.id}"`) && new RegExp(`<div class="node" data-id="${a1.id}"[^>]*>(?:(?!</div>).)*class="badge"`, 's').test(html), 'attached finding is mounted inside its approach');
