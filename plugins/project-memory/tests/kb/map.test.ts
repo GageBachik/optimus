@@ -65,6 +65,8 @@ test('map: one lane per domain, a data-state badge per finding, data-type per ed
   for (const id of ['gate-min', 'valid-today', 'has-evidence', 'show-proposed', 'panel']) assert.ok(html.includes(`id="${id}"`), id);
   for (const id of ['search', 'filters-toggle', 'panel-toggle', 'show-traces', 'show-text', 'board', 'canvas', 'zoom-fit', 'zoom-focus', 'zoom-in', 'zoom-out']) assert.ok(html.includes(`id="${id}"`), id);
   assert.ok(html.includes('<svg class="wires">'), 'trace overlay present');
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]); assert.ok(scripts.length >= 2, 'inline scripts present');
+  for (const src of scripts) assert.doesNotThrow(() => new Function(src), 'the inline script must parse'); // a stray comment once swallowed a line and blanked the page
   for (const e of edges) assert.match(e, / data-motion="(draw|fade)"/);
   assert.ok(html.includes(`data-attach="${a1.id}"`) && new RegExp(`<div class="node" data-id="${a1.id}"[^>]*>(?:(?!</div>).)*class="badge"`, 's').test(html), 'attached finding is mounted inside its approach');
   assert.ok(/class="rail"/.test(html) && html.includes('class="concept multi hollow"') === false, 'rail rendered');

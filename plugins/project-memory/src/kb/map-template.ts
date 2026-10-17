@@ -201,6 +201,7 @@ __BOARD__
 </main>
 <aside id="panel"><div class="in show"><button class="close" type="button" aria-label="Close inspector">×</button><p class="placeholder">Click anything to inspect it. Hover to light its connections.<br><br>Scroll pans · pinch or <kbd>⌘</kbd>+scroll zooms · drag empty space moves · <kbd>Shift</kbd>+<kbd>1</kbd> fits all · <kbd>Shift</kbd>+<kbd>2</kbd> fits the selection · <kbd>Esc</kbd> clears.</p></div></aside>
 <script id="data" type="application/json">__DATA__</script>
+<script>addEventListener('error', () => document.body.classList.add('ready'));</script>
 <script>
 (() => {
   const data = JSON.parse(document.getElementById('data').textContent);
@@ -395,7 +396,8 @@ __BOARD__
     if (!id) return;
     const self = byId(id); if (self) self.classList.add('near');
     for (const { e, other } of adj.get(id) ?? []) { e.classList.add('lit'); const o = byId(other); if (o) o.classList.add('near'); }
-    if (expand) for (const b of $('.badge.selected')) { const li = b.closest('li.hidden-more'); // only a selected finding unfolds its row; a selected part keeps its +N more if (li) { const box = li.parentElement.parentElement; box.classList.add('expanded'); const m = box.querySelector('.more'); if (m) m.textContent = 'fewer'; } }
+    // only a selected finding unfolds its row; a selected part keeps its +N more
+    if (expand) for (const b of $('.badge.selected')) { const li = b.closest('li.hidden-more'); if (li) { const box = li.parentElement.parentElement; box.classList.add('expanded'); const m = box.querySelector('.more'); if (m) m.textContent = 'fewer'; } }
     body.classList.toggle('dense', $('.edge.lit').length > 12);
     const edge = edges.find((e) => e.dataset.id === id);
     if (edge) { edge.classList.add('lit'); for (const k of ['src', 'dst']) { const o = byId(edge.dataset[k]); if (o) o.classList.add('near'); } }
