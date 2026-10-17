@@ -633,6 +633,8 @@ var require_Alias = __commonJS({
        * instance of the `source` anchor before this node.
        */
       resolve(doc, ctx) {
+        if (ctx?.maxAliasCount === 0)
+          throw new ReferenceError("Alias resolution is disabled");
         let nodes;
         if (ctx?.aliasResolveCache) {
           nodes = ctx.aliasResolveCache;
@@ -654,36 +656,38 @@ var require_Alias = __commonJS({
           if (node.anchor === this.source)
             found = node;
         }
+        if (found && ctx) {
+          const { anchors: anchors2, doc: doc2, maxAliasCount } = ctx;
+          let data = anchors2.get(found);
+          if (!data) {
+            toJS.toJS(found, null, ctx);
+            data = anchors2.get(found);
+          }
+          if (data?.res === void 0) {
+            const msg = "This should not happen: Alias anchor was not resolved?";
+            throw new ReferenceError(msg);
+          }
+          if (maxAliasCount >= 0) {
+            data.count += 1;
+            if (data.aliasCount === 0)
+              data.aliasCount = getAliasCount(doc2, found, anchors2);
+            if (data.count * data.aliasCount > maxAliasCount) {
+              const msg = "Excessive alias count indicates a resource exhaustion attack";
+              throw new ReferenceError(msg);
+            }
+          }
+        }
         return found;
       }
       toJSON(_arg, ctx) {
         if (!ctx)
           return { source: this.source };
-        const { anchors: anchors2, doc, maxAliasCount } = ctx;
-        const source = this.resolve(doc, ctx);
+        const source = this.resolve(ctx.doc, ctx);
         if (!source) {
           const msg = `Unresolved alias (the anchor must be set before the alias): ${this.source}`;
           throw new ReferenceError(msg);
         }
-        let data = anchors2.get(source);
-        if (!data) {
-          toJS.toJS(source, null, ctx);
-          data = anchors2.get(source);
-        }
-        if (!data || data.res === void 0) {
-          const msg = "This should not happen: Alias anchor was not resolved?";
-          throw new ReferenceError(msg);
-        }
-        if (maxAliasCount >= 0) {
-          data.count += 1;
-          if (data.aliasCount === 0)
-            data.aliasCount = getAliasCount(doc, source, anchors2);
-          if (data.count * data.aliasCount > maxAliasCount) {
-            const msg = "Excessive alias count indicates a resource exhaustion attack";
-            throw new ReferenceError(msg);
-          }
-        }
-        return data.res;
+        return ctx.anchors.get(source).res;
       }
       toString(ctx, _onComment, _onChompKeep) {
         const src = `*${this.source}`;
@@ -1432,6 +1436,7 @@ var require_stringify = __commonJS({
         nullStr: "null",
         simpleKeys: false,
         singleQuote: null,
+        trailingComma: false,
         trueStr: "true",
         verifyAliasOrder: true
       }, doc.schema.toStringOptions, options);
@@ -1620,7 +1625,7 @@ ${indent}:`;
 ${stringifyComment.indentComment(cs, ctx.indent)}`;
         }
         if (valueStr === "" && !ctx.inFlow) {
-          if (ws === "\n")
+          if (ws === "\n" && valueComment)
             ws = "\n\n";
         } else {
           ws += `
@@ -1704,18 +1709,18 @@ var require_merge = __commonJS({
     };
     var isMergeKey = (ctx, key) => (merge.identify(key) || identity.isScalar(key) && (!key.type || key.type === Scalar.Scalar.PLAIN) && merge.identify(key.value)) && ctx?.doc.schema.tags.some((tag) => tag.tag === merge.tag && tag.default);
     function addMergeToJSMap(ctx, map, value2) {
-      value2 = ctx && identity.isAlias(value2) ? value2.resolve(ctx.doc) : value2;
-      if (identity.isSeq(value2))
-        for (const it of value2.items)
+      const source = resolveAliasValue(ctx, value2);
+      if (identity.isSeq(source))
+        for (const it of source.items)
           mergeValue(ctx, map, it);
-      else if (Array.isArray(value2))
-        for (const it of value2)
+      else if (Array.isArray(source))
+        for (const it of source)
           mergeValue(ctx, map, it);
       else
-        mergeValue(ctx, map, value2);
+        mergeValue(ctx, map, source);
     }
     function mergeValue(ctx, map, value2) {
-      const source = ctx && identity.isAlias(value2) ? value2.resolve(ctx.doc) : value2;
+      const source = resolveAliasValue(ctx, value2);
       if (!identity.isMap(source))
         throw new Error("Merge sources must be maps or map aliases");
       const srcMap = source.toJSON(null, ctx, Map);
@@ -1735,6 +1740,9 @@ var require_merge = __commonJS({
         }
       }
       return map;
+    }
+    function resolveAliasValue(ctx, value2) {
+      return ctx && identity.isAlias(value2) ? value2.resolve(ctx.doc, ctx) : value2;
     }
     exports.addMergeToJSMap = addMergeToJSMap;
     exports.isMergeKey = isMergeKey;
@@ -1949,12 +1957,19 @@ ${indent}${line}` : "\n";
         if (comment)
           reqNewline = true;
         let str = stringify2.stringify(item, itemCtx, () => comment = null);
-        if (i < items2.length - 1)
+        reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
+        if (i < items2.length - 1) {
           str += ",";
+        } else if (ctx.options.trailingComma) {
+          if (ctx.options.lineWidth > 0) {
+            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+          }
+          if (reqNewline) {
+            str += ",";
+          }
+        }
         if (comment)
           str += stringifyComment.lineComment(str, itemIndent, commentString(comment));
-        if (!reqNewline && (lines.length > linesAtValue || str.includes("\n")))
-          reqNewline = true;
         lines.push(str);
         linesAtValue = lines.length;
       }
@@ -2365,8 +2380,8 @@ var require_stringifyNumber = __commonJS({
       const num = typeof value2 === "number" ? value2 : Number(value2);
       if (!isFinite(num))
         return isNaN(num) ? ".nan" : num < 0 ? "-.inf" : ".inf";
-      let n = JSON.stringify(value2);
-      if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^\d/.test(n)) {
+      let n = Object.is(value2, -0) ? "-0" : JSON.stringify(value2);
+      if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^-?\d/.test(n) && !n.includes("e")) {
         let i = n.indexOf(".");
         if (i < 0) {
           i = n.length;
@@ -3733,7 +3748,7 @@ var require_errors = __commonJS({
       if (/[^ ]/.test(lineStr)) {
         let count = 1;
         const end = error.linePos[1];
-        if (end && end.line === line && end.col > col) {
+        if (end?.line === line && end.col > col) {
           count = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
         const pointer = " ".repeat(ci) + "^".repeat(count);
@@ -4096,7 +4111,7 @@ var require_resolve_block_seq = __commonJS({
         });
         if (!props.found) {
           if (props.anchor || props.tag || value2) {
-            if (value2 && value2.type === "block-seq")
+            if (value2?.type === "block-seq")
               onError(props.end, "BAD_INDENT", "All sequence items must start at the same column");
             else
               onError(offset, "MISSING_CHAR", "Sequence item without - indicator");
@@ -4293,7 +4308,7 @@ var require_resolve_flow_collection = __commonJS({
                 onError(valueProps.found, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit flow sequence key");
             }
           } else if (value2) {
-            if ("source" in value2 && value2.source && value2.source[0] === ":")
+            if ("source" in value2 && value2.source?.[0] === ":")
               onError(value2, "MISSING_CHAR", `Missing space after : in ${fcName}`);
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
@@ -4330,7 +4345,7 @@ var require_resolve_flow_collection = __commonJS({
       const expectedEnd = isMap ? "}" : "]";
       const [ce, ...ee] = fc.end;
       let cePos = offset;
-      if (ce && ce.source === expectedEnd)
+      if (ce?.source === expectedEnd)
         cePos = ce.offset + ce.source.length;
       else {
         const name = fcName[0].toUpperCase() + fcName.substring(1);
@@ -4397,7 +4412,7 @@ var require_compose_collection = __commonJS({
       let tag = ctx.schema.tags.find((t) => t.tag === tagName && t.collection === expType);
       if (!tag) {
         const kt = ctx.schema.knownTags[tagName];
-        if (kt && kt.collection === expType) {
+        if (kt?.collection === expType) {
           ctx.schema.tags.push(Object.assign({}, kt, { default: false }));
           tag = kt;
         } else {
@@ -4674,37 +4689,38 @@ var require_resolve_flow_scalar = __commonJS({
       }
       if (badChar)
         onError(0, "BAD_SCALAR_START", `Plain value cannot start with ${badChar}`);
-      return foldLines(source);
+      return unfoldLines(source);
     }
     function singleQuotedValue(source, onError) {
       if (source[source.length - 1] !== "'" || source.length === 1)
         onError(source.length, "MISSING_CHAR", "Missing closing 'quote");
-      return foldLines(source.slice(1, -1)).replace(/''/g, "'");
+      return unfoldLines(source.slice(1, -1)).replace(/''/g, "'");
     }
-    function foldLines(source) {
-      let first, line;
-      try {
-        first = new RegExp("(.*?)(?<![ 	])[ 	]*\r?\n", "sy");
-        line = new RegExp("[ 	]*(.*?)(?:(?<![ 	])[ 	]*)?\r?\n", "sy");
-      } catch {
-        first = /(.*?)[ \t]*\r?\n/sy;
-        line = /[ \t]*(.*?)[ \t]*\r?\n/sy;
-      }
-      let match = first.exec(source);
+    function unfoldLines(source) {
+      const line = /(.*?)\r?\n/sy;
+      let match = line.exec(source);
       if (!match)
         return source;
-      let res = match[1];
+      let trimEnd, trimBoth;
+      try {
+        trimEnd = new RegExp("(?<![ 	])[ 	]+$");
+        trimBoth = new RegExp("^[ 	]+|(?<![ 	])[ 	]+$", "g");
+      } catch {
+        trimEnd = /[ \t]+$/;
+        trimBoth = /^[ \t]+|[ \t]+$/g;
+      }
+      let res = match[1].replace(trimEnd, "");
       let sep = " ";
-      let pos = first.lastIndex;
-      line.lastIndex = pos;
+      let pos = line.lastIndex;
       while (match = line.exec(source)) {
-        if (match[1] === "") {
+        const lm = match[1].replace(trimBoth, "");
+        if (lm === "") {
           if (sep === "\n")
             res += sep;
           else
             sep = "\n";
         } else {
-          res += sep + match[1];
+          res += sep + lm;
           sep = " ";
         }
         pos = line.lastIndex;
@@ -4738,7 +4754,7 @@ var require_resolve_flow_scalar = __commonJS({
             while (next === " " || next === "	")
               next = source[++i + 1];
           } else if (next === "x" || next === "u" || next === "U") {
-            const length = { x: 2, u: 4, U: 8 }[next];
+            const length = next === "x" ? 2 : next === "u" ? 4 : 8;
             res += parseCharCode(source, i + 1, length, onError);
             i += length;
           } else {
@@ -4813,12 +4829,13 @@ var require_resolve_flow_scalar = __commonJS({
       const cc = source.substr(offset, length);
       const ok = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
       const code = ok ? parseInt(cc, 16) : NaN;
-      if (isNaN(code)) {
+      try {
+        return String.fromCodePoint(code);
+      } catch {
         const raw = source.substr(offset - 2, length + 2);
         onError(offset - 2, "BAD_DQ_ESCAPE", `Invalid escape sequence ${raw}`);
         return raw;
       }
-      return String.fromCodePoint(code);
     }
     exports.resolveFlowScalar = resolveFlowScalar;
   }
@@ -4968,17 +4985,22 @@ var require_compose_node = __commonJS({
         case "block-map":
         case "block-seq":
         case "flow-collection":
-          node = composeCollection.composeCollection(CN, ctx, token, props, onError);
-          if (anchor)
-            node.anchor = anchor.source.substring(1);
+          try {
+            node = composeCollection.composeCollection(CN, ctx, token, props, onError);
+            if (anchor)
+              node.anchor = anchor.source.substring(1);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            onError(token, "RESOURCE_EXHAUSTION", message);
+          }
           break;
         default: {
           const message = token.type === "error" ? token.message : `Unsupported token (type: ${token.type})`;
           onError(token, "UNEXPECTED_TOKEN", message);
-          node = composeEmptyNode(ctx, token.offset, void 0, null, props, onError);
           isSrcToken = false;
         }
       }
+      node ?? (node = composeEmptyNode(ctx, token.offset, void 0, null, props, onError));
       if (anchor && node.anchor === "")
         onError(anchor, "BAD_ALIAS", "Anchor cannot be an empty string");
       if (atKey && ctx.options.stringKeys && (!identity.isScalar(node) || typeof node.value !== "string" || node.tag && node.tag !== "tag:yaml.org,2002:str")) {
@@ -5163,8 +5185,10 @@ ${cb}` : comment;
           }
         }
         if (afterDoc) {
-          Array.prototype.push.apply(doc.errors, this.errors);
-          Array.prototype.push.apply(doc.warnings, this.warnings);
+          for (let i = 0; i < this.errors.length; ++i)
+            doc.errors.push(this.errors[i]);
+          for (let i = 0; i < this.warnings.length; ++i)
+            doc.warnings.push(this.warnings[i]);
         } else {
           doc.errors = this.errors;
           doc.warnings = this.warnings;
@@ -5897,7 +5921,7 @@ var require_lexer = __commonJS({
           const n = (yield* this.pushCount(1)) + (yield* this.pushSpaces(true));
           this.indentNext = this.indentValue + 1;
           this.indentValue += n;
-          return yield* this.parseBlockStart();
+          return "block-start";
         }
         return "doc";
       }
@@ -6196,28 +6220,38 @@ var require_lexer = __commonJS({
         return 0;
       }
       *pushIndicators() {
-        switch (this.charAt(0)) {
-          case "!":
-            return (yield* this.pushTag()) + (yield* this.pushSpaces(true)) + (yield* this.pushIndicators());
-          case "&":
-            return (yield* this.pushUntil(isNotAnchorChar)) + (yield* this.pushSpaces(true)) + (yield* this.pushIndicators());
-          case "-":
-          // this is an error
-          case "?":
-          // this is an error outside flow collections
-          case ":": {
-            const inFlow = this.flowLevel > 0;
-            const ch1 = this.charAt(1);
-            if (isEmpty(ch1) || inFlow && flowIndicatorChars.has(ch1)) {
-              if (!inFlow)
-                this.indentNext = this.indentValue + 1;
-              else if (this.flowKey)
-                this.flowKey = false;
-              return (yield* this.pushCount(1)) + (yield* this.pushSpaces(true)) + (yield* this.pushIndicators());
+        let n = 0;
+        loop: while (true) {
+          switch (this.charAt(0)) {
+            case "!":
+              n += yield* this.pushTag();
+              n += yield* this.pushSpaces(true);
+              continue loop;
+            case "&":
+              n += yield* this.pushUntil(isNotAnchorChar);
+              n += yield* this.pushSpaces(true);
+              continue loop;
+            case "-":
+            // this is an error
+            case "?":
+            // this is an error outside flow collections
+            case ":": {
+              const inFlow = this.flowLevel > 0;
+              const ch1 = this.charAt(1);
+              if (isEmpty(ch1) || inFlow && flowIndicatorChars.has(ch1)) {
+                if (!inFlow)
+                  this.indentNext = this.indentValue + 1;
+                else if (this.flowKey)
+                  this.flowKey = false;
+                n += yield* this.pushCount(1);
+                n += yield* this.pushSpaces(true);
+                continue loop;
+              }
             }
           }
+          break loop;
         }
-        return 0;
+        return n;
       }
       *pushTag() {
         if (this.charAt(1) === "<") {
@@ -6376,6 +6410,13 @@ var require_parser = __commonJS({
       }
       return prev.splice(i, prev.length);
     }
+    function arrayPushArray(target, source) {
+      if (source.length < 1e5)
+        Array.prototype.push.apply(target, source);
+      else
+        for (let i = 0; i < source.length; ++i)
+          target.push(source[i]);
+    }
     function fixFlowSeqItems(fc) {
       if (fc.start.type === "flow-seq-start") {
         for (const it of fc.items) {
@@ -6385,11 +6426,11 @@ var require_parser = __commonJS({
             delete it.key;
             if (isFlowToken(it.value)) {
               if (it.value.end)
-                Array.prototype.push.apply(it.value.end, it.sep);
+                arrayPushArray(it.value.end, it.sep);
               else
                 it.value.end = it.sep;
             } else
-              Array.prototype.push.apply(it.start, it.sep);
+              arrayPushArray(it.start, it.sep);
             delete it.sep;
           }
         }
@@ -6495,7 +6536,7 @@ var require_parser = __commonJS({
       }
       *step() {
         const top = this.peek(1);
-        if (this.type === "doc-end" && (!top || top.type !== "doc-end")) {
+        if (this.type === "doc-end" && top?.type !== "doc-end") {
           while (this.stack.length > 0)
             yield* this.pop();
           this.stack.push({
@@ -6744,7 +6785,7 @@ var require_parser = __commonJS({
                 const prev = map.items[map.items.length - 2];
                 const end = prev?.value?.end;
                 if (Array.isArray(end)) {
-                  Array.prototype.push.apply(end, it.start);
+                  arrayPushArray(end, it.start);
                   end.push(this.sourceToken);
                   map.items.pop();
                   return;
@@ -6932,7 +6973,7 @@ var require_parser = __commonJS({
                 const prev = seq.items[seq.items.length - 2];
                 const end = prev?.value?.end;
                 if (Array.isArray(end)) {
-                  Array.prototype.push.apply(end, it.start);
+                  arrayPushArray(end, it.start);
                   end.push(this.sourceToken);
                   seq.items.pop();
                   return;
@@ -6973,7 +7014,7 @@ var require_parser = __commonJS({
           do {
             yield* this.pop();
             top = this.peek(1);
-          } while (top && top.type === "flow-collection");
+          } while (top?.type === "flow-collection");
         } else if (fc.end.length === 0) {
           switch (this.type) {
             case "comma":
@@ -7326,9 +7367,9 @@ import os4 from "node:os";
 import path17 from "node:path";
 
 // src/cli/doctor.ts
-import { existsSync as existsSync3, readFileSync as readFileSync4, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync3, unlinkSync } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync5, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync3, unlinkSync } from "node:fs";
 import { spawnSync as spawnSync2 } from "node:child_process";
-import path5 from "node:path";
+import path7 from "node:path";
 
 // src/lib/paths.ts
 import os from "node:os";
@@ -7358,7 +7399,8 @@ var paths = {
   },
   config() {
     try {
-      return JSON.parse(readFileSync(this.configPath(), "utf8"));
+      const c = JSON.parse(readFileSync(this.configPath(), "utf8"));
+      return c && typeof c === "object" && !Array.isArray(c) ? c : {};
     } catch {
       return {};
     }
@@ -7379,7 +7421,7 @@ var paths = {
       if (existsSync(f)) {
         try {
           const id = JSON.parse(readFileSync(f, "utf8")).project_id;
-          if (typeof id === "string" && id) return safe(id);
+          if (typeof id === "string" && id) return id;
         } catch {
         }
       }
@@ -7387,7 +7429,7 @@ var paths = {
       if (up === dir) break;
       dir = up;
     }
-    return createHash("sha256").update(path.normalize(cwd)).digest("hex").slice(0, 16);
+    return createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
   },
   projectDir(key) {
     return ensure(path.join(this.stateDir(), "projects", safe(key)));
@@ -7469,14 +7511,54 @@ function reindexFts(db, noteId2) {
   if (n && !n.deleted_at) db.sql.prepare("INSERT INTO note_fts(note_id,title,body) VALUES(?,?,?)").run(noteId2, n.title, n.body);
 }
 
-// src/cli/baseline.ts
-import { readdirSync, readFileSync as readFileSync2, statSync } from "node:fs";
+// src/kb/project.ts
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import path4 from "node:path";
+
+// src/lib/log.ts
+import { appendFileSync } from "node:fs";
 import path3 from "node:path";
+function log(level, msg, data) {
+  try {
+    appendFileSync(path3.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+  } catch {
+  }
+}
+
+// src/kb/project.ts
+function loadProjectConfig(cwd) {
+  let dir = path4.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    const f = path4.join(dir, ".kb.json");
+    if (existsSync2(f)) {
+      let c;
+      try {
+        c = JSON.parse(readFileSync2(f, "utf8"));
+      } catch (e) {
+        log("warn", `.kb.json at ${f} is not valid JSON; ignored`, String(e));
+        return null;
+      }
+      if (!c.project_id || !c.domain) {
+        log("warn", `.kb.json at ${f} lacks project_id or domain; ignored`);
+        return null;
+      }
+      return c;
+    }
+    const up = path4.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
+// src/cli/baseline.ts
+import { readdirSync, readFileSync as readFileSync3, statSync } from "node:fs";
+import path5 from "node:path";
 function computeBaseline(projectsDir) {
   const files = [];
   const walk = (d) => {
     for (const f of readdirSync(d)) {
-      const p = path3.join(d, f);
+      const p = path5.join(d, f);
       if (statSync(p).isDirectory()) {
         if (f !== "subagents") walk(p);
       } else if (f.endsWith(".jsonl")) files.push(p);
@@ -7487,7 +7569,7 @@ function computeBaseline(projectsDir) {
   let compactions = 0, cacheRead = 0, total = 0;
   for (const f of files) {
     let boundaries = 0, summaries = 0;
-    for (const line of readFileSync2(f, "utf8").split("\n")) {
+    for (const line of readFileSync3(f, "utf8").split("\n")) {
       if (!line) continue;
       let j;
       try {
@@ -7516,9 +7598,9 @@ function computeBaseline(projectsDir) {
 
 // src/cli/live-test.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync2, mkdirSync as mkdirSync2, mkdtempSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, mkdtempSync, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { tmpdir } from "node:os";
-import path4 from "node:path";
+import path6 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/transcript.ts
@@ -7603,23 +7685,23 @@ var parse = (s) => {
   }
 };
 function findHookJs() {
-  for (let d = path4.dirname(fileURLToPath(import.meta.url)); ; d = path4.dirname(d)) {
-    const f = path4.join(d, "dist", "hook.js");
-    if (existsSync2(f)) return f;
-    if (path4.dirname(d) === d) throw new Error("dist/hook.js not found; run npm run build");
+  for (let d = path6.dirname(fileURLToPath(import.meta.url)); ; d = path6.dirname(d)) {
+    const f = path6.join(d, "dist", "hook.js");
+    if (existsSync3(f)) return f;
+    if (path6.dirname(d) === d) throw new Error("dist/hook.js not found; run npm run build");
   }
 }
 function runLiveTest(opts = {}) {
   const hookJs = opts.hookJs ?? findHookJs();
   const claude = opts.claude ?? "claude";
-  const dir = mkdtempSync(path4.join(tmpdir(), "pm-live-"));
-  const state = path4.join(dir, "state");
-  const probe = path4.join(dir, "probe.mjs");
-  const logFile = path4.join(dir, "events.jsonl");
-  mkdirSync2(path4.join(dir, ".claude"));
+  const dir = mkdtempSync(path6.join(tmpdir(), "pm-live-"));
+  const state = path6.join(dir, "state");
+  const probe = path6.join(dir, "probe.mjs");
+  const logFile = path6.join(dir, "events.jsonl");
+  mkdirSync2(path6.join(dir, ".claude"));
   writeFileSync2(probe, PROBE_MJS);
-  writeFileSync2(path4.join(dir, "hello.txt"), "hello from the project-memory live test\n");
-  writeFileSync2(path4.join(dir, ".claude", "settings.json"), JSON.stringify(liveSettings(hookJs, probe, logFile), null, 2));
+  writeFileSync2(path6.join(dir, "hello.txt"), "hello from the project-memory live test\n");
+  writeFileSync2(path6.join(dir, ".claude", "settings.json"), JSON.stringify(liveSettings(hookJs, probe, logFile), null, 2));
   const { CLAUDECODE: _nested, ...env } = process.env;
   const run = (args2) => spawnSync(
     claude,
@@ -7629,27 +7711,29 @@ function runLiveTest(opts = {}) {
   const started = Date.now();
   const lines = [`dir: ${dir}`];
   const r1 = run(["-p", PROMPT]);
-  const j1 = parse(r1.stdout);
-  lines.push(`run1: exit ${r1.status}${r1.stderr.trim() ? ` stderr: ${r1.stderr.trim()}` : ""}`, `run1 result: ${j1?.result ?? r1.stdout.slice(0, 1e3)}`);
+  const out1 = r1.stdout ?? "", err1 = (r1.stderr ?? "").trim();
+  const j1 = parse(out1);
+  lines.push(`run1: exit ${r1.status}${r1.error ? ` error: ${r1.error.message}` : ""}${err1 ? ` stderr: ${err1}` : ""}`, `run1 result: ${j1?.result ?? out1.slice(0, 1e3)}`);
   if (j1?.session_id) {
     const r2 = run(["-p", "/compact", "--resume", j1.session_id]);
-    lines.push(`run2 (/compact): exit ${r2.status}${r2.stderr.trim() ? ` stderr: ${r2.stderr.trim()}` : ""}`, `run2 result: ${parse(r2.stdout)?.result ?? r2.stdout.slice(0, 1e3)}`);
+    const out2 = r2.stdout ?? "", err2 = (r2.stderr ?? "").trim();
+    lines.push(`run2 (/compact): exit ${r2.status}${r2.error ? ` error: ${r2.error.message}` : ""}${err2 ? ` stderr: ${err2}` : ""}`, `run2 result: ${parse(out2)?.result ?? out2.slice(0, 1e3)}`);
   }
   const wallMs = Date.now() - started;
-  const events = existsSync2(logFile) ? readFileSync3(logFile, "utf8").split("\n").map(parse).filter(Boolean) : [];
+  const events = existsSync3(logFile) ? readFileSync4(logFile, "utf8").split("\n").map(parse).filter(Boolean) : [];
   const tp = events.find((e) => e.transcript_path)?.transcript_path;
-  const texts = tp && existsSync2(tp) ? userTexts(readTranscript(tp).entries) : [];
-  const auditExists = typeof j1?.session_id === "string" && existsSync2(path4.join(state, "sessions", j1.session_id, "main", "audit.json"));
+  const texts = tp && existsSync3(tp) ? userTexts(readTranscript(tp).entries) : [];
+  const auditExists = typeof j1?.session_id === "string" && existsSync3(path6.join(state, "sessions", j1.session_id, "main", "audit.json"));
   lines.push(`events: ${events.map((e) => `${e.ev}${e.source ? `(${e.source})` : ""}${e.tool_name ? `(${e.tool_name})` : ""}`).join(" \u2192 ") || "none logged"}`, `audit.json: ${auditExists ? "present" : "absent"}`);
-  const hooksLog = path4.join(state, "logs", "hooks.log");
-  if (existsSync2(hooksLog)) lines.push("hooks.log:", readFileSync3(hooksLog, "utf8").trim());
+  const hooksLog = path6.join(state, "logs", "hooks.log");
+  if (existsSync3(hooksLog)) lines.push("hooks.log:", readFileSync4(hooksLog, "utf8").trim());
   return { ...evaluate({ result: String(j1?.result ?? ""), texts, events, auditExists }), wallMs, log: lines.join("\n") };
 }
 
 // src/cli/doctor.ts
 var readJsonFile = (f) => {
   try {
-    return JSON.parse(readFileSync4(f, "utf8"));
+    return JSON.parse(readFileSync5(f, "utf8"));
   } catch {
     return null;
   }
@@ -7666,34 +7750,36 @@ function fts5Probe() {
   }
 }
 function installedPlugins(home2) {
-  const dir = path5.join(home2, ".claude", "plugins"), j = readJsonFile(path5.join(dir, "installed_plugins.json")), markets = readJsonFile(path5.join(dir, "known_marketplaces.json")) ?? {};
+  const dir = path7.join(home2, ".claude", "plugins"), j = readJsonFile(path7.join(dir, "installed_plugins.json")), markets = readJsonFile(path7.join(dir, "known_marketplaces.json")) ?? {};
   const runDir = (name, cached) => {
     const [plugin, market] = name.split("@"), m = markets[market];
     if (m?.source?.source !== "directory") return cached;
-    const root = m.installLocation ?? m.source.path, src = readJsonFile(path5.join(root, ".claude-plugin", "marketplace.json"))?.plugins?.find((p) => p?.name === plugin)?.source;
-    return typeof src === "string" ? path5.resolve(root, src) : cached;
+    const root = m.installLocation ?? m.source.path, src = readJsonFile(path7.join(root, ".claude-plugin", "marketplace.json"))?.plugins?.find((p) => p?.name === plugin)?.source;
+    return typeof src === "string" ? path7.resolve(root, src) : cached;
   };
   return Object.entries(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === "string").map((e) => ({ name, installPath: runDir(name, e.installPath) })));
 }
 function bankChecks() {
   const bank = paths.bankDir();
-  if (!existsSync3(path5.join(bank, ".git"))) return [{ status: "WARN", name: "bank", detail: `${bank} is not a git repository (run \`kb init\`)` }];
+  if (!existsSync4(path7.join(bank, ".git"))) return [{ status: "WARN", name: "bank", detail: `${bank} is not a git repository (run \`kb init\`)` }];
   const g = (args2, timeout = 6e4) => spawnSync2("git", args2, { cwd: bank, encoding: "utf8", timeout });
-  const dirty = g(["status", "--porcelain"]).stdout.trim() ? "dirty" : "clean";
+  const st = g(["status", "--porcelain"]);
+  if (st.error) return [{ status: "WARN", name: "bank", detail: `${bank}: git failed: ${st.error.message}` }];
+  const dirty = (st.stdout ?? "").trim() ? "dirty" : "clean";
   const ab = g(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]);
-  const [ahead, behind] = ab.stdout.trim().split(/\s+/);
+  const [ahead, behind] = (ab.stdout ?? "").trim().split(/\s+/);
   const out = [{ status: "PASS", name: "bank", detail: `${bank}: ${dirty}, ${ab.status === 0 ? `ahead ${ahead} behind ${behind}` : "no upstream yet"}` }];
-  const remote = g(["remote"]).stdout.split("\n")[0].trim();
+  const remote = (g(["remote"]).stdout ?? "").split("\n")[0].trim();
   if (!remote) out.push({ status: "INFO", name: "bank-remote", detail: "no remote configured; kb sync stops at no-remote" });
   else {
     const ls = g(["ls-remote", "-q", remote], 1e4);
-    out.push(ls.status === 0 ? { status: "PASS", name: "bank-remote", detail: `${remote} reachable (${g(["remote", "get-url", remote]).stdout.trim()})` } : { status: "WARN", name: "bank-remote", detail: `${remote} unreachable: ${(ls.error?.message || ls.stderr || `exit ${ls.status}`).trim()}` });
+    out.push(ls.status === 0 ? { status: "PASS", name: "bank-remote", detail: `${remote} reachable (${(g(["remote", "get-url", remote]).stdout ?? "").trim()})` } : { status: "WARN", name: "bank-remote", detail: `${remote} unreachable: ${(ls.error?.message || ls.stderr || `exit ${ls.status}`).trim()}` });
   }
   return out;
 }
 function indexChecks() {
-  const file = path5.join(paths.stateDir(), "kb.sqlite"), at = paths.config().lastSyncAt ?? "unknown time";
-  if (!existsSync3(file)) return [{ status: "INFO", name: "index", detail: "no kb.sqlite yet (kb init builds it)" }, { status: "INFO", name: "last-sync", detail: "never" }];
+  const file = path7.join(paths.stateDir(), "kb.sqlite"), at = paths.config().lastSyncAt ?? "unknown time";
+  if (!existsSync4(file)) return [{ status: "INFO", name: "index", detail: "no kb.sqlite yet (kb init builds it)" }, { status: "INFO", name: "last-sync", detail: "never" }];
   let db;
   try {
     db = openDb(file);
@@ -7727,33 +7813,35 @@ function doctorChecks(home2) {
   out.push(fts5Probe());
   const git3 = spawnSync2("git", ["--version"], { encoding: "utf8" });
   out.push(git3.status === 0 ? { status: "PASS", name: "git", detail: git3.stdout.trim() } : { status: "FAIL", name: "git", detail: "git not found on PATH" });
+  const kb = loadProjectConfig(process.cwd());
+  out.push(kb ? { status: "PASS", name: "kb-json", detail: `project ${kb.project_id} (domain ${kb.domain})` } : { status: "WARN", name: "kb-json", detail: `no valid .kb.json in ${process.cwd()} (missing project_id or domain): run kb project init` });
   out.push(...bankChecks(), ...indexChecks());
   const state = paths.stateDir();
   try {
-    const probe = path5.join(state, `.doctor-${process.pid}`);
+    const probe = path7.join(state, `.doctor-${process.pid}`);
     writeFileSync3(probe, "ok");
     unlinkSync(probe);
     out.push({ status: "PASS", name: "state-dir", detail: `${state} writable` });
   } catch (e) {
     out.push({ status: "FAIL", name: "state-dir", detail: `${state} not writable: ${e?.message ?? e}` });
   }
-  const blobs = readdirSync2(paths.blobsDir()).filter((f) => f.length === 64).map((f) => statSync2(path5.join(paths.blobsDir(), f)));
+  const blobs = readdirSync2(paths.blobsDir()).filter((f) => f.length === 64).map((f) => statSync2(path7.join(paths.blobsDir(), f)));
   const bytes = blobs.reduce((n, s) => n + s.size, 0);
   const oldest = blobs.length ? new Date(Math.min(...blobs.map((s) => s.mtimeMs))).toISOString() : "none";
   out.push({ status: "INFO", name: "blobs", detail: `${blobs.length} blobs, ${(bytes / 1048576).toFixed(1)} MB, oldest ${oldest}` });
-  const sessionsDir = path5.join(state, "sessions");
-  out.push({ status: "INFO", name: "sessions", detail: `${existsSync3(sessionsDir) ? readdirSync2(sessionsDir).length : 0} session dirs` });
-  const settings = readJsonFile(path5.join(home2, ".claude", "settings.json")) ?? {};
+  const sessionsDir = path7.join(state, "sessions");
+  out.push({ status: "INFO", name: "sessions", detail: `${existsSync4(sessionsDir) ? readdirSync2(sessionsDir).length : 0} session dirs` });
+  const settings = readJsonFile(path7.join(home2, ".claude", "settings.json")) ?? {};
   out.push(settings.autoCompactWindow === 2e5 ? { status: "PASS", name: "autoCompactWindow", detail: "200000" } : { status: "WARN", name: "autoCompactWindow", detail: `${settings.autoCompactWindow ?? "unset"} (run \`kb setup\` to set 200000)` });
   const enabled = settings.enabledPlugins ?? {};
   const installed = installedPlugins(home2);
   const ours = installed.filter((p) => p.name.startsWith("project-memory@"));
-  const live2 = ours.find((p) => enabled[p.name] && existsSync3(path5.join(p.installPath, "hooks", "hooks.json")) && existsSync3(path5.join(p.installPath, "dist", "hook.js")));
+  const live2 = ours.find((p) => enabled[p.name] && existsSync4(path7.join(p.installPath, "hooks", "hooks.json")) && existsSync4(path7.join(p.installPath, "dist", "hook.js")));
   out.push(live2 ? { status: "PASS", name: "hooks", detail: `${live2.name} hooks present in ${live2.installPath}` } : { status: "WARN", name: "hooks", detail: ours.length ? `${ours[0].name} installed but not enabled or ${ours[0].installPath} lacks hooks/hooks.json + dist/hook.js` : "project-memory plugin not installed in the plugin cache" });
   const collisions = [];
   for (const p of installed) {
     if (!enabled[p.name] || p.name.startsWith("project-memory@")) continue;
-    const hooks = readJsonFile(path5.join(p.installPath, "hooks", "hooks.json"))?.hooks ?? {};
+    const hooks = readJsonFile(path7.join(p.installPath, "hooks", "hooks.json"))?.hooks ?? {};
     if ((hooks.PreToolUse ?? []).some((e) => matchesAgent(e?.matcher))) collisions.push(`${p.name}: PreToolUse matcher covers Agent`);
     if ((hooks.SubagentStart ?? []).length) collisions.push(`${p.name}: SubagentStart hook`);
   }
@@ -7778,20 +7866,26 @@ function doctor(home2, opts = {}) {
   for (const c of checks) print(c);
   if (opts.live) {
     const v = spawnSync2("claude", ["--version"], { encoding: "utf8" });
-    process.stdout.write(`
-live marker test (two headless runs, about two minutes)...
+    process.stdout.write("\n");
+    if (v.status !== 0) {
+      const c = { status: "FAIL", name: "live:claude", detail: `claude --version failed (${v.error?.message ?? `exit ${v.status}`}); live test skipped` };
+      checks.push(c);
+      print(c);
+    } else {
+      print({ status: "INFO", name: "live:claude", detail: (v.stdout ?? "").trim() });
+      process.stdout.write(`live marker test (two headless runs, about two minutes)...
 `);
-    const r = runLiveTest();
-    const live2 = liveChecks(r);
-    checks.push(...live2);
-    print({ status: "INFO", name: "live:claude", detail: v.status === 0 ? v.stdout.trim() : "claude not found on PATH" });
-    for (const c of live2) print(c);
-    process.stdout.write(`${live2.some((c) => c.status === "FAIL") ? r.log : r.log.split("\n")[0]}
+      const r = runLiveTest();
+      const live2 = liveChecks(r);
+      checks.push(...live2);
+      for (const c of live2) print(c);
+      process.stdout.write(`${live2.some((c) => c.status === "FAIL") ? r.log : r.log.split("\n")[0]}
 `);
+    }
   }
   if (opts.baseline) {
-    const dir = path5.join(home2, ".claude", "projects");
-    if (!existsSync3(dir)) process.stdout.write(`
+    const dir = path7.join(home2, ".claude", "projects");
+    if (!existsSync4(dir)) process.stdout.write(`
 baseline: ${dir} not found
 `);
     else {
@@ -7814,21 +7908,21 @@ baseline (${dir})
 }
 
 // src/cli/cleanup.ts
-import { existsSync as existsSync6, readFileSync as readFileSync7, readdirSync as readdirSync3, statSync as statSync4, rmSync, mkdirSync as mkdirSync3, cpSync } from "node:fs";
-import path7 from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync8, readdirSync as readdirSync3, statSync as statSync4, rmSync, mkdirSync as mkdirSync3, cpSync } from "node:fs";
+import path9 from "node:path";
 
 // src/cli/backup.ts
-import { copyFileSync, existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { copyFileSync, existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 
 // src/lib/atomic.ts
-import { writeFileSync as writeFileSync4, readFileSync as readFileSync5, renameSync as renameSync2, realpathSync, existsSync as existsSync4, statSync as statSync3, chmodSync, unlinkSync as unlinkSync2 } from "node:fs";
-import path6 from "node:path";
+import { writeFileSync as writeFileSync4, readFileSync as readFileSync6, renameSync as renameSync2, realpathSync, existsSync as existsSync5, statSync as statSync3, chmodSync, unlinkSync as unlinkSync2 } from "node:fs";
+import path8 from "node:path";
 import { randomBytes } from "node:crypto";
 function writeFileAtomic(filePath, data) {
-  const dir = realpathSync(path6.dirname(filePath));
-  const target = path6.join(dir, path6.basename(filePath));
-  const tmp = path6.join(dir, `.${path6.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
-  const mode = existsSync4(target) ? statSync3(target).mode & 511 : void 0;
+  const dir = realpathSync(path8.dirname(filePath));
+  const target = path8.join(dir, path8.basename(filePath));
+  const tmp = path8.join(dir, `.${path8.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const mode = existsSync5(target) ? statSync3(target).mode & 511 : void 0;
   writeFileSync4(tmp, data, "utf8");
   if (mode !== void 0) chmodSync(tmp, mode);
   let lastErr;
@@ -7851,28 +7945,28 @@ function writeFileAtomic(filePath, data) {
 
 // src/cli/backup.ts
 function backupFile(file) {
-  if (existsSync5(file)) copyFileSync(file, `${file}.bak-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}`);
+  if (existsSync6(file)) copyFileSync(file, `${file}.bak-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}`);
 }
 function backupAndWriteJson(file, value2) {
   backupFile(file);
   writeFileAtomic(file, JSON.stringify(value2, null, 2) + "\n");
 }
 function editJson(file, mutate) {
-  const j = existsSync5(file) ? JSON.parse(readFileSync6(file, "utf8")) : {};
+  const j = existsSync6(file) ? JSON.parse(readFileSync7(file, "utf8")) : {};
   mutate(j);
   backupAndWriteJson(file, j);
 }
 
 // src/cli/cleanup.ts
-var readJsonFile2 = (f) => existsSync6(f) ? JSON.parse(readFileSync7(f, "utf8")) : {};
+var readJsonFile2 = (f) => existsSync7(f) ? JSON.parse(readFileSync8(f, "utf8")) : {};
 function onPath(cmd2) {
-  if (cmd2.includes("/") || cmd2.includes("\\")) return existsSync6(cmd2);
+  if (cmd2.includes("/") || cmd2.includes("\\")) return existsSync7(cmd2);
   const exts = process.platform === "win32" ? ["", ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")] : [""];
-  return (process.env.PATH ?? "").split(path7.delimiter).some((dir) => dir && exts.some((e) => existsSync6(path7.join(dir, cmd2 + e))));
+  return (process.env.PATH ?? "").split(path9.delimiter).some((dir) => dir && exts.some((e) => existsSync7(path9.join(dir, cmd2 + e))));
 }
 function deadPath(arg) {
-  if (typeof arg !== "string" || !path7.isAbsolute(arg) || arg.length < 2) return false;
-  if (!existsSync6(arg)) return true;
+  if (typeof arg !== "string" || !path9.isAbsolute(arg) || arg.length < 2) return false;
+  if (!existsSync7(arg)) return true;
   try {
     return statSync4(arg).isDirectory() && readdirSync3(arg).length === 0;
   } catch {
@@ -7883,8 +7977,8 @@ var flag = (id, target, reason) => ({ id, kind: "flag", target, reason, apply: (
 } });
 function planCleanup(home2) {
   const actions = [];
-  const settingsPath = path7.join(home2, ".claude", "settings.json");
-  const claudeJson = path7.join(home2, ".claude.json");
+  const settingsPath = path9.join(home2, ".claude", "settings.json");
+  const claudeJson = path9.join(home2, ".claude.json");
   const settings = readJsonFile2(settingsPath);
   const cj = readJsonFile2(claudeJson);
   const plugins = settings.enabledPlugins ?? {};
@@ -7909,11 +8003,11 @@ function planCleanup(home2) {
     if (badArg) actions.push(flag(`mcp:${name}`, name, `argument path does not exist or is empty: ${badArg}`));
     else if (typeof def?.command === "string" && def.command && !onPath(def.command)) actions.push(flag(`mcp:${name}`, name, `command not on PATH: ${def.command}`));
   }
-  const am = path7.join(home2, ".agentmemory");
-  if (existsSync6(am)) actions.push({ id: "dir:.agentmemory", kind: "remove-dir", target: am, reason: "agentmemory state; its backups/ are copied to ~/.project-memory/imports/agentmemory first", apply: () => {
-    const src = path7.join(am, "backups");
-    const dest = path7.join(home2, ".project-memory", "imports", "agentmemory", "backups");
-    if (existsSync6(src)) {
+  const am = path9.join(home2, ".agentmemory");
+  if (existsSync7(am)) actions.push({ id: "dir:.agentmemory", kind: "remove-dir", target: am, reason: "agentmemory state; its backups/ are copied to ~/.project-memory/imports/agentmemory first", apply: () => {
+    const src = path9.join(am, "backups");
+    const dest = path9.join(home2, ".project-memory", "imports", "agentmemory", "backups");
+    if (existsSync7(src)) {
       mkdirSync3(dest, { recursive: true });
       cpSync(src, dest, { recursive: true });
     }
@@ -7924,19 +8018,19 @@ function planCleanup(home2) {
 
 // src/cli/setup.ts
 import os2 from "node:os";
-import path8 from "node:path";
-import { existsSync as existsSync7, readFileSync as readFileSync8, appendFileSync } from "node:fs";
+import path10 from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync9, appendFileSync as appendFileSync2 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var defaultDeviceId = (host = os2.hostname()) => host.split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-");
 var HEADING = "## Compaction instructions (project-memory)";
 function compactionInstructionsPath() {
-  const here = path8.dirname(fileURLToPath2(import.meta.url));
-  return [path8.join(here, "..", "skills", "kb", "compaction-instructions.md"), path8.join(here, "..", "..", "skills", "kb", "compaction-instructions.md")].find(existsSync7) ?? path8.join(here, "..", "skills", "kb", "compaction-instructions.md");
+  const here = path10.dirname(fileURLToPath2(import.meta.url));
+  return [path10.join(here, "..", "skills", "kb", "compaction-instructions.md"), path10.join(here, "..", "..", "skills", "kb", "compaction-instructions.md")].find(existsSync8) ?? path10.join(here, "..", "skills", "kb", "compaction-instructions.md");
 }
 function setup(home2, opts = {}) {
   const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
-  const settingsPath = path8.join(home2, ".claude", "settings.json");
-  const settings = existsSync7(settingsPath) ? JSON.parse(readFileSync8(settingsPath, "utf8")) : {};
+  const settingsPath = path10.join(home2, ".claude", "settings.json");
+  const settings = existsSync8(settingsPath) ? JSON.parse(readFileSync9(settingsPath, "utf8")) : {};
   if (settings.autoCompactWindow === 2e5) print(`autoCompactWindow already 200000 in ${settingsPath}`);
   else {
     editJson(settingsPath, (s) => {
@@ -7948,28 +8042,28 @@ function setup(home2, opts = {}) {
   paths.saveConfig({ deviceId: deviceId2 });
   print(`deviceId: ${deviceId2} (${paths.configPath()})`);
   const instructions = compactionInstructionsPath();
-  const claudeMd = path8.join(home2, ".claude", "CLAUDE.md");
+  const claudeMd = path10.join(home2, ".claude", "CLAUDE.md");
   if (!opts.appendClaudeMd) {
     print(`compaction instructions: ${instructions}`);
     print("  run `kb setup --append-claude-md` to append them to ~/.claude/CLAUDE.md");
     return;
   }
-  if (existsSync7(claudeMd) && readFileSync8(claudeMd, "utf8").includes(HEADING)) {
+  if (existsSync8(claudeMd) && readFileSync9(claudeMd, "utf8").includes(HEADING)) {
     print(`${claudeMd} already carries the compaction instructions`);
     return;
   }
   backupFile(claudeMd);
-  appendFileSync(claudeMd, `
+  appendFileSync2(claudeMd, `
 ${HEADING}
 
-${readFileSync8(instructions, "utf8")}`);
+${readFileSync9(instructions, "utf8")}`);
   print(`appended compaction instructions to ${claudeMd} (backup written)`);
 }
 
 // src/cli/init.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { copyFileSync as copyFileSync2, existsSync as existsSync10, mkdirSync as mkdirSync6, readFileSync as readFileSync11, readdirSync as readdirSync5, writeFileSync as writeFileSync5 } from "node:fs";
-import path12 from "node:path";
+import { copyFileSync as copyFileSync2, existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12, readdirSync as readdirSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import path13 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/kb/normalize.ts
@@ -8085,14 +8179,14 @@ function gateRank(db, domain, gate) {
 // src/kb/export.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync10, readdirSync as readdirSync4 } from "node:fs";
-import path9 from "node:path";
+import { existsSync as existsSync9, mkdirSync as mkdirSync4, readFileSync as readFileSync11, readdirSync as readdirSync4 } from "node:fs";
+import path11 from "node:path";
 
 // src/kb/templates-yaml.ts
 var import_yaml = __toESM(require_dist(), 1);
-import { readFileSync as readFileSync9 } from "node:fs";
+import { readFileSync as readFileSync10 } from "node:fs";
 function loadTemplate(file) {
-  return (0, import_yaml.parse)(readFileSync9(file, "utf8"));
+  return (0, import_yaml.parse)(readFileSync10(file, "utf8"));
 }
 
 // src/kb/export.ts
@@ -8149,12 +8243,12 @@ function parseNoteFile(text) {
   });
   return { note, attrs, rels };
 }
-var noteFile = (bankDir, n) => path9.join(bankDir, "notes", n.kind, `${n.id}.md`);
+var noteFile = (bankDir, n) => path11.join(bankDir, "notes", n.kind, `${n.id}.md`);
 function exportNote(db, bankDir, id) {
   const n = getNote(db, id);
   if (!n) throw new Error(`no note ${id}`);
   const file = noteFile(bankDir, n);
-  mkdirSync4(path9.dirname(file), { recursive: true });
+  mkdirSync4(path11.dirname(file), { recursive: true });
   writeFileAtomic(file, renderNoteFile(n, getAttrs(db, id), getRels(db, id, "out")));
   return file;
 }
@@ -8164,7 +8258,7 @@ function exportAll(db, bankDir) {
   return ids2.length;
 }
 function importFile(db, file) {
-  const { note, attrs, rels } = parseNoteFile(readFileSync10(file, "utf8"));
+  const { note, attrs, rels } = parseNoteFile(readFileSync11(file, "utf8"));
   upsertNote(db, note);
   db.sql.prepare("UPDATE note SET created_at=? WHERE id=?").run(note.created_at, note.id);
   setAttrs(db, note.id, attrs);
@@ -8179,14 +8273,14 @@ function importFile(db, file) {
   return note;
 }
 function importNotes(db, bankDir) {
-  const notes = path9.join(bankDir, "notes");
+  const notes = path11.join(bankDir, "notes");
   let imported = 0, unchanged = 0;
-  if (!existsSync8(notes)) return { imported, unchanged };
+  if (!existsSync9(notes)) return { imported, unchanged };
   const getMeta = db.sql.prepare("SELECT value FROM meta WHERE key=?");
   const setMeta = db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)");
   for (const kind of readdirSync4(notes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
-    for (const f of readdirSync4(path9.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
-      const file = path9.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync10(file, "utf8"));
+    for (const f of readdirSync4(path11.join(notes, kind)).filter((f2) => f2.endsWith(".md")).sort()) {
+      const file = path11.join(notes, kind, f), key = `file:notes/${kind}/${f}`, hash = sha256(readFileSync11(file, "utf8"));
       if (getMeta.get(key)?.value === hash) {
         unchanged++;
         continue;
@@ -8219,35 +8313,23 @@ function importAll(db, bankDir) {
 function rebuild(db, bankDir) {
   return inTransaction(db, () => {
     db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
-    const templates = path9.join(bankDir, "templates");
-    if (existsSync8(templates)) for (const f of readdirSync4(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path9.join(templates, f)));
+    const templates = path11.join(bankDir, "templates");
+    if (existsSync9(templates)) for (const f of readdirSync4(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path11.join(templates, f)));
     return importNotes(db, bankDir);
   });
 }
 
 // src/kb/sync.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync5, rmdirSync, statSync as statSync5 } from "node:fs";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, rmdirSync, statSync as statSync5 } from "node:fs";
 import { spawnSync as spawnSync3 } from "node:child_process";
-import path11 from "node:path";
-
-// src/lib/log.ts
-import { appendFileSync as appendFileSync2 } from "node:fs";
-import path10 from "node:path";
-function log(level, msg, data) {
-  try {
-    appendFileSync2(path10.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
-  } catch {
-  }
-}
-
-// src/kb/sync.ts
+import path12 from "node:path";
 var LOCK = ".kb-sync.lock";
 var LOCK_STALE_MS = 10 * 6e4;
 var git = (cwd, ...args2) => spawnSync3("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
 var gitIdentity = (cwd) => git(cwd, "var", "GIT_COMMITTER_IDENT").status === 0 ? [] : ["-c", "user.name=project-memory", "-c", `user.email=kb@${deviceId()}`];
 var errText = (r) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();
 function lock(bank) {
-  const dir = path11.join(bank, LOCK);
+  const dir = path12.join(bank, LOCK);
   for (let i = 0; i < 2; i++) {
     try {
       mkdirSync5(dir);
@@ -8306,9 +8388,9 @@ function record(db, result, reason) {
   return result;
 }
 function sync(bankDir) {
-  const bank = path11.resolve(bankDir), db = openDb();
+  const bank = path12.resolve(bankDir), db = openDb();
   try {
-    if (!existsSync9(path11.join(bank, ".git"))) {
+    if (!existsSync10(path12.join(bank, ".git"))) {
       log("warn", "sync: bank is not a git repository", bank);
       return record(db, "failed", "not a git repository");
     }
@@ -8318,7 +8400,7 @@ function sync(bankDir) {
       return record(db, result, reason);
     } finally {
       try {
-        rmdirSync(path11.join(bank, LOCK));
+        rmdirSync(path12.join(bank, LOCK));
       } catch {
       }
     }
@@ -8329,8 +8411,8 @@ function sync(bankDir) {
 
 // src/cli/init.ts
 function shippedTemplatesDir() {
-  const here = path12.dirname(fileURLToPath3(import.meta.url));
-  return [path12.join(here, "..", "templates"), path12.join(here, "..", "..", "templates")].find(existsSync10) ?? path12.join(here, "..", "templates");
+  const here = path13.dirname(fileURLToPath3(import.meta.url));
+  return [path13.join(here, "..", "templates"), path13.join(here, "..", "..", "templates")].find(existsSync11) ?? path13.join(here, "..", "templates");
 }
 function git2(cwd, ...args2) {
   const r = spawnSync4("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
@@ -8338,38 +8420,38 @@ function git2(cwd, ...args2) {
   return r.stdout;
 }
 function installBankTemplates(bank) {
-  const dir = path12.join(bank, "templates");
-  if (!existsSync10(dir)) return [];
+  const dir = path13.join(bank, "templates");
+  if (!existsSync11(dir)) return [];
   const db = openDb();
   const files = readdirSync5(dir).filter((f) => f.endsWith(".yaml")).sort();
-  for (const f of files) installTemplate(db, loadTemplate(path12.join(dir, f)));
+  for (const f of files) installTemplate(db, loadTemplate(path13.join(dir, f)));
   db.sql.close();
   return files;
 }
 function initBank(opts = {}) {
   const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
-  const bank = path12.resolve(opts.bank ?? paths.bankDir());
+  const bank = path13.resolve(opts.bank ?? paths.bankDir());
   const written = [];
   if (opts.clone) {
-    mkdirSync6(path12.dirname(bank), { recursive: true });
-    git2(path12.dirname(bank), "clone", "-q", opts.clone, bank);
-    mkdirSync6(path12.join(bank, "notes"), { recursive: true });
+    mkdirSync6(path13.dirname(bank), { recursive: true });
+    git2(path13.dirname(bank), "clone", "-q", opts.clone, bank);
+    mkdirSync6(path13.join(bank, "notes"), { recursive: true });
     print(`cloned ${opts.clone} into ${bank}`);
   } else {
     mkdirSync6(bank, { recursive: true });
-    if (!existsSync10(path12.join(bank, ".git"))) {
+    if (!existsSync11(path13.join(bank, ".git"))) {
       if (readdirSync5(bank).length) throw new Error(`${bank} is not empty and not a git repository; pick an empty directory or an existing bank`);
       git2(bank, "init", "-q", "-b", "main");
     }
-    if (!existsSync10(path12.join(bank, ".gitattributes"))) {
-      writeFileSync5(path12.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
+    if (!existsSync11(path13.join(bank, ".gitattributes"))) {
+      writeFileSync5(path13.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
       written.push(".gitattributes");
     }
-    for (const d of ["templates", "notes"]) mkdirSync6(path12.join(bank, d), { recursive: true });
+    for (const d of ["templates", "notes"]) mkdirSync6(path13.join(bank, d), { recursive: true });
     const src = shippedTemplatesDir();
     for (const f of readdirSync5(src).filter((f2) => f2.endsWith(".yaml"))) {
-      if (existsSync10(path12.join(bank, "templates", f))) continue;
-      copyFileSync2(path12.join(src, f), path12.join(bank, "templates", f));
+      if (existsSync11(path13.join(bank, "templates", f))) continue;
+      copyFileSync2(path13.join(src, f), path13.join(bank, "templates", f));
       written.push(`templates/${f}`);
     }
   }
@@ -8392,16 +8474,16 @@ function initBank(opts = {}) {
   }
 }
 function projectInit(cwd, opts) {
-  const file = path12.join(cwd, ".kb.json");
-  const prev = existsSync10(file) ? JSON.parse(readFileSync11(file, "utf8")) : {};
-  const c = { ...prev, project_id: opts.id ?? prev.project_id ?? path12.basename(path12.resolve(cwd)).toLowerCase(), domain: opts.domain };
+  const file = path13.join(cwd, ".kb.json");
+  const prev = existsSync11(file) ? JSON.parse(readFileSync12(file, "utf8")) : {};
+  const c = { ...prev, project_id: opts.id ?? prev.project_id ?? path13.basename(path13.resolve(cwd)).toLowerCase(), domain: opts.domain };
   writeFileSync5(file, JSON.stringify(c, null, 2) + "\n");
   return c;
 }
 
 // src/kb/concepts.ts
 import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
-import path13 from "node:path";
+import path14 from "node:path";
 
 // src/kb/ids.ts
 var PREFIX = { domain: "d", template: "m", project: "p", theme: "h", approach: "a", experiment: "x", target: "t", concept: "c", finding: "f", evidence: "e", report: "r" };
@@ -8438,7 +8520,7 @@ function redactSensitive(text) {
 // src/kb/concepts.ts
 var log2 = (bankDir, line) => {
   mkdirSync7(bankDir, { recursive: true });
-  appendFileSync3(path13.join(bankDir, "concept-merges.md"), line + "\n");
+  appendFileSync3(path14.join(bankDir, "concept-merges.md"), line + "\n");
 };
 var touch = (db, id, now) => db.sql.prepare("UPDATE note SET updated_at=? WHERE id=?").run(now, id);
 function addAlias(db, id, names, now) {
@@ -8602,36 +8684,6 @@ import { createHash as createHash3 } from "node:crypto";
 import { closeSync as closeSync2, existsSync as existsSync12, openSync as openSync2, readdirSync as readdirSync6, readFileSync as readFileSync13, readSync as readSync2, statSync as statSync6 } from "node:fs";
 import os3 from "node:os";
 import path15 from "node:path";
-
-// src/kb/project.ts
-import { existsSync as existsSync11, readFileSync as readFileSync12 } from "node:fs";
-import path14 from "node:path";
-function loadProjectConfig(cwd) {
-  let dir = path14.resolve(cwd);
-  for (let i = 0; i < 8; i++) {
-    const f = path14.join(dir, ".kb.json");
-    if (existsSync11(f)) {
-      let c;
-      try {
-        c = JSON.parse(readFileSync12(f, "utf8"));
-      } catch (e) {
-        log("warn", `.kb.json at ${f} is not valid JSON; ignored`, String(e));
-        return null;
-      }
-      if (!c.project_id || !c.domain) {
-        log("warn", `.kb.json at ${f} lacks project_id or domain; ignored`);
-        return null;
-      }
-      return c;
-    }
-    const up = path14.dirname(dir);
-    if (up === dir) break;
-    dir = up;
-  }
-  return null;
-}
-
-// src/kb/import.ts
 var sha2562 = (b) => createHash3("sha256").update(b).digest("hex");
 var projectOf = (dir) => {
   const c = loadProjectConfig(dir);

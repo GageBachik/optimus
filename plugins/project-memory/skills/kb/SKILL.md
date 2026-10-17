@@ -31,11 +31,11 @@ kb_write({
   "title": "Doubling the best mix lifts P(touch -10% in a year) from 6.7% to 27.6%; size_for_target stops at 1x",
   "domain": "trading", "project": "options-0dte",
   "tags": ["risk sizing"],
-  "attrs": { "state": "reproduced", "gate": "out-of-sample", "valid_from": "2026-09-18" },
+  "attrs": { "state": "reproduced", "gate": "in-sample", "valid_from": "2026-09-18" },
   "metrics": [{ "name": "p_touch_minus_10pct", "value": 27.6, "unit": "%", "better": "lower", "baseline": 6.7 }],
   "rels": [
     { "type": "about", "dst": "a_…", "props": { "facet_key": "risk" } },
-    { "type": "validated_in", "dst": "t_…", "props": { "gate": "out-of-sample" } }
+    { "type": "validated_in", "dst": "t_…", "props": { "gate": "in-sample" } }
   ],
   "evidence": [{ "kind": "path", "ref": "/Users/loser/projects/options/.serena/memories/results.md", "sha256": "…" }],
   "body": "## Claim\n…\n## Why it matters\n…\n## Applies when / does not establish\n…\n## Evidence\n…"

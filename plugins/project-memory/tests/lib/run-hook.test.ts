@@ -24,3 +24,10 @@ test('PreCompact with a missing transcript → exit 0, no stdout (compaction is 
   assert.equal(r.status, 0); assert.equal(r.stdout, '');
   assert.match(readFileSync(path.join(home, 'logs', 'hooks.log'), 'utf8'), /handler threw in pre-compact.*ENOENT/);
 });
+test('partial payload with stdin never closed → still exits after the idle timeout', async () => {
+  const { spawn } = await import('node:child_process');
+  const c = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'dist/hook.js', 'user-prompt'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  c.stdin.write('{"session_id": "abc"'); const kill = setTimeout(() => c.kill(), 4000);
+  const code = await new Promise((r) => c.on('exit', (code, sig) => r(sig ?? code))); clearTimeout(kill); c.stdin.destroy();
+  assert.equal(code, 0);
+});

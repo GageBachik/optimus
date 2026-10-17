@@ -75,9 +75,9 @@ export function runLiveTest(opts: { hookJs?: string; claude?: string } = {}): Li
   const run = (args: string[]) => spawnSync(claude, [...args, '--permission-mode', 'bypassPermissions', '--model', 'claude-haiku-5-5', '--max-turns', '12', '--output-format', 'json', '--setting-sources', 'project'],
     { cwd: dir, env: { ...env, PROJECT_MEMORY_HOME: state }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
   const started = Date.now(); const lines = [`dir: ${dir}`];
-  const r1 = run(['-p', PROMPT]); const j1 = parse(r1.stdout);
-  lines.push(`run1: exit ${r1.status}${r1.stderr.trim() ? ` stderr: ${r1.stderr.trim()}` : ''}`, `run1 result: ${j1?.result ?? r1.stdout.slice(0, 1000)}`);
-  if (j1?.session_id) { const r2 = run(['-p', '/compact', '--resume', j1.session_id]); lines.push(`run2 (/compact): exit ${r2.status}${r2.stderr.trim() ? ` stderr: ${r2.stderr.trim()}` : ''}`, `run2 result: ${parse(r2.stdout)?.result ?? r2.stdout.slice(0, 1000)}`); }
+  const r1 = run(['-p', PROMPT]); const out1 = r1.stdout ?? '', err1 = (r1.stderr ?? '').trim(); const j1 = parse(out1);
+  lines.push(`run1: exit ${r1.status}${r1.error ? ` error: ${r1.error.message}` : ''}${err1 ? ` stderr: ${err1}` : ''}`, `run1 result: ${j1?.result ?? out1.slice(0, 1000)}`);
+  if (j1?.session_id) { const r2 = run(['-p', '/compact', '--resume', j1.session_id]); const out2 = r2.stdout ?? '', err2 = (r2.stderr ?? '').trim(); lines.push(`run2 (/compact): exit ${r2.status}${r2.error ? ` error: ${r2.error.message}` : ''}${err2 ? ` stderr: ${err2}` : ''}`, `run2 result: ${parse(out2)?.result ?? out2.slice(0, 1000)}`); }
   const wallMs = Date.now() - started;
   const events: LiveEvent[] = existsSync(logFile) ? readFileSync(logFile, 'utf8').split('\n').map(parse).filter(Boolean) : [];
   const tp = events.find((e) => e.transcript_path)?.transcript_path;

@@ -13,3 +13,8 @@ test('stateDir honours PROJECT_MEMORY_HOME; sessionDir is per agent; bankDir hon
   const d = mkdtempSync(path.join(tmpdir(), 'proj-')); assert.match(paths.projectKey(d), /^[0-9a-f]{16}$/);
   writeFileSync(path.join(d, '.kb.json'), JSON.stringify({ project_id: 'es-meanrev', domain: 'trading' })); assert.equal(paths.projectKey(path.join(d, 'sub')), 'es-meanrev');
 });
+test('projectKey ignores a trailing slash; a null config.json reads as {}', async () => {
+  const { paths } = await import('../../src/lib/paths.js');
+  assert.equal(paths.projectKey('/a/b'), paths.projectKey('/a/b/'));
+  writeFileSync(paths.configPath(), 'null'); assert.deepEqual(paths.config(), {});
+});

@@ -13,3 +13,10 @@ test('doctor looks at the folder Claude Code runs a plugin from: a directory mar
   writeFileSync(path.join(dir, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'project-memory@project-memory': [{ installPath: '/cache/pm' }], 'tool@other': [{ installPath: '/cache/tool' }] } }));
   assert.deepEqual(installedPlugins(home), [{ name: 'project-memory@project-memory', installPath: path.join(repo, 'plugins', 'project-memory') }, { name: 'tool@other', installPath: '/cache/tool' }]);
 });
+test('doctor reports the .kb.json of the working directory (DESIGN §7)', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')), proj = mkdtempSync(path.join(tmpdir(), 'proj-'));
+  writeFileSync(path.join(proj, '.kb.json'), JSON.stringify({ project_id: 'es-meanrev', domain: 'trading' }));
+  const r = spawnSync(process.execPath, [path.join(import.meta.dirname, '..', '..', 'dist', 'kb.js'), 'doctor'], { cwd: proj, encoding: 'utf8', env: { ...process.env, HOME: home, PROJECT_MEMORY_HOME: path.join(home, '.pm') } });
+  assert.match(r.stdout, /PASS\s+kb-json\s+project es-meanrev \(domain trading\)/);
+});

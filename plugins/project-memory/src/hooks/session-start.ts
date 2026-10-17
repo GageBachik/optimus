@@ -15,7 +15,7 @@ const out = (additionalContext: string) => ({ hookSpecificOutput: { hookEventNam
 /** Marker in state.briefed: the synonym questions were shown in this session (DESIGN §3.6: once per session). */
 const QUESTIONS_SHOWN = 'concept-questions';
 
-// DESIGN §3.11 / §3.6: last session (10) + project card (9); with a .kb.json the bank sections follow, and the findings shown count as briefed.
+// DESIGN §3.11 / §3.6: last session (10) + project card (9); with a .kb.json the bank sections follow, and only the findings fitBrief kept in the text count as briefed.
 export function buildStartupBrief(cwd: string, sessionId = 'unknown'): string {
   const cfg = loadProjectConfig(cwd);
   if (cfg) {
@@ -23,7 +23,7 @@ export function buildStartupBrief(cwd: string, sessionId = 'unknown'): string {
       const state = loadState(sessionId), db = openDb();
       try {
         const { text, findings } = projectBrief(db, cfg, state.briefed.includes(QUESTIONS_SHOWN) ? [] : pendingQuestions(db, 3));
-        state.briefed = [...new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.map((f) => f.id)])]; saveState(sessionId, state);
+        state.briefed = [...new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.filter((f) => text.includes(`[${f.id}]`)).map((f) => f.id)])]; saveState(sessionId, state);
         return text;
       } finally { db.sql.close(); }
     } catch (e) { log('warn', 'bank brief failed; phase-1 brief only', String(e)); }

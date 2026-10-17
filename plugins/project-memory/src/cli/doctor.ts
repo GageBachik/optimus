@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { paths } from '../lib/paths.js';
 import { loadSqlite, openDb } from '../kb/db.js';
+import { loadProjectConfig } from '../kb/project.js';
 import { computeBaseline } from './baseline.js';
 import { runLiveTest, type LiveResult } from './live-test.js';
 export type Check = { status: 'PASS' | 'WARN' | 'FAIL' | 'INFO'; name: string; detail: string };
@@ -30,12 +31,14 @@ function bankChecks(): Check[] {
   const bank = paths.bankDir();
   if (!existsSync(path.join(bank, '.git'))) return [{ status: 'WARN', name: 'bank', detail: `${bank} is not a git repository (run \`kb init\`)` }];
   const g = (args: string[], timeout = 60_000) => spawnSync('git', args, { cwd: bank, encoding: 'utf8', timeout });
-  const dirty = g(['status', '--porcelain']).stdout.trim() ? 'dirty' : 'clean';
-  const ab = g(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']); const [ahead, behind] = ab.stdout.trim().split(/\s+/);
+  const st = g(['status', '--porcelain']);
+  if (st.error) return [{ status: 'WARN', name: 'bank', detail: `${bank}: git failed: ${st.error.message}` }];
+  const dirty = (st.stdout ?? '').trim() ? 'dirty' : 'clean';
+  const ab = g(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']); const [ahead, behind] = (ab.stdout ?? '').trim().split(/\s+/);
   const out: Check[] = [{ status: 'PASS', name: 'bank', detail: `${bank}: ${dirty}, ${ab.status === 0 ? `ahead ${ahead} behind ${behind}` : 'no upstream yet'}` }];
-  const remote = g(['remote']).stdout.split('\n')[0].trim();
+  const remote = (g(['remote']).stdout ?? '').split('\n')[0].trim();
   if (!remote) out.push({ status: 'INFO', name: 'bank-remote', detail: 'no remote configured; kb sync stops at no-remote' });
-  else { const ls = g(['ls-remote', '-q', remote], 10_000); out.push(ls.status === 0 ? { status: 'PASS', name: 'bank-remote', detail: `${remote} reachable (${g(['remote', 'get-url', remote]).stdout.trim()})` } : { status: 'WARN', name: 'bank-remote', detail: `${remote} unreachable: ${(ls.error?.message || ls.stderr || `exit ${ls.status}`).trim()}` }); }
+  else { const ls = g(['ls-remote', '-q', remote], 10_000); out.push(ls.status === 0 ? { status: 'PASS', name: 'bank-remote', detail: `${remote} reachable (${(g(['remote', 'get-url', remote]).stdout ?? '').trim()})` } : { status: 'WARN', name: 'bank-remote', detail: `${remote} unreachable: ${(ls.error?.message || ls.stderr || `exit ${ls.status}`).trim()}` }); }
   return out;
 }
 /** DESIGN §7: kb.sqlite size and row counts per kind, pending merges, last sync result and time. */
@@ -62,6 +65,8 @@ export function doctorChecks(home: string): Check[] {
   out.push(fts5Probe());
   const git = spawnSync('git', ['--version'], { encoding: 'utf8' });
   out.push(git.status === 0 ? { status: 'PASS', name: 'git', detail: git.stdout.trim() } : { status: 'FAIL', name: 'git', detail: 'git not found on PATH' });
+  const kb = loadProjectConfig(process.cwd());
+  out.push(kb ? { status: 'PASS', name: 'kb-json', detail: `project ${kb.project_id} (domain ${kb.domain})` } : { status: 'WARN', name: 'kb-json', detail: `no valid .kb.json in ${process.cwd()} (missing project_id or domain): run kb project init` });
   out.push(...bankChecks(), ...indexChecks());
   const state = paths.stateDir();
   try { const probe = path.join(state, `.doctor-${process.pid}`); writeFileSync(probe, 'ok'); unlinkSync(probe); out.push({ status: 'PASS', name: 'state-dir', detail: `${state} writable` }); }
@@ -107,11 +112,15 @@ export function doctor(home: string, opts: { baseline?: boolean; live?: boolean 
   for (const c of checks) print(c);
   if (opts.live) {
     const v = spawnSync('claude', ['--version'], { encoding: 'utf8' });
-    process.stdout.write(`\nlive marker test (two headless runs, about two minutes)...\n`);
-    const r = runLiveTest(); const live = liveChecks(r); checks.push(...live);
-    print({ status: 'INFO', name: 'live:claude', detail: v.status === 0 ? v.stdout.trim() : 'claude not found on PATH' });
-    for (const c of live) print(c);
-    process.stdout.write(`${live.some((c) => c.status === 'FAIL') ? r.log : r.log.split('\n')[0]}\n`);
+    process.stdout.write('\n');
+    if (v.status !== 0) { const c: Check = { status: 'FAIL', name: 'live:claude', detail: `claude --version failed (${v.error?.message ?? `exit ${v.status}`}); live test skipped` }; checks.push(c); print(c); }
+    else {
+      print({ status: 'INFO', name: 'live:claude', detail: (v.stdout ?? '').trim() });
+      process.stdout.write(`live marker test (two headless runs, about two minutes)...\n`);
+      const r = runLiveTest(); const live = liveChecks(r); checks.push(...live);
+      for (const c of live) print(c);
+      process.stdout.write(`${live.some((c) => c.status === 'FAIL') ? r.log : r.log.split('\n')[0]}\n`);
+    }
   }
   if (opts.baseline) {
     const dir = path.join(home, '.claude', 'projects');

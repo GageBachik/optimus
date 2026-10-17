@@ -1,4 +1,4 @@
-// Adapted from claude-mem src/shared/transcript-parser.ts — Copyright 2026 Alex Newman — Apache-2.0 — modified.
+// Behaviour re-expressed from claude-mem's transcript parser (Apache-2.0); no text copied.
 import { openSync, readSync, fstatSync, closeSync } from 'node:fs';
 export type TranscriptEntry = { type: 'user' | 'assistant' | 'system' | string; timestamp?: string; message?: { role?: string; content?: unknown; usage?: Record<string, number> }; [k: string]: unknown };
 
@@ -24,5 +24,5 @@ export function textOf(e: TranscriptEntry): string { return blocks(e).filter((b)
 export function lastAssistantText(entries: TranscriptEntry[]): string | null {
   for (let i = entries.length - 1; i >= 0; i--) { const e = entries[i]; if (e.type !== 'assistant') continue; const t = textOf(e); if (t) return t; }
   const tools = entries.flatMap(blocks).filter((b) => b?.type === 'tool_use').map((b) => b.name).slice(-5);
-  return tools.length ? `[Session ended mid-task. Last tools used: ${tools.join(', ')}]` : null;
+  return tools.length ? `[No final reply: the session stopped during tool calls (${tools.join(', ')})]` : null;
 }

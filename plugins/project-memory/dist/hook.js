@@ -42,7 +42,8 @@ var init_paths = __esm({
       },
       config() {
         try {
-          return JSON.parse(readFileSync(this.configPath(), "utf8"));
+          const c = JSON.parse(readFileSync(this.configPath(), "utf8"));
+          return c && typeof c === "object" && !Array.isArray(c) ? c : {};
         } catch {
           return {};
         }
@@ -63,7 +64,7 @@ var init_paths = __esm({
           if (existsSync(f)) {
             try {
               const id = JSON.parse(readFileSync(f, "utf8")).project_id;
-              if (typeof id === "string" && id) return safe(id);
+              if (typeof id === "string" && id) return id;
             } catch {
             }
           }
@@ -71,7 +72,7 @@ var init_paths = __esm({
           if (up === dir) break;
           dir = up;
         }
-        return createHash("sha256").update(path.normalize(cwd)).digest("hex").slice(0, 16);
+        return createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
       },
       projectDir(key) {
         return ensure(path.join(this.stateDir(), "projects", safe(key)));
@@ -887,7 +888,7 @@ function buildStartupBrief(cwd, sessionId = "unknown") {
       const state = loadState(sessionId), db = openDb();
       try {
         const { text, findings } = projectBrief(db, cfg, state.briefed.includes(QUESTIONS_SHOWN) ? [] : pendingQuestions(db, 3));
-        state.briefed = [.../* @__PURE__ */ new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.map((f) => f.id)])];
+        state.briefed = [.../* @__PURE__ */ new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.filter((f) => text.includes(`[${f.id}]`)).map((f) => f.id)])];
         saveState(sessionId, state);
         return text;
       } finally {
@@ -1362,10 +1363,12 @@ function readStdin(idleMs = 1500) {
       if (s.charCodeAt(0) === 65279) s = s.slice(1);
       resolve(s);
     };
-    const timer = setTimeout(() => {
-      if (chunks.length === 0) finish();
-    }, idleMs);
-    process.stdin.on("data", (c) => chunks.push(c));
+    let timer = setTimeout(finish, idleMs);
+    process.stdin.on("data", (c) => {
+      chunks.push(c);
+      clearTimeout(timer);
+      timer = setTimeout(finish, idleMs);
+    });
     process.stdin.on("end", finish);
     process.stdin.on("error", finish);
     process.stdin.resume();

@@ -68,7 +68,7 @@ Plugin hooks also fire inside subagents, with the same `session_id` and an `agen
 
 | Event | Matcher | Mode | Timeout | Does | Output |
 |---|---|---|---|---|---|
-| SessionStart | `startup` | sync | 10 s | Last-session section for this project (§3.11) + project card; phase 2 adds the top findings brief, pending synonym questions (≤ 3 lines) and imported memory titles on a cold start | `additionalContext` ≤ 9,000 chars |
+| SessionStart | `startup` | sync | 10 s | Last-session section for this project (§3.11) + project card; phase 2 adds the top findings brief, pending synonym questions (≤ 3 lines) and imported memory titles whenever the project has imported memory notes | `additionalContext` ≤ 9,000 chars |
 | SessionStart | `clear` | sync | 10 s | Same as startup | same |
 | SessionStart | `compact` | sync | 10 s | Restore brief from `task-state.json` + `audit.json` omissions + recall pointers | same |
 | SessionStart | `resume`, `fork` | — | — | **No brief is injected** (the transcript already carries it; re-injecting breaks the cache). Only the async hook below runs. | — |
@@ -134,7 +134,7 @@ Every brief opens with one fixed sentence: *"Context restored by the project-mem
 
 Restore brief (SessionStart compact) priority: Goal → Open items → Omitted by compaction → Constraints → Decisions → Files → Exact values → Tests → Errors → Pointers.
 
-Startup brief priority: last session in this project (§3.11) → project card → pending synonym questions (≤ 3 lines, once per session; phase 2) → top findings (ranked, §4.6; phase 2) → comparison block when the project declares a facet key with two or more competing findings (§4.9; phase 2) → titles of this project's imported memory notes (phase 2, cold start).
+Startup brief priority: last session in this project (§3.11) → project card → pending synonym questions (≤ 3 lines, once per session; phase 2) → top findings (ranked, §4.6; phase 2) → comparison block when the project declares a facet key with two or more competing findings (§4.9; phase 2) → titles of this project's imported memory notes (phase 2; shown whenever the project has imported memory notes, at the lowest priority so it is trimmed first under the 9,000-character cap).
 
 Recall brief (UserPromptSubmit, phase 2): built from concepts and projects named in the prompt that this session has not been briefed on; the last successful brief is cached in `state.json` and injected if the bank query throws.
 
@@ -174,7 +174,7 @@ The retention doctrine (billion-context `kernel/src/compression-rules.ts`, MIT w
 Gage's requirement (16 Oct, evening): opening a session in a project must load the right context by itself, with no command. Three layers, all automatic:
 
 1. **Where the last session left off.** After every main-agent turn the Stop hook rebuilds the task-state record (§3.4) from the transcript and writes it to `~/.project-memory/projects/<project key>/last-session.json` with the time, session id and working directory. The project key is the `project_id` from `.kb.json` when one is present, otherwise a hash of the normalized working directory, so this works in phase 1 before the bank exists. On `startup` and `clear` the SessionStart hook injects a "Last session in this project" section (when, goal, open items, decisions, files touched, pointers) at top priority. This record is machine-local by design: it is working state, not knowledge; the bank carries what should travel between machines.
-2. **What the bank knows about this project** (phase 2): the ranked findings brief, the comparison block, and on a cold start (a project that has imported memories but no findings yet) the titles of its imported Serena and auto-memory notes with the `kb_find` call that opens any of them, so the 760 imported files are reachable from the first session without a command.
+2. **What the bank knows about this project** (phase 2): the ranked findings brief, the comparison block, and, whenever the project has imported memory notes, the titles of its imported Serena and auto-memory notes (lowest priority, so they are trimmed first under the 9,000-character cap) with the `kb_find` call that opens any of them, so the 760 imported files are reachable from the first session without a command.
 3. **What Claude Code already loads natively** is left alone: `CLAUDE.md`, the auto-memory `MEMORY.md` index, and `--resume`/`--continue` for the same conversation. The plugin never duplicates those.
 
 Nothing is saved by a command either: PreCompact, Stop and SessionEnd capture; `kb sync` carries bank changes to the other machines. `/sc:save` and `/sc:load` therefore become removable (§6).
