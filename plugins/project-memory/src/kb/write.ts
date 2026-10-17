@@ -59,21 +59,23 @@ export function agrees(a: FindingLite, b: FindingLite): boolean | null {
 
 /** DESIGN §4.8: a finding about concept C proposes a `transfer{state: proposed}` to every approach in another project that relies_on (or is tagged
  *  `about`) C, or that shares a facet key with the finding's own approach; one per approach, never a second. Returns the new rel ids. */
+const MAX_PROPOSALS = 12; // ponytail: a flat cap; rank by shared-concept count if a finding ever needs more than a dozen candidates
 export function proposeTransfers(db: Db, bankDir: string, findingId: string, now = new Date().toISOString()): string[] {
   const f = must(db, findingId), about = getRels(db, findingId).filter((r) => r.type === 'about');
   const concepts = about.map((r) => r.dst).filter((d) => kindOfId(d) === 'concept');
   const approaches = about.map((r) => r.dst).filter((d) => kindOfId(d) === 'approach');
+  // Only the facet the finding is explicitly about (its `about` rel's facet_key) seeds facet candidates. Every key of the approach used to count,
+  // which at 180 approaches proposed ~80 transfers per finding (14,600 in one import); concept-sharing candidates come first, and the list is capped.
   const keys = new Set(about.flatMap((r) => (typeof r.props.facet_key === 'string' ? [r.props.facet_key] : [])));
-  for (const a of approaches) for (const k of Object.keys(getAttrs(db, a))) if (k.startsWith('facet:')) keys.add(k.slice(6));
   const live = `n.kind='approach' AND n.deleted_at IS NULL AND n.project IS NOT NULL AND n.project IS NOT ?`;
   const byConcept = db.sql.prepare(`SELECT DISTINCT r.src AS id FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND ${live}`);
   const byFacet = db.sql.prepare(`SELECT DISTINCT a.note_id AS id FROM attr a JOIN note n ON n.id=a.note_id WHERE a.key=? AND ${live}`);
   const candidates = new Set<string>();
-  for (const c of concepts) for (const r of byConcept.all(c, f.project) as { id: string }[]) candidates.add(r.id);
-  for (const k of keys) for (const r of byFacet.all(`facet:${k}`, f.project) as { id: string }[]) candidates.add(r.id);
+  for (const c of concepts) for (const r of (byConcept.all(c, f.project) as { id: string }[]).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
+  for (const k of keys) for (const r of (byFacet.all(`facet:${k}`, f.project) as { id: string }[]).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
   const existing = new Set(getRels(db, findingId).filter((r) => r.type === 'transfer').map((r) => r.dst));
   const made: string[] = [];
-  for (const dst of [...candidates].sort()) {
+  for (const dst of [...candidates].slice(0, MAX_PROPOSALS)) {
     if (existing.has(dst) || approaches.includes(dst)) continue;
     const props = { state: 'proposed' }, id = relId(findingId, 'transfer', dst, props);
     addRel(db, { id, src: findingId, type: 'transfer', dst, props, created_at: now, deleted_at: null }); made.push(id);

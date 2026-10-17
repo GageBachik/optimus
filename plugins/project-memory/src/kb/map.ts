@@ -113,16 +113,17 @@ function renderBoard(g: Graph): string {
   // ponytail: the first two findings show, the rest sit behind a "+N more" row; the row's count is static (state filters do not recount it)
   const findings = (bs: Badge[]) => bs.length ? `<ul class="findings">${bs.map((b, i) => (i < SHOW ? badge(b) : badge(b).replace('<li>', '<li class="hidden-more">'))).join('')}${bs.length > SHOW ? `<li class="more-row"><button class="more eyebrow" type="button">+${bs.length - SHOW} more</button></li>` : ''}</ul>` : '';
   const node = (n: Node) => `<div class="node"${attr('data-id', n.id)}${attr('data-kind', n.kind)}${n.project ? attr('data-project', n.project) : ''}${list('data-environment', n.environment)}${list('data-subject', n.subject)}><button class="part" type="button"${attr('title', n.title)}><span>${esc(n.title)}</span>${n.project ? `<em class="proj">${esc(n.project)}</em>` : ''}</button>${findings(byAttach.get(n.id) ?? [])}</div>`;
-  const used = COLUMNS.filter((c) => g.lanes.some((l) => l.columns[c].length)), template = used.map(() => 'minmax(0,1fr)').join(' ') || '1fr';
+  const used = COLUMNS.filter((c) => g.lanes.some((l) => l.columns[c].length));
+  // a stage's width grows with the square root of its part count, so a lane with 200 approaches and 50 targets reads as 2:1, not 4:1
+  const template = (l: Lane) => used.map((c) => `minmax(0,${Math.max(0.6, Math.sqrt(l.columns[c].length)).toFixed(2)}fr)`).join(' ') || '1fr';
   const out: string[] = ['<aside class="rail"><header><h2>Concepts</h2><p class="hint">Shared across domains. Bold: two or more domains. Hollow: merge pending.</p></header><ul>'];
   for (const c of g.concepts) out.push(`<li><button class="concept${c.lanes >= 2 ? ' multi' : ''}${c.pending ? ' hollow' : ''}" type="button"${attr('data-id', c.id)}${attr('data-lanes', c.lanes)}${attr('data-pending', flag(!!c.pending))}><span>${esc(c.title)}</span>${c.lanes >= 2 ? `<span class="n">${c.lanes}×</span>` : ''}<i class="hub"></i></button>${findings(byAttach.get(c.id) ?? [])}</li>`);
   if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
   out.push('</ul></aside>', '<div class="lanes">');
-  if (used.length) out.push(`<div class="stages" style="grid-template-columns:${template}">${used.map((c) => `<span class="eyebrow">${LABEL[c]}</span>`).join('')}</div>`);
   for (const l of g.lanes) {
     const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
-    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, 'part')} · ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${template}">`);
-    for (const c of used) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3 class="eyebrow stage-sm">${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
+    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, 'part')} · ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${template(l)}">`);
+    for (const c of used) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3 class="eyebrow stage">${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
     if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Unattached</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
     if (!parts && !lo.length) out.push('<p class="empty">Nothing here yet.</p>');
     out.push('</div></section>');

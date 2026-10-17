@@ -284,11 +284,15 @@ On every tag, in this order: `normalizeName(tag)` equals a concept's normalized 
 
 ### 4.8 Transfers
 
+> v1.4 (after the 2026-10-17 bulk import): a proposal's facet candidates come only from the facet the finding is explicitly `about` (the `about` rel's `facet_key`), not from every facet key of its approach; concept-sharing candidates come first; at most 12 proposals per finding. The old rule proposed ~80 transfers per finding once the bank held 180 approaches.
+
 `kb_write` of a finding about concept C creates a `transfer{state: proposed}` relation toward every approach in another project that `relies_on` C or shares a facet key with the finding's approach. A later finding in the target project about C changes the state **only by a mechanical rule**: when both findings carry the same metric name with a baseline, compare `sign((value − baseline) · dir)` where `dir` is −1 for lower-is-better; equal and non-zero → `confirmed_provisional`; opposite → both findings get `conflicts_with` and attr `state=conflicting`; any missing baseline or metric → nothing changes. `kb transfer <id> confirm|refute` sets the final state and is the only path to it. Transfer verdicts feed ranking (§4.6).
 
 ### 4.9 Comparison (`kb_compare`)
 
 One row per finding `about` the concept: the facet value of the approach it is about (via the `about` relation's `facet_key`), gate and gate rank, first metric with value, unit and direction, target, `valid_from`, state, project. Sorted by gate rank, then metric value in the better direction (lower-is-better flips the sign), so a −4% max drawdown ranks above −1%. The startup brief includes the block when the project declares a facet key with two or more competing findings. The experiments leaderboard (method × objective × baseline × trials × wins) is deferred until experiments are actually recorded (§10); `method`, `objective` and `trials` are already accepted as attrs so nothing is lost.
+
+- `kb write <spec.json|->` (v1.4): bulk notes from a JSON file `{defaults: {domain, project}, records: [{key?, …WriteRecord}]}`; a rel `dst` of `@key` points at a record written earlier in the file. Used for the 2026-10-17 import of every project under `~/projects`; see `docs/acceptance/phase-2.md`.
 
 ### 4.10 Importers
 

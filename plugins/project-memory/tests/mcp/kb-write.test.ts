@@ -12,7 +12,7 @@ const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
 test('kb_write and kb_link over MCP; a bad gate comes back as an error payload', async () => {
   const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml')); db.sql.close();
   const client = new Client({ name: 't', version: '0' });
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: ['--disable-warning=ExperimentalWarning', 'dist/mcp.js'], env: { ...process.env } as Record<string, string> }));
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: ['--disable-warning=ExperimentalWarning', path.resolve('dist/mcp.js')], cwd: process.env.PROJECT_MEMORY_HOME, env: { ...process.env } as Record<string, string> })); // a neutral cwd: this repo now has its own .kb.json
   try {
     const call = async (name: string, args: Record<string, unknown>) => JSON.parse(((await client.callTool({ name, arguments: args })) as any).content[0].text);
     const a = await call('kb_write', { kind: 'approach', title: 'ES 2-sigma', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' } });

@@ -29338,21 +29338,21 @@ function agrees(a, b) {
   }
   return verdict;
 }
+var MAX_PROPOSALS = 12;
 function proposeTransfers(db2, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const f = must(db2, findingId), about = getRels(db2, findingId).filter((r) => r.type === "about");
   const concepts2 = about.map((r) => r.dst).filter((d) => kindOfId(d) === "concept");
   const approaches = about.map((r) => r.dst).filter((d) => kindOfId(d) === "approach");
   const keys = new Set(about.flatMap((r) => typeof r.props.facet_key === "string" ? [r.props.facet_key] : []));
-  for (const a of approaches) for (const k of Object.keys(getAttrs(db2, a))) if (k.startsWith("facet:")) keys.add(k.slice(6));
   const live2 = `n.kind='approach' AND n.deleted_at IS NULL AND n.project IS NOT NULL AND n.project IS NOT ?`;
   const byConcept = db2.sql.prepare(`SELECT DISTINCT r.src AS id FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND ${live2}`);
   const byFacet = db2.sql.prepare(`SELECT DISTINCT a.note_id AS id FROM attr a JOIN note n ON n.id=a.note_id WHERE a.key=? AND ${live2}`);
   const candidates = /* @__PURE__ */ new Set();
-  for (const c of concepts2) for (const r of byConcept.all(c, f.project)) candidates.add(r.id);
-  for (const k of keys) for (const r of byFacet.all(`facet:${k}`, f.project)) candidates.add(r.id);
+  for (const c of concepts2) for (const r of byConcept.all(c, f.project).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
+  for (const k of keys) for (const r of byFacet.all(`facet:${k}`, f.project).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
   const existing = new Set(getRels(db2, findingId).filter((r) => r.type === "transfer").map((r) => r.dst));
   const made = [];
-  for (const dst of [...candidates].sort()) {
+  for (const dst of [...candidates].slice(0, MAX_PROPOSALS)) {
     if (existing.has(dst) || approaches.includes(dst)) continue;
     const props = { state: "proposed" }, id = relId(findingId, "transfer", dst, props);
     addRel(db2, { id, src: findingId, type: "transfer", dst, props, created_at: now, deleted_at: null });

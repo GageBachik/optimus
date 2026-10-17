@@ -60,7 +60,7 @@ body.filters-open #filters { transform:none }
 .board { grid-area:board; position:relative; overflow:hidden; touch-action:none; cursor:grab; background:var(--paper) }
 .board.dragging { cursor:grabbing; user-select:none } body.space .board { cursor:grab }
 .canvas { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform } .canvas.animate { transition:transform .4s var(--ease) }
-.layout { display:grid; grid-template-columns:232px minmax(0,1fr); gap:24px 72px; align-items:start; position:relative; padding:24px 24px 48px }
+.layout { display:grid; grid-template-columns:minmax(232px, 12%) minmax(0,1fr); gap:24px 72px; align-items:start; position:relative; padding:24px 24px 48px }
 .zoom { position:absolute; right:16px; bottom:16px; display:flex; gap:2px; z-index:6; background:var(--paper-2); border:1px solid var(--rule); border-radius:8px; padding:4px }
 .zoom button { padding:6px 10px; border-radius:6px; font:500 11px/1 var(--mono); letter-spacing:.08em; color:var(--muted); transition:background .15s, color .15s }
 .zoom button:hover:not(:disabled) { background:var(--paper-3); color:var(--ink) } .zoom button:disabled { opacity:.35; cursor:default } .zoom .pct { min-width:56px; text-align:center }
@@ -74,9 +74,13 @@ body.lod-low .node .part { font-size:22px; padding:10px 14px } body.lod-low .nod
 body.lod-low .lane h2, body.lod-low .rail h2 { font-size:28px } body.lod-low .lane > header .eyebrow, body.lod-low .stages .eyebrow { font-size:15px } body.lod-low .lane { padding:20px }
 body.lod-low .concept { font-size:21px; padding:8px 0 8px 10px } body.lod-low .concept .hub { width:12px; height:12px } body.lod-low .rail .hint, body.lod-low .rail .findings { display:none }
 body.lod-low .edge path.vis { stroke-width:2 } body.lod-low .edge.lit path.vis { stroke-width:3 } body.lod-low .edge text { font-size:15px }
+body.lod-min .node .part > span, body.lod-min .node .proj, body.lod-min .col .stage, body.lod-min .rail .hint, body.lod-min .rail .findings, body.lod-min .lane > header .eyebrow { display:none }
+body.lod-min .node { min-height:36px } body.lod-min .node .part { padding:6px 10px } body.lod-min .findings { padding:0 10px 8px } body.lod-min .led { width:14px; height:14px }
+body.lod-min .lane h2, body.lod-min .rail h2 { font-size:64px; line-height:1 } body.lod-min .lane { padding:24px } body.lod-min .concept { font-size:30px; padding:6px 0 6px 10px } body.lod-min .concept .hub { width:16px; height:16px }
+body.lod-min .edge path.vis { stroke-width:3 } body.lod-min .edge.lit path.vis { stroke-width:5 }
 .rail { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
 .rail > header { margin-bottom:12px } .rail h2 { font:600 15px/1.3 var(--sans) } .rail .hint { color:var(--soft); font-size:12px; margin-top:4px }
-.rail ul { list-style:none; margin:0; padding:0; display:grid; gap:2px }
+.rail ul { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:2px 16px; align-items:start }
 .concept { display:flex; gap:12px; align-items:center; width:100%; padding:6px 0 6px 8px; border-radius:6px; font-size:13px; line-height:1.35; transition:background .15s, opacity .18s }
 .concept:hover, .concept.near { background:var(--paper-3) }
 .concept > span:first-child { flex:1; min-width:0; overflow-wrap:anywhere }
@@ -85,11 +89,10 @@ body.lod-low .edge path.vis { stroke-width:2 } body.lod-low .edge.lit path.vis {
 .concept.hollow .hub { background:transparent } .concept.multi { font-weight:600 }
 .rail .findings { padding:0 16px 8px 8px }
 .lanes { display:grid; gap:16px; min-width:0 }
-.stages { display:grid; gap:0 40px; padding:0 17px } .stages .eyebrow { padding-bottom:4px }
 .lane { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
 .lane > header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px } .lane h2 { font:600 15px/1.3 var(--sans) }
 .cols { display:grid; gap:12px 40px }
-.col .parts { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:8px; align-content:start } .col .stage-sm { display:none }
+.col .parts { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; align-content:start } .col .stage { margin-bottom:8px }
 .lane h2 { cursor:pointer } .lane.folded .cols { display:none } .lane.folded h2::after { content:" +"; color:var(--soft) }
 .node .proj { display:block; margin-top:4px; font:500 10px/1.2 var(--mono); letter-spacing:.08em; color:var(--soft); font-style:normal } body.lod-mid .node .proj, body.lod-low .node .proj { display:none }
 .node { position:relative; border:1px solid var(--rule-solid); border-radius:6px; background:var(--paper); transition:border-color .15s, opacity .18s }
@@ -115,7 +118,7 @@ body.ready .led { opacity:1 }
 
 /* traces: drawn behind the parts */
 .wires { position:absolute; left:0; top:0; pointer-events:none; overflow:visible; z-index:2 }
-.node, .rail li, .lane > header, .stages, .loose .eyebrow, .empty { position:relative; z-index:3 }
+.node, .rail li, .lane > header, .col .stage, .loose .eyebrow, .empty { position:relative; z-index:3 }
 .edge path.vis { fill:none; stroke:var(--muted); stroke-width:1.25; stroke-linecap:round; stroke-linejoin:round; opacity:.45; transition:stroke .15s, stroke-width .15s, opacity .18s }
 .edge path.hit { fill:none; stroke:transparent; stroke-width:10; pointer-events:stroke; cursor:pointer }
 .edge[data-motion="draw"] path.vis { stroke-dasharray:var(--len, 1); stroke-dashoffset:var(--len, 1); transition:stroke-dashoffset .7s var(--ease) calc(.3s + var(--i,0)*var(--stagger)), stroke .15s, stroke-width .15s, opacity .18s }
@@ -160,7 +163,8 @@ body.panel-open #panel { width:360px; overflow:auto; border-left-color:var(--rul
 .cmd { display:flex; gap:8px; align-items:stretch; margin:8px 0 } .cmd code { flex:1; background:var(--paper); border:1px solid var(--rule); padding:8px 10px; border-radius:6px; overflow-wrap:anywhere; user-select:all }
 .cmd button { flex:none; padding:0 12px; border:1px solid var(--rule); border-radius:6px; font-size:12px; min-width:64px; text-align:center; transition:background .15s, color .15s } .cmd button:hover { background:var(--paper-3) }
 .cmd button.done { background:var(--accent); color:var(--paper); border-color:var(--accent) }
-#panel .placeholder { color:var(--muted); font-size:13px; line-height:1.55; margin-right:40px } #panel .placeholder kbd { font:inherit; color:var(--ink) }
+#panel .placeholder { color:var(--muted); font-size:13px; line-height:1.55; margin-right:40px }
+#panel details.proposed { margin-top:20px } #panel details.proposed summary { cursor:pointer; padding-bottom:6px; border-bottom:1px solid var(--rule); list-style:none } #panel details.proposed summary::before { content:"▸ "; color:var(--soft) } #panel details.proposed[open] summary::before { content:"▾ " } #panel details.proposed ul { margin-top:8px } #panel .placeholder kbd { font:inherit; color:var(--ink) }
 
 @media (max-width: 1099px) {
   body { grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "board" }
@@ -171,7 +175,7 @@ body.panel-open #panel { width:360px; overflow:auto; border-left-color:var(--rul
 @media (max-width: 720px) {
   .top { padding:10px 16px; gap:10px } .brand .eyebrow { display:none } .brand h1 { font-size:20px } #search { width:auto; flex:1; min-width:0 }
   .layout { padding:16px 12px 120px } .lanes { gap:12px } .lane { padding:12px } .zoom { bottom:12px; right:12px }
-  .stages { display:none } .cols { grid-template-columns:1fr !important; gap:12px } .col.is-empty { display:none } .col .stage-sm { display:block; margin-bottom:6px }
+  .cols { grid-template-columns:1fr !important; gap:12px } .col.is-empty { display:none }
   .edge:not(.lit):not(.selected) { display:none } /* on a phone the traces appear for the part you touch, not all at once */
 }
 @media (prefers-reduced-motion: reduce) {
@@ -327,17 +331,25 @@ __BOARD__
   // --- canvas: pan, zoom, fit, semantic zoom ---------------------------------------------------------------------------------------
   let k = 1, tx = 0, ty = 0, lod = 'full', refits = 0, pendingFit = null, suppressClick = false, space = false;
   const pct = document.getElementById('zoom-pct'), focusBtn = document.getElementById('zoom-focus');
-  const clamp = (v) => Math.min(3, Math.max(.2, v));
-  const lodFor = (z, cur) => (cur === 'low' ? (z >= .55 ? (z >= .85 ? 'full' : 'mid') : 'low') : cur === 'mid' ? (z < .5 ? 'low' : z >= .85 ? 'full' : 'mid') : (z < .5 ? 'low' : z < .8 ? 'mid' : 'full'));
+  const clamp = (v) => Math.min(3, Math.max(.05, v));
+  // four levels with hysteresis: full ≥ .8, mid ≥ .5, low ≥ .3, min below (lane names and card blocks only)
+  const lodFor = (z, cur) => { const up = { min: .35, low: .55, mid: .85 }; const level = (t) => (t >= .8 ? 'full' : t >= .5 ? 'mid' : t >= .3 ? 'low' : 'min'); const n = level(z); const order = ['min', 'low', 'mid', 'full']; if (order.indexOf(n) > order.indexOf(cur) && z < (up[cur] ?? 0)) return cur; return n; };
   let lodTimer;
   function applyView(animate) {
     canvas.classList.toggle('animate', !!animate);
     canvas.style.transform = 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + k.toFixed(4) + ')';
     pct.textContent = Math.round(k * 100) + '%';
     clearTimeout(lodTimer);
-    lodTimer = setTimeout(() => { const n = lodFor(k, lod); if (n !== lod) { lod = n; body.classList.toggle('lod-mid', n === 'mid'); body.classList.toggle('lod-low', n === 'low'); presentation(); } else pendingFit = null; }, 80);
+    lodTimer = setTimeout(() => { const n = lodFor(k, lod); if (n !== lod) { lod = n; body.classList.toggle('lod-mid', n === 'mid'); body.classList.toggle('lod-low', n === 'low'); body.classList.toggle('lod-min', n === 'min'); presentation(); } else pendingFit = null; }, 80);
   }
-  function sizeCanvas() { canvas.style.width = Math.max(320, board.clientWidth) + 'px'; }
+  function sizeCanvas() {
+    const w0 = Math.max(320, board.clientWidth); canvas.style.width = w0 + 'px';
+    if (board.clientWidth < 720) return; // a phone keeps one column and scrolls
+    // a whiteboard is landscape: among a few candidate widths pick the one whose shape is closest to 16:9 (card grids reflow, so the height is not monotonic)
+    let best = w0, bestScore = Infinity;
+    for (const f of [1, 1.25, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6]) { const w = Math.min(9000, Math.round(w0 * f)); canvas.style.width = w + 'px'; const score = Math.abs(canvas.offsetHeight / w - 0.56); if (score < bestScore) { bestScore = score; best = w; } }
+    canvas.style.width = best + 'px';
+  }
   function zoomAt(f, cx, cy) { pendingFit = null; const b = board.getBoundingClientRect(), px = cx - b.left, py = cy - b.top, nk = clamp(k * f); f = nk / k; tx = px - (px - tx) * f; ty = py - (py - ty) * f; k = nk; applyView(false); }
   function fit(bx, animate, pad, maxK) {
     if (!bx || bx.r <= bx.l || bx.b <= bx.t) return;
@@ -348,7 +360,14 @@ __BOARD__
   }
   function fitAll(animate) { refits = 2; pendingFit = 'all'; fit({ l: 0, t: 0, r: canvas.offsetWidth, b: canvas.offsetHeight }, animate, 16, 1); }
   function bounds(els) { let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity; for (const el of els) { const R = rect(el); l = Math.min(l, R.l); t = Math.min(t, R.t); r = Math.max(r, R.r); b = Math.max(b, R.b); } return isFinite(l) ? { l, t, r, b } : null; }
-  function fitSelection(animate) { if (!selected) return; const els = neighbours(selected).filter(visible); if (!els.length) return; refits = 2; pendingFit = 'sel'; fit(bounds(els), animate, 40, 1); }
+  function fitSelection(animate) {
+    if (!selected) return;
+    const els = neighbours(selected, true).filter(visible); if (!els.length) return;
+    refits = 2; pendingFit = 'sel'; const bx = bounds(els); fit(bx, animate, 40, 1);
+    if (k < 0.5) { // a proposed-transfer web can span the whole board: stay readable and centre on the selection instead
+      const self = byId(selected) || els[0], R = rect(self); k = 0.5; tx = board.clientWidth / 2 - R.cx * k; ty = board.clientHeight / 2 - R.cy * k; applyView(animate);
+    }
+  }
   function refit() { if (!pendingFit || refits-- <= 0) { pendingFit = null; return; } (pendingFit === 'all' ? fitAll : fitSelection)(true); } // a fit may change the level of detail, which changes the sizes: settle in at most two more passes
   // scroll pans, pinch or Cmd/Ctrl+scroll zooms at the cursor (a trackpad pinch arrives as a wheel event with ctrlKey)
   board.addEventListener('wheel', (ev) => { ev.preventDefault(); if (ev.ctrlKey || ev.metaKey) zoomAt(Math.exp(-ev.deltaY * 0.01), ev.clientX, ev.clientY); else { pendingFit = null; tx -= ev.deltaX; ty -= ev.deltaY; applyView(false); } }, { passive: false });
@@ -386,9 +405,9 @@ __BOARD__
 
   // --- neighbourhood highlight --------------------------------------------------------------------------------------------------
   let selected = null;
-  function neighbours(id) {
+  function neighbours(id, strong = false) { // strong: skip proposed transfers, which are suggestions rather than established links
     const out = new Set(); const self = byId(id); if (self) out.add(self);
-    for (const { other } of adj.get(id) ?? []) { const o = byId(other); if (o) out.add(o); }
+    for (const { e, other } of adj.get(id) ?? []) { if (strong && e.dataset.type === 'transfer' && e.dataset.state === 'proposed') continue; const o = byId(other); if (o) out.add(o); }
     const edge = edges.find((e) => e.dataset.id === id); if (edge) for (const k of ['src', 'dst']) { const o = byId(edge.dataset[k]); if (o) out.add(o); }
     return [...out];
   }
@@ -424,8 +443,10 @@ __BOARD__
     if (attrs.length) { const dl = add('dl'); for (const [k, vs] of attrs) { const m = metric(k, vs); add('dt', m ? 'metric' : k.replace(/^facet:/, ''), null, dl); add('dd', m ?? vs.join(', '), null, dl); } }
     if (it.evidence.length) { add('h3', 'Evidence', 'eyebrow'); const ul = add('ul'); for (const e of it.evidence) add('li', e, null, ul); }
     if (it.rels.length) {
-      add('h3', 'Relations', 'eyebrow'); const ul = add('ul');
-      for (const r of it.rels) { const li = add('li', null, 'rel', ul); add('span', r.dir === 'out' ? '→' : '←', 'arrow', li); const t = add('span', null, null, li); add('span', r.type.replace(/_/g, ' ') + ' ', 'type', t); t.appendChild(document.createTextNode(r.other)); if (r.props) add('span', ' ' + r.props, 'props', t); li.onclick = () => show(r.otherId); }
+      const isProposed = (r) => r.type === 'transfer' && /"state":"proposed"/.test(r.props || ''), strong = it.rels.filter((r) => !isProposed(r)), proposed = it.rels.filter(isProposed);
+      const row = (r, parent) => { const li = add('li', null, 'rel', parent); add('span', r.dir === 'out' ? '→' : '←', 'arrow', li); const t = add('span', null, null, li); add('span', r.type.replace(/_/g, ' ') + ' ', 'type', t); t.appendChild(document.createTextNode(r.other)); if (r.props && !isProposed(r)) add('span', ' ' + r.props, 'props', t); li.onclick = () => show(r.otherId); };
+      if (strong.length) { add('h3', 'Relations', 'eyebrow'); const ul = add('ul'); for (const r of strong) row(r, ul); }
+      if (proposed.length) { const d = add('details', null, 'proposed'); add('summary', proposed.length + ' proposed transfer' + (proposed.length === 1 ? '' : 's') + ' — suggestions to confirm or refute', 'eyebrow', d); const ul = add('ul', null, null, d); for (const r of proposed) row(r, ul); }
     }
     if (it.commands.length) {
       add('h3', 'Commands', 'eyebrow');

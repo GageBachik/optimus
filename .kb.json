@@ -1,0 +1,15 @@
+{
+  "project_id": "project-memory",
+  "domain": "tooling",
+  "facets": {
+    "stack": "typescript-esbuild",
+    "runtime": "node-24",
+    "interface": "claude-code-hooks",
+    "persistence": "blob-store",
+    "distribution": "claude-code-plugin"
+  },
+  "target": {
+    "environment": "claude code 2.1.301 headless",
+    "subject": "plugin hook contracts"
+  }
+}
