@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { TaskState } from './task-state.js';
 import type { ProjectConfig } from '../kb/project.js';
 import { paths } from '../lib/paths.js';
@@ -29,10 +29,16 @@ export function buildDrafts(cfg: ProjectConfig, ts: TaskState, transcriptPath: s
   return { defaults: { domain: cfg.domain, project: cfg.project_id }, records };
 }
 export const draftsFile = (projectKey: string) => path.join(paths.projectDir(projectKey), 'draft-findings.json');
-/** Writes the spec (or removes a stale one when there is nothing to draft) and returns what the last-session record should carry. */
+const MAX_FILE = 20;
+/** Merges the spec into the project's draft file (the main agent and every subagent add to the same file; same sentence once; newest
+ *  kept up to 20) and returns what the last-session record should carry; undefined when there is nothing drafted at all. */
 export function writeDrafts(projectKey: string, spec: DraftSpec): { file: string; count: number } | undefined {
   const file = draftsFile(projectKey);
-  if (!spec.records.length) return undefined;
-  writeFileAtomic(file, JSON.stringify(spec, null, 2) + '\n');
-  return { file, count: spec.records.length };
+  let prev: DraftSpec['records'] = [];
+  try { if (existsSync(file)) prev = (JSON.parse(readFileSync(file, 'utf8')) as DraftSpec).records ?? []; } catch { prev = []; }
+  const seen = new Set<string>(); const records: DraftSpec['records'] = [];
+  for (const r of [...spec.records, ...prev]) { const k = norm(r.title); if (seen.has(k)) continue; seen.add(k); records.push(r); if (records.length >= MAX_FILE) break; }
+  if (!records.length) return undefined;
+  writeFileAtomic(file, JSON.stringify({ ...spec, records }, null, 2) + '\n');
+  return { file, count: records.length };
 }

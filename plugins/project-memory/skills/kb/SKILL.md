@@ -7,6 +7,8 @@ description: Record a measured finding, a failed approach or a transferred rule 
 
 One line of discipline: **a repo takes part only if it has a `.kb.json` with `project_id` and `domain`; commit it.** The first session in an unregistered project folder writes it automatically (project id = folder name, domain inferred from the files: Swift or Flutter → ios, Anchor or Solana SDKs → solana, Gen SDK → gen-l1, market-data or broker dependencies → trading, otherwise tooling with low confidence) otherwise the folder name is a hint, and the first prompt that clearly names a domain settles it before its brief is built). The brief says what was set. If it is still wrong, run `kb project init --domain <d>` and tell the user; a hand-set domain is never changed automatically. Add `facets`, `target: {environment, subject}` and `relies_on: [concept, …]` to the file as the project's shape becomes clear, so findings from other projects can be ranked against this one.
 
+When you dispatch subagents or a workflow to run experiments, each agent is briefed with the project's top findings and told to `kb_write` what it measures; their transcripts are also drafted into the project's `draft-findings.json` when they finish. Still say it in their prompt: "record every measured result with kb_write".
+
 ## At task start
 
 1. Read the SessionStart brief (it is injected automatically) or call `kb_brief({ project: "<id>" })`. Every finding line ends with `[f_…]` and its evidence pointer; when it comes from another project the line says what differs from yours (`your subject differs: …`, `your state_layout differs: …`) and, if a transfer is pending, the exact command to settle it.

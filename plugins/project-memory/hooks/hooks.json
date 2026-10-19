@@ -1,17 +1,194 @@
 {
   "hooks": {
     "SessionStart": [
-      { "matcher": "startup", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "session-start"], "timeout": 10 } ] },
-      { "matcher": "clear",   "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "session-start"], "timeout": 10 } ] },
-      { "matcher": "compact", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "session-start"], "timeout": 10 } ] },
-      { "matcher": "startup|clear|compact|resume|fork", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "session-sync"], "async": true } ] }
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "session-start"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "session-start"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "session-start"
+            ],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "startup|clear|compact|resume|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "session-sync"
+            ],
+            "async": true
+          }
+        ]
+      }
     ],
-    "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "user-prompt"], "timeout": 5 } ] } ],
-    "PostToolUse": [ { "matcher": "Bash|Grep|Glob|WebFetch|WebSearch|Artifact|mcp__.*", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "post-tool-use"], "timeout": 10 } ] } ],
-    "PreCompact":  [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "pre-compact"], "timeout": 30 } ] } ],
-    "PostCompact": [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "post-compact"], "timeout": 15 } ] } ],
-    "SubagentStart": [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "subagent-start"], "timeout": 5 } ] } ],
-    "Stop":        [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "stop"], "async": true } ] } ],
-    "SessionEnd":  [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "session-end"] } ] } ]
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "user-prompt"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Grep|Glob|WebFetch|WebSearch|Artifact|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "post-tool-use"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "pre-compact"
+            ],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "post-compact"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "subagent-start"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "stop"
+            ],
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "session-end"
+            ]
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "--disable-warning=ExperimentalWarning",
+              "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
+              "subagent-stop"
+            ],
+            "async": true
+          }
+        ]
+      }
+    ]
   }
 }

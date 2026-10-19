@@ -171,6 +171,8 @@ The retention doctrine (billion-context `kernel/src/compression-rules.ts`, MIT w
 
 ### 3.11 Session continuity (what replaces `/sc:load` and `/sc:save`)
 
+> v1.4 subagents: SubagentStart injects the project card, the top 5 findings and the instruction to `kb_write` what the agent measures (≤ 3,000 chars; was a 1,500-char pointer brief). SubagentStop (async) extracts the agent's own transcript (`agent_transcript_path`) and merges its measurement lines into the project's `draft-findings.json` (same sentence once, newest 20), so a workflow's experiment agents feed the bank even when only a paragraph of their report reaches the main agent.
+
 > v1.4: the Stop hook also drafts findings. Every assistant line that states a number (a percentage, a dollar figure, a count with a unit) becomes a draft finding (state observed, evidence = the transcript and the files touched, at most 8 per session) in `~/.project-memory/projects/<key>/draft-findings.json`; the next startup brief names the file and the one command (`kb write <file>`) that records them after a person has edited the titles. Nothing reaches the bank without that step. The startup brief shows at most 6 findings and a prompt brief at most 5 (was 20: two live sessions cited none). Shell output offloads from 10,000 characters (other tools 20,000).
 
 Gage's requirement (16 Oct, evening): opening a session in a project must load the right context by itself, with no command. Three layers, all automatic:

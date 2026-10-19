@@ -1452,24 +1452,44 @@ __export(subagent_start_exports, {
 });
 import path16 from "node:path";
 async function subagentStart(input) {
-  const cwd = String(input.cwd ?? ""), proj = loadProjectConfig(cwd)?.project_id ?? (path16.basename(cwd) || "this project");
-  const text = `Project memory: project ${proj}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). Knowledge bank at ${paths.bankDir()}: kb_brief({ project: "${proj}" }) returns the ranked findings brief for this project; kb_find searches it. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`;
-  return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(text, 1500) } };
+  const cwd = String(input.cwd ?? ""), cfg = loadProjectConfig(cwd), proj = cfg?.project_id ?? (path16.basename(cwd) || "this project");
+  const lines = [`Project memory: project ${proj}${cfg ? `, domain ${cfg.domain}` : ""}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). kb_brief({ project: "${proj}" }) returns the full brief; kb_find searches the bank at ${paths.bankDir()}. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`];
+  if (cfg) {
+    try {
+      const db = openDb();
+      try {
+        const top = rankFindings(db, cfg, SUBAGENT_FINDINGS);
+        if (top.length) lines.push("Findings that apply here:", ...top.map((f) => `- ${findingLine(f, cfg)}`));
+      } finally {
+        db.sql.close();
+      }
+    } catch (e) {
+      log("warn", "subagent brief: findings skipped", String(e));
+    }
+    lines.push(`If you measure a number or learn why something failed, record it before you finish: kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${proj}", attrs: { state: "observed" }, metrics: [...], evidence: [{ kind: "path", ref: "<file>" }] }). One call per result; the orchestrator will not do it for you.`);
+  }
+  return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(lines.join("\n"), CAP) } };
 }
-var handler7;
+var SUBAGENT_FINDINGS, CAP, handler7;
 var init_subagent_start = __esm({
   "src/hooks/subagent-start.ts"() {
     "use strict";
     init_budget();
     init_paths();
+    init_log();
     init_project();
+    init_db();
+    init_rank();
+    init_brief();
+    SUBAGENT_FINDINGS = 5;
+    CAP = 3e3;
     handler7 = subagentStart;
   }
 });
 
 // src/compaction/drafts.ts
 import path17 from "node:path";
-import { existsSync as existsSync8 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync7 } from "node:fs";
 function buildDrafts(cfg, ts, transcriptPath, today = /* @__PURE__ */ new Date()) {
   const day = today.toISOString().slice(0, 10);
   const files = ts.files.map((f) => f.path).filter((p) => existsSync8(p)).slice(-3);
@@ -1493,11 +1513,26 @@ Drafted by project-memory from the session transcript on ${day}; the numbers are
 }
 function writeDrafts(projectKey, spec) {
   const file = draftsFile(projectKey);
-  if (!spec.records.length) return void 0;
-  writeFileAtomic(file, JSON.stringify(spec, null, 2) + "\n");
-  return { file, count: spec.records.length };
+  let prev = [];
+  try {
+    if (existsSync8(file)) prev = JSON.parse(readFileSync7(file, "utf8")).records ?? [];
+  } catch {
+    prev = [];
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const records = [];
+  for (const r of [...spec.records, ...prev]) {
+    const k = norm(r.title);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    records.push(r);
+    if (records.length >= MAX_FILE) break;
+  }
+  if (!records.length) return void 0;
+  writeFileAtomic(file, JSON.stringify({ ...spec, records }, null, 2) + "\n");
+  return { file, count: records.length };
 }
-var MAX_DRAFTS, norm, MEASURE_RE, NARRATION_RE, isClaim, draftsFile;
+var MAX_DRAFTS, norm, MEASURE_RE, NARRATION_RE, isClaim, draftsFile, MAX_FILE;
 var init_drafts = __esm({
   "src/compaction/drafts.ts"() {
     "use strict";
@@ -1509,24 +1544,59 @@ var init_drafts = __esm({
     NARRATION_RE = /\b(?:I|I'll|I'm|I've|I'd|we|we'll|we're|you|you'll|your|let me|let's|say|pushed|committed|watcher|re-armed|next:)\b|`|\?\s*$/i;
     isClaim = (line) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
     draftsFile = (projectKey) => path17.join(paths.projectDir(projectKey), "draft-findings.json");
+    MAX_FILE = 20;
+  }
+});
+
+// src/hooks/subagent-stop.ts
+var subagent_stop_exports = {};
+__export(subagent_stop_exports, {
+  handler: () => handler8,
+  subagentStop: () => subagentStop
+});
+import { existsSync as existsSync9 } from "node:fs";
+async function subagentStop(input) {
+  const cwd = String(input.cwd ?? ""), tp = String(input.agent_transcript_path ?? "");
+  const cfg = loadProjectConfig(cwd);
+  if (!cfg || !tp || !existsSync9(tp)) return void 0;
+  try {
+    const ts = extractTaskState(readTranscript(tp, 0).entries, []);
+    const w = writeDrafts(paths.projectKey(cwd), buildDrafts(cfg, ts, tp));
+    if (w) log("info", "subagent drafts merged", { agent: String(input.agent_id ?? ""), count: w.count });
+  } catch (e) {
+    log("warn", "subagent drafts failed", String(e));
+  }
+  return void 0;
+}
+var handler8;
+var init_subagent_stop = __esm({
+  "src/hooks/subagent-stop.ts"() {
+    "use strict";
+    init_paths();
+    init_transcript();
+    init_log();
+    init_project();
+    init_task_state();
+    init_drafts();
+    handler8 = subagentStop;
   }
 });
 
 // src/hooks/stop.ts
 var stop_exports = {};
 __export(stop_exports, {
-  handler: () => handler8,
+  handler: () => handler9,
   stop: () => stop
 });
 import path18 from "node:path";
-import { appendFileSync as appendFileSync3, existsSync as existsSync9 } from "node:fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync10 } from "node:fs";
 async function stop(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const cwd = String(input.cwd ?? "");
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
-  const entries = tp && existsSync9(tp) ? readTranscript(tp, 0).entries : [];
+  const entries = tp && existsSync10(tp) ? readTranscript(tp, 0).entries : [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
     const cfg = loadProjectConfig(cwd);
@@ -1539,7 +1609,7 @@ async function stop(input) {
   if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
   return void 0;
 }
-var handler8;
+var handler9;
 var init_stop = __esm({
   "src/hooks/stop.ts"() {
     "use strict";
@@ -1552,34 +1622,34 @@ var init_stop = __esm({
     init_task_state();
     init_drafts();
     init_project();
-    handler8 = stop;
+    handler9 = stop;
   }
 });
 
 // src/hooks/session-end.ts
 var session_end_exports = {};
 __export(session_end_exports, {
-  handler: () => handler9,
+  handler: () => handler10,
   sessionEnd: () => sessionEnd
 });
 import path19 from "node:path";
-import { existsSync as existsSync10, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync11, readFileSync as readFileSync8 } from "node:fs";
 async function sessionEnd(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const ts = path19.join(paths.sessionDir(sessionId), "task-state.md");
-  if (existsSync10(ts)) storeBlob(readFileSync7(ts, "utf8"), { tool: "task-state", sessionId });
+  if (existsSync11(ts)) storeBlob(readFileSync8(ts, "utf8"), { tool: "task-state", sessionId });
   deleteSession(sessionId);
   return void 0;
 }
-var handler9;
+var handler10;
 var init_session_end = __esm({
   "src/hooks/session-end.ts"() {
     "use strict";
     init_paths();
     init_blobs();
     init_session_state();
-    handler9 = sessionEnd;
+    handler10 = sessionEnd;
   }
 });
 
@@ -1651,6 +1721,7 @@ var modules = {
   "pre-compact": () => Promise.resolve().then(() => (init_pre_compact(), pre_compact_exports)),
   "post-compact": () => Promise.resolve().then(() => (init_post_compact(), post_compact_exports)),
   "subagent-start": () => Promise.resolve().then(() => (init_subagent_start(), subagent_start_exports)),
+  "subagent-stop": () => Promise.resolve().then(() => (init_subagent_stop(), subagent_stop_exports)),
   "stop": () => Promise.resolve().then(() => (init_stop(), stop_exports)),
   "session-end": () => Promise.resolve().then(() => (init_session_end(), session_end_exports))
 };

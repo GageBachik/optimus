@@ -40,5 +40,5 @@ test('drafts: one finding per distinct value line, written as a kb write spec th
   const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml')); db.sql.close();
   const r = spawnSync(process.execPath, ['dist/kb.js', 'write', w.file], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /2 written, 0 failed/);
-  assert.equal(writeDrafts(key, { ...spec, records: [] }), undefined, 'nothing to draft, nothing written');
+  assert.equal(writeDrafts(key, { ...spec, records: [] })!.count, 2, 'an empty pass keeps what is already drafted'); // v1.4: the file merges across turns and agents
 });
