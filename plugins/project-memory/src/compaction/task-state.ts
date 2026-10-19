@@ -15,7 +15,14 @@ const TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test
 // v1.4: a value is kept with the line that states it (a sentence a draft finding can be made from), and the lines come from the last
 // assistant entries that carry text: a tool-calling turn is ten entries without a word, and the old window of 20 entries saw only those.
 const VALUE_RE = /\$\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:%|x\b|(?:ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|bars)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
-const valueLine = (line: string) => { const t = line.replace(/^[\s>*•\-\d.)]+/, '').replace(/\s+/g, ' ').trim(); return t.length >= 12 && t.length <= 400 && !/^[|`]/.test(t) && VALUE_RE.test(t) ? cap(t, 160) : ''; };
+// A markdown table row becomes "a · b · c" (results tables are where a session's numbers usually are); a separator row or code line is skipped.
+const valueLine = (line: string) => {
+  let t = line.trim(); if (/^\|?[\s:|-]+\|?$/.test(t) || /^`/.test(t)) return '';
+  if (t.startsWith('|')) t = t.replace(/^\||\|$/g, '').split('|').map((c) => c.trim()).filter(Boolean).join(' · ');
+  t = t.replace(/^[\s>*•\-\d.)]+/, '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+  VALUE_RE.lastIndex = 0; return t.length >= 12 && t.length <= 400 && VALUE_RE.test(t) ? cap(t, 160) : '';
+};
+const REPORT_TOOLS = new Set(['Agent', 'Workflow', 'Task']);
 
 /** What the user actually typed in a user entry; '' for harness records: skill bodies and caveats (isMeta), async subagent replies
  *  (origin task-notification), the post-compaction summary, local command output. A slash command counts as its arguments. */
@@ -43,9 +50,12 @@ export function extractTaskState(entries: TranscriptEntry[], pointers: string[])
       if (TEST_RE.test(cmd)) { const out = results.get(String(b.id)) ?? ''; const last = out.trim().split('\n').filter(Boolean).pop() ?? ''; tests.push({ cmd, lastLine: cap(last, 160) }); } }
     if ((b.name === 'TodoWrite' || b.name === 'TaskCreate') && Array.isArray(inp.todos)) openItems = inp.todos.filter((t: any) => t.status !== 'completed').map((t: any) => cap(String(t.content ?? t.subject ?? ''), 160));
   }
-  const recent = assistants.map(textOf).filter(Boolean).slice(-20).join('\n');
+  const recent = assistants.map(textOf).filter(Boolean).slice(-40).join('\n');
   for (const line of recent.split('\n')) if (/(Error|error:|Traceback|panic|FAIL)/.test(line)) errors.push(cap(line.trim(), 200));
-  for (const line of recent.split('\n')) { VALUE_RE.lastIndex = 0; const v = valueLine(line); if (v) values.push(v); }
+  // Values: the recent assistant text, then the reports subagents and workflows returned (a two-hour experiment run states its numbers there).
+  const reports: string[] = [];
+  for (const e of entries) for (const b of blocks(e)) if (b?.type === 'tool_use' && REPORT_TOOLS.has(b.name)) { const r = results.get(String(b.id)); if (r) reports.push(r.slice(0, 20000)); }
+  for (const line of [...recent.split('\n'), ...reports.slice(-10).join('\n').split('\n')]) { const v = valueLine(line); if (v) values.push(v); }
   const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
   return {
     goalFirst: cap(users[0] ?? '', 600), goalLatest: cap(users.at(-1) ?? '', 600),

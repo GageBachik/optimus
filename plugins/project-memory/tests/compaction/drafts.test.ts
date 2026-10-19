@@ -42,3 +42,18 @@ test('drafts: one finding per distinct value line, written as a kb write spec th
   assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /2 written, 0 failed/);
   assert.equal(writeDrafts(key, { ...spec, records: [] })!.count, 2, 'an empty pass keeps what is already drafted'); // v1.4: the file merges across turns and agents
 });
+
+test('values come from result tables and from the reports subagents returned', () => {
+  const entries: any[] = [
+    u('run the experiments'),
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'w1', name: 'Workflow', input: { script: 'x' } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1', content: 'Momentum 12-1 on BTC: Sharpe 0.9, max drawdown 72.5% over 2013-2026.' }] } },
+    a('Results:\n| Strategy | Sharpe | MaxDD |\n|---|---|---|\n| 12-1 momentum | 0.9 | 72.5% |\n| buy and hold | 1.1 | 83% |'),
+  ];
+  const ts = extractTaskState(entries, []);
+  assert.ok(ts.exactValues.some((v) => v === '12-1 momentum · 0.9 · 72.5%'), JSON.stringify(ts.exactValues));
+  assert.ok(ts.exactValues.some((v) => /Sharpe 0.9, max drawdown 72.5%/.test(v)), 'workflow report mined');
+  assert.ok(!ts.exactValues.some((v) => /^-+/.test(v)), 'separator row skipped');
+  const spec = buildDrafts({ project_id: 'es', domain: 'trading' }, ts, '', new Date('2026-10-19T12:00:00Z'));
+  assert.ok(spec.records.some((r) => /Sharpe 0.9/.test(r.title)));
+});

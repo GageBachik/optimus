@@ -324,10 +324,14 @@ function extractTaskState(entries, pointers) {
     }
     if ((b.name === "TodoWrite" || b.name === "TaskCreate") && Array.isArray(inp.todos)) openItems = inp.todos.filter((t) => t.status !== "completed").map((t) => cap(String(t.content ?? t.subject ?? ""), 160));
   }
-  const recent = assistants.map(textOf).filter(Boolean).slice(-20).join("\n");
+  const recent = assistants.map(textOf).filter(Boolean).slice(-40).join("\n");
   for (const line of recent.split("\n")) if (/(Error|error:|Traceback|panic|FAIL)/.test(line)) errors.push(cap(line.trim(), 200));
-  for (const line of recent.split("\n")) {
-    VALUE_RE.lastIndex = 0;
+  const reports = [];
+  for (const e of entries) for (const b of blocks(e)) if (b?.type === "tool_use" && REPORT_TOOLS.has(b.name)) {
+    const r = results.get(String(b.id));
+    if (r) reports.push(r.slice(0, 2e4));
+  }
+  for (const line of [...recent.split("\n"), ...reports.slice(-10).join("\n").split("\n")]) {
     const v = valueLine(line);
     if (v) values.push(v);
   }
@@ -375,7 +379,7 @@ ${items.map((i) => `- ${i}`).join("\n")}
     sec("Pointers", ts.pointers)
   ].filter(Boolean).join("\n");
 }
-var cap, uniq, TEST_RE, VALUE_RE, valueLine;
+var cap, uniq, TEST_RE, VALUE_RE, valueLine, REPORT_TOOLS;
 var init_task_state = __esm({
   "src/compaction/task-state.ts"() {
     "use strict";
@@ -389,9 +393,14 @@ var init_task_state = __esm({
     TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test|go test|bun test)\b/;
     VALUE_RE = /\$\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:%|x\b|(?:ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|bars)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
     valueLine = (line) => {
-      const t = line.replace(/^[\s>*•\-\d.)]+/, "").replace(/\s+/g, " ").trim();
-      return t.length >= 12 && t.length <= 400 && !/^[|`]/.test(t) && VALUE_RE.test(t) ? cap(t, 160) : "";
+      let t = line.trim();
+      if (/^\|?[\s:|-]+\|?$/.test(t) || /^`/.test(t)) return "";
+      if (t.startsWith("|")) t = t.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).filter(Boolean).join(" \xB7 ");
+      t = t.replace(/^[\s>*•\-\d.)]+/, "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+      VALUE_RE.lastIndex = 0;
+      return t.length >= 12 && t.length <= 400 && VALUE_RE.test(t) ? cap(t, 160) : "";
     };
+    REPORT_TOOLS = /* @__PURE__ */ new Set(["Agent", "Workflow", "Task"]);
   }
 });
 
