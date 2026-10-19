@@ -22,6 +22,13 @@ test('values survive a tail of tool-only turns and keep their sentence', () => {
   assert.equal(ts.exactValues.length, 1); assert.match(ts.exactValues[0], /17% win rate, worst day -\$83,636, Sharpe 1.4 on 23 fills/);
 });
 
+test('drafts: narration with numbers is not a claim; measurements are', async () => {
+  const { isClaim } = await import('../../src/compaction/drafts.js');
+  assert.equal(isClaim("I'll raise the window from 200K to 300K"), false); assert.equal(isClaim('All in, pushed as 36c6b30, 107 of 107 tests'), false);
+  assert.equal(isClaim('Did the 2% stop help?'), false); assert.equal(isClaim('Fixed-fractional 0.5% beat fixed lot: Sharpe 1.4 vs 0.9'), true);
+  assert.equal(isClaim('crank_scores used 15.0k CU per 25-validator batch'), true); assert.equal(isClaim('Walk-forward on 255 days: 17% win rate'), true);
+});
+
 test('drafts: one finding per distinct value line, written as a kb write spec that kb write accepts', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'proj-')); writeFileSync(path.join(cwd, '.kb.json'), JSON.stringify({ project_id: 'es', domain: 'trading' }));
   const tp = path.join(cwd, 'transcript.jsonl'); writeFileSync(tp, '');

@@ -1476,8 +1476,8 @@ function buildDrafts(cfg, ts, transcriptPath, today = /* @__PURE__ */ new Date()
   const seen = /* @__PURE__ */ new Set();
   const records = [];
   for (const line of ts.exactValues) {
-    const title = line.replace(/[.;:,]+$/, "").trim();
-    if (title.length < 24) continue;
+    const title = line.replace(/\*\*/g, "").replace(/[.;:,]+$/, "").trim();
+    if (title.length < 24 || !isClaim(title)) continue;
     const k = norm(title);
     if (seen.has(k)) continue;
     seen.add(k);
@@ -1496,7 +1496,7 @@ function writeDrafts(projectKey, spec) {
   writeFileAtomic(file, JSON.stringify(spec, null, 2) + "\n");
   return { file, count: spec.records.length };
 }
-var MAX_DRAFTS, norm, draftsFile;
+var MAX_DRAFTS, norm, MEASURE_RE, NARRATION_RE, isClaim, draftsFile;
 var init_drafts = __esm({
   "src/compaction/drafts.ts"() {
     "use strict";
@@ -1504,6 +1504,9 @@ var init_drafts = __esm({
     init_atomic();
     MAX_DRAFTS = 8;
     norm = (s) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim();
+    MEASURE_RE = /%|\$\d|\b\d+(?:\.\d+)?\s?(?:x|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|bars)\b|\b(?:sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|compute units|cu)\b/i;
+    NARRATION_RE = /\b(?:I|I'll|I'm|I've|I'd|we|we'll|we're|you|you'll|your|let me|let's|say|pushed|committed|watcher|re-armed|next:)\b|`|\?\s*$/i;
+    isClaim = (line) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
     draftsFile = (projectKey) => path17.join(paths.projectDir(projectKey), "draft-findings.json");
   }
 });
