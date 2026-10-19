@@ -216,8 +216,8 @@ var init_session_state = __esm({
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path18, fromOffset = 0) {
-  const fd = openSync(path18, "r");
+function readTranscript(path19, fromOffset = 0) {
+  const fd = openSync(path19, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -333,7 +333,7 @@ function extractTaskState(entries, pointers) {
     goalLatest: cap(users.at(-1) ?? "", 600),
     constraints: uniq(constraints).slice(0, 12),
     decisions: uniq(decisions).slice(0, 12),
-    files: [...files.entries()].map(([path18, v]) => ({ path: path18, ...v })).slice(-40),
+    files: [...files.entries()].map(([path19, v]) => ({ path: path19, ...v })).slice(-40),
     commands: uniq(commands.map((c) => c.cmd)).slice(-20).map((cmd) => ({ cmd, at: lastAt.get(cmd) })),
     tests: tests.slice(-10),
     openItems: openItems.slice(0, 20),
@@ -873,6 +873,84 @@ var init_brief = __esm({
   }
 });
 
+// src/kb/auto-register.ts
+import { existsSync as existsSync5, readdirSync, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import os2 from "node:os";
+import path9 from "node:path";
+function listing(dir) {
+  const out2 = [];
+  const walk = (d, rel, depth) => {
+    let entries = [];
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (out2.length >= 400) return;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      out2.push(e.isDirectory() ? `${r}/` : r);
+      if (e.isDirectory() && depth < 2 && !SKIP_DIRS.has(e.name) && !e.name.startsWith(".")) walk(path9.join(d, e.name), r, depth + 1);
+    }
+  };
+  walk(dir, "", 1);
+  return out2;
+}
+function inferDomain(cwd) {
+  const files = listing(cwd), names = files.map((f) => f.toLowerCase()), has = (re) => names.some((n) => re.test(n));
+  const pkg = read(path9.join(cwd, "package.json")), cargo = read(path9.join(cwd, "Cargo.toml")), py = read(path9.join(cwd, "pyproject.toml")) + read(path9.join(cwd, "requirements.txt"));
+  if (has(/\.xcodeproj\/$|\.xcworkspace\/$|^package\.swift$|^pubspec\.yaml$|\.swift$/)) return { domain: "ios", confidence: "high", reason: "Swift, Xcode or Flutter files" };
+  if (/"@gen\//.test(pkg) || /\bgenie\b|\bgen-sdk\b/.test(cargo) || has(/^gen\.toml$|^genie\.toml$/)) return { domain: "gen-l1", confidence: "high", reason: "Gen SDK or genie crate" };
+  if (has(/^anchor\.toml$|^programs\/$|^surfpool\.yaml$|^txtx\.yml$/) || /@solana\/|@coral-xyz\/anchor|@metaplex|@raydium|@jup-ag|@pinocchio/.test(pkg) || /solana-program|anchor-lang|pinocchio|spl-token/.test(cargo)) return { domain: "solana", confidence: "high", reason: "Solana program or SDK dependencies" };
+  if (has(/^backtests?\/$|^strategies\/$|^signals\/$|^backtest\.py$/) || /databento|ib_insync|ibapi|alpaca|thetadata|ccxt|backtrader|vectorbt|yfinance|polygon|quantstats|zipline|schwab|tastytrade|tradingview/.test(py + pkg)) return { domain: "trading", confidence: "high", reason: "market-data or broker dependencies" };
+  return { domain: "tooling", confidence: "low", reason: files.length ? "no chain, mobile or market signals" : "empty folder" };
+}
+function looksLikeProject(cwd) {
+  let entries = [];
+  try {
+    entries = readdirSync(cwd);
+  } catch {
+    return false;
+  }
+  const repos = entries.filter((e) => existsSync5(path9.join(cwd, e, ".git"))).length;
+  if (repos >= 2) return false;
+  return existsSync5(path9.join(cwd, ".git")) || MANIFESTS.some((m) => existsSync5(path9.join(cwd, m))) || entries.some((e) => e.endsWith(".xcodeproj")) || entries.length <= 8;
+}
+function autoRegister(cwd, home = os2.homedir()) {
+  if (!cwd) return null;
+  const dir = path9.resolve(cwd);
+  if (!existsSync5(dir) || !dir.startsWith(home + path9.sep)) return null;
+  const rel = path9.relative(home, dir);
+  if (rel.split(path9.sep).some((s) => s.startsWith(".") || SKIP_DIRS.has(s))) return null;
+  if (["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"].includes(rel)) return null;
+  if (loadProjectConfig(dir)) return null;
+  if (!looksLikeProject(dir)) return null;
+  const { domain, confidence, reason } = inferDomain(dir);
+  const project_id = path9.basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  const file = path9.join(dir, ".kb.json");
+  writeFileSync3(file, JSON.stringify({ project_id, domain, auto: { registered: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), confidence, reason } }, null, 2) + "\n");
+  log("info", "auto-registered project", { file, domain, confidence, reason });
+  return { file, project_id, domain, confidence, reason };
+}
+var SKIP_DIRS, MANIFESTS, read, autoLine;
+var init_auto_register = __esm({
+  "src/kb/auto-register.ts"() {
+    "use strict";
+    init_project();
+    init_log();
+    SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "target", "dist", "build", ".next", "vendor", "Pods"]);
+    MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "requirements.txt", "go.mod", "Package.swift", "pubspec.yaml", "Anchor.toml"];
+    read = (p) => {
+      try {
+        return readFileSync5(p, "utf8");
+      } catch {
+        return "";
+      }
+    };
+    autoLine = (a) => `This folder was registered in the knowledge bank automatically: project \`${a.project_id}\`, domain \`${a.domain}\` (${a.confidence} confidence: ${a.reason}).${a.confidence === "low" ? " If the work turns out to be trading, solana, gen-l1 or ios, run `kb project init --domain <d>` here and say so." : ""} The file is \`.kb.json\`; commit it when you commit.`;
+  }
+});
+
 // src/hooks/session-start.ts
 var session_start_exports = {};
 __export(session_start_exports, {
@@ -880,9 +958,15 @@ __export(session_start_exports, {
   handler: () => handler,
   sessionStart: () => sessionStart
 });
-import path9 from "node:path";
-function buildStartupBrief(cwd, sessionId = "unknown") {
+import path10 from "node:path";
+function buildStartupBrief(cwd, sessionId = "unknown", auto = null) {
   const cfg = loadProjectConfig(cwd);
+  const text = startupText(cwd, sessionId, cfg);
+  return auto ? `${autoLine(auto)}
+
+${text}` : text;
+}
+function startupText(cwd, sessionId, cfg) {
   if (cfg) {
     try {
       const state = loadState(sessionId), db = openDb();
@@ -899,16 +983,25 @@ function buildStartupBrief(cwd, sessionId = "unknown") {
     }
   }
   const hint = cfg ? "The knowledge bank did not answer (see hooks.log)." : "No .kb.json here; kb project init --domain <d> adds this repo to the knowledge bank.";
-  const card = `Project memory active for ${path9.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. ${hint}`;
+  const card = `Project memory active for ${path10.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. ${hint}`;
   return fitBrief(PREAMBLE, [...lastSessionSection(paths.projectKey(cwd)), { title: "Project", priority: 9, items: [card] }]).text;
 }
 async function sessionStart(input) {
   if (input.agent_id) return void 0;
   const source = String(input.source ?? ""), sessionId = String(input.session_id ?? "unknown");
-  if (source === "startup" || source === "clear") return out(buildStartupBrief(String(input.cwd ?? ""), sessionId));
+  if (source === "startup" || source === "clear") {
+    const cwd = String(input.cwd ?? "");
+    let auto = null;
+    try {
+      auto = autoRegister(cwd);
+    } catch (e) {
+      log("warn", "auto-register failed", String(e));
+    }
+    return out(buildStartupBrief(cwd, sessionId, auto));
+  }
   if (source !== "compact") return void 0;
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
-  if (ts) return out(buildRestoreBrief(ts, readJson(path9.join(paths.sessionDir(sessionId), "audit.json"))));
+  if (ts) return out(buildRestoreBrief(ts, readJson(path10.join(paths.sessionDir(sessionId), "audit.json"))));
   return out(fitBrief("Context was compacted. No task-state record was found for this session.", [{ title: "Pointers", priority: 1, items: recallPointers(loadState(sessionId)) }]).text);
 }
 var out, QUESTIONS_SHOWN, handler;
@@ -925,6 +1018,7 @@ var init_session_start = __esm({
     init_db();
     init_project();
     init_brief();
+    init_auto_register();
     out = (additionalContext) => ({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } });
     QUESTIONS_SHOWN = "concept-questions";
     handler = sessionStart;
@@ -933,17 +1027,17 @@ var init_session_start = __esm({
 
 // src/offload/blobs.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync5, readFileSync as readFileSync5, appendFileSync as appendFileSync2, readdirSync, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
-import path10 from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync6, appendFileSync as appendFileSync2, readdirSync as readdirSync2, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import path11 from "node:path";
 function storeBlob(text, meta) {
   const id = createHash2("sha256").update(text, "utf8").digest("hex");
-  const file = path10.join(paths.blobsDir(), id);
-  const created = !existsSync5(file);
+  const file = path11.join(paths.blobsDir(), id);
+  const created = !existsSync6(file);
   const lines = text.split("\n").length;
   if (created) {
     writeFileAtomic(file, text);
     const m = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, " "), sessionId: meta.sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), command: meta.command === void 0 ? void 0 : redactSensitive(meta.command).text.slice(0, 120) };
-    appendFileSync2(path10.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
+    appendFileSync2(path11.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
   }
   return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
 }
@@ -951,22 +1045,22 @@ function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024) {
   const dir = paths.blobsDir();
   const now = Date.now();
   const gone = /* @__PURE__ */ new Set();
-  const files = readdirSync(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path10.join(dir, f)) }));
+  const files = readdirSync2(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path11.join(dir, f)) }));
   const kept = files.filter(({ f, st }) => {
     if (now - st.mtimeMs <= maxAgeDays * 864e5) return true;
-    unlinkSync2(path10.join(dir, f));
+    unlinkSync2(path11.join(dir, f));
     gone.add(f);
     return false;
   });
   let total = kept.reduce((n, x) => n + x.st.size, 0);
   for (const { f, st } of kept.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs)) {
     if (total <= maxBytes) break;
-    unlinkSync2(path10.join(dir, f));
+    unlinkSync2(path11.join(dir, f));
     total -= st.size;
     gone.add(f);
   }
-  const index = path10.join(dir, "index.jsonl");
-  if (gone.size && existsSync5(index)) writeFileAtomic(index, readFileSync5(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
+  const index = path11.join(dir, "index.jsonl");
+  if (gone.size && existsSync6(index)) writeFileAtomic(index, readFileSync6(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
   return { removed: gone.size };
 }
 var init_blobs = __esm({
@@ -979,16 +1073,16 @@ var init_blobs = __esm({
 });
 
 // src/lib/kb-sync.ts
-import { existsSync as existsSync6 } from "node:fs";
+import { existsSync as existsSync7 } from "node:fs";
 import { spawn } from "node:child_process";
-import path11 from "node:path";
+import path12 from "node:path";
 import { fileURLToPath } from "node:url";
 function kbJs() {
-  const here = path11.dirname(fileURLToPath(import.meta.url));
-  return [path11.join(here, "kb.js"), path11.join(here, "..", "..", "dist", "kb.js")].find(existsSync6);
+  const here = path12.dirname(fileURLToPath(import.meta.url));
+  return [path12.join(here, "kb.js"), path12.join(here, "..", "..", "dist", "kb.js")].find(existsSync7);
 }
 function spawnKbSync() {
-  if (!existsSync6(path11.join(paths.bankDir(), ".git"))) return;
+  if (!existsSync7(path12.join(paths.bankDir(), ".git"))) return;
   const kb = kbJs();
   if (!kb) {
     log("warn", "kb sync not spawned: dist/kb.js not found");
@@ -1168,7 +1262,7 @@ __export(pre_compact_exports, {
   preCompact: () => preCompact
 });
 import { rmSync as rmSync2 } from "node:fs";
-import path12 from "node:path";
+import path13 from "node:path";
 async function preCompact(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
@@ -1184,9 +1278,9 @@ async function preCompact(input) {
   }
   const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
-  rmSync2(path12.join(dir, "audit.json"), { force: true });
-  writeFileAtomic(path12.join(dir, "task-state.md"), renderTaskState(ts));
-  writeFileAtomic(path12.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
+  rmSync2(path13.join(dir, "audit.json"), { force: true });
+  writeFileAtomic(path13.join(dir, "task-state.md"), renderTaskState(ts));
+  writeFileAtomic(path13.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
   saveState(sessionId, state);
   log("info", "pre-compact snapshot written", { sessionId, trigger: input.trigger, snapshots: state.snapshots.length });
   return void 0;
@@ -1208,14 +1302,14 @@ var init_pre_compact = __esm({
 });
 
 // src/compaction/audit.ts
-import path13 from "node:path";
+import path14 from "node:path";
 function auditSummary(summary, ts) {
   const s = summary.toLowerCase();
   const present = [], missing = [];
   const check = (label, key) => {
     (key && s.includes(key.toLowerCase()) ? present : missing).push(label);
   };
-  for (const f of ts.files) check(path13.basename(f.path), path13.basename(f.path));
+  for (const f of ts.files) check(path14.basename(f.path), path14.basename(f.path));
   for (const c of ts.commands) check(c.cmd, c.cmd.split(/\s+/).slice(0, 2).join(" "));
   for (const o of ts.openItems) check(o, o.split(/\s+/).slice(0, 6).join(" "));
   for (const e of ts.errors) check(e, e.split(/\s+/).slice(0, 8).join(" "));
@@ -1234,7 +1328,7 @@ __export(post_compact_exports, {
   handler: () => handler6,
   postCompact: () => postCompact
 });
-import path14 from "node:path";
+import path15 from "node:path";
 async function postCompact(input) {
   if (input.agent_id) return void 0;
   const summary = String(input.compact_summary ?? "");
@@ -1243,7 +1337,7 @@ async function postCompact(input) {
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
   if (!ts) return void 0;
   const audit = auditSummary(summary, ts);
-  writeFileAtomic(path14.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
+  writeFileAtomic(path15.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
   log("info", "post-compact audit written", { sessionId, present: audit.present.length, missing: audit.missing.length });
   return void 0;
 }
@@ -1266,9 +1360,9 @@ __export(subagent_start_exports, {
   handler: () => handler7,
   subagentStart: () => subagentStart
 });
-import path15 from "node:path";
+import path16 from "node:path";
 async function subagentStart(input) {
-  const cwd = String(input.cwd ?? ""), proj = loadProjectConfig(cwd)?.project_id ?? (path15.basename(cwd) || "this project");
+  const cwd = String(input.cwd ?? ""), proj = loadProjectConfig(cwd)?.project_id ?? (path16.basename(cwd) || "this project");
   const text = `Project memory: project ${proj}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). Knowledge bank at ${paths.bankDir()}: kb_brief({ project: "${proj}" }) returns the ranked findings brief for this project; kb_find searches it. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`;
   return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(text, 1500) } };
 }
@@ -1289,22 +1383,22 @@ __export(stop_exports, {
   handler: () => handler8,
   stop: () => stop
 });
-import path16 from "node:path";
-import { appendFileSync as appendFileSync3, existsSync as existsSync7 } from "node:fs";
+import path17 from "node:path";
+import { appendFileSync as appendFileSync3, existsSync as existsSync8 } from "node:fs";
 async function stop(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const cwd = String(input.cwd ?? "");
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
-  const entries = tp && existsSync7(tp) ? readTranscript(tp, 0).entries : [];
+  const entries = tp && existsSync8(tp) ? readTranscript(tp, 0).entries : [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
     const last = { at, sessionId, cwd, taskState };
-    writeFileAtomic(path16.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
+    writeFileAtomic(path17.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
   }
   const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
-  appendFileSync3(path16.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
+  appendFileSync3(path17.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
   if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
   return void 0;
 }
@@ -1329,13 +1423,13 @@ __export(session_end_exports, {
   handler: () => handler9,
   sessionEnd: () => sessionEnd
 });
-import path17 from "node:path";
-import { existsSync as existsSync8, readFileSync as readFileSync6 } from "node:fs";
+import path18 from "node:path";
+import { existsSync as existsSync9, readFileSync as readFileSync7 } from "node:fs";
 async function sessionEnd(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
-  const ts = path17.join(paths.sessionDir(sessionId), "task-state.md");
-  if (existsSync8(ts)) storeBlob(readFileSync6(ts, "utf8"), { tool: "task-state", sessionId });
+  const ts = path18.join(paths.sessionDir(sessionId), "task-state.md");
+  if (existsSync9(ts)) storeBlob(readFileSync7(ts, "utf8"), { tool: "task-state", sessionId });
   deleteSession(sessionId);
   return void 0;
 }

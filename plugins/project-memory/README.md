@@ -33,7 +33,7 @@ kb init                                    # creates ~/knowledge-bank as a git r
 cd ~/projects/<repo> && kb project init --domain <domain> [--id <project id>]
 ```
 
-`kb project init` writes `.kb.json` in the current directory, so run it from the repository root. Without it the plugin still manages context in that project, but the startup brief carries no findings from the bank.
+You rarely need `kb project init`: the first `claude` session started in a project folder under your home directory writes `.kb.json` itself (folder name as the id, domain inferred from the files, `tooling` with a low-confidence note when nothing is recognisable) and the startup brief says what it did. Use `kb project init --domain <d>` to correct a guess. Folders that hold many repositories (`~/projects` itself), hidden folders and anything outside your home directory are never registered.
 
 Check the installation:
 

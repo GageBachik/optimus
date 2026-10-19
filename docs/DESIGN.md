@@ -259,6 +259,8 @@ Finding fields are attrs: `state`, `gate`, `gate_rank`, `valid_from`, `valid_to`
 
 ### 4.5 Tools (one stdio MCP server) and CLI
 
+> v1.4: registration is automatic. SessionStart(startup|clear) in a folder under `$HOME` with no `.kb.json` here or above, that is a git root, has a manifest, or is a fresh folder (≤ 8 entries), writes `.kb.json` with `project_id` = folder name and a domain inferred from local signals (`auto: {registered, confidence, reason}` records the guess); the brief announces it and asks the session to correct a low-confidence guess with `kb project init --domain`. Home, the workspace roots (`~/projects`, Desktop, Documents, Downloads, …), hidden folders and folders holding two or more repositories are never registered. `kb project init` remains for corrections and for ids that differ from the folder name.
+
 | Tool | Input | Output |
 |---|---|---|
 | `recall` | `{id, offset?, limit?}` | exact blob page |

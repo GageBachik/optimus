@@ -5,7 +5,7 @@ description: Record a measured finding, a failed approach or a transferred rule 
 
 # kb — the knowledge bank
 
-One line of discipline: **a repo takes part only if it has a `.kb.json` with `project_id` and `domain`; commit it.** `kb project init --domain <d> [--id <id>]` writes it; add `facets`, `target: {environment, subject}` and `relies_on: [concept, …]` by hand so findings from other projects can be ranked against this one. Nothing derives a project id from a folder name or a git remote.
+One line of discipline: **a repo takes part only if it has a `.kb.json` with `project_id` and `domain`; commit it.** The first session in an unregistered project folder writes it automatically (project id = folder name, domain inferred from the files: Swift or Flutter → ios, Anchor or Solana SDKs → solana, Gen SDK → gen-l1, market-data or broker dependencies → trading, otherwise tooling with low confidence) and the startup brief says so. When the brief says the guess was low-confidence and the work is clearly another domain, run `kb project init --domain <d>` and tell the user. Add `facets`, `target: {environment, subject}` and `relies_on: [concept, …]` to the file as the project's shape becomes clear, so findings from other projects can be ranked against this one.
 
 ## At task start
 
