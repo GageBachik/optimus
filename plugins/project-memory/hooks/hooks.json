@@ -7,7 +7,7 @@
       { "matcher": "startup|clear|compact|resume|fork", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "session-sync"], "async": true } ] }
     ],
     "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "user-prompt"], "timeout": 5 } ] } ],
-    "PostToolUse": [ { "matcher": "Bash|Grep|Glob|WebFetch|WebSearch|mcp__.*", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "post-tool-use"], "timeout": 10 } ] } ],
+    "PostToolUse": [ { "matcher": "Bash|Grep|Glob|WebFetch|WebSearch|Artifact|mcp__.*", "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "post-tool-use"], "timeout": 10 } ] } ],
     "PreCompact":  [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "pre-compact"], "timeout": 30 } ] } ],
     "PostCompact": [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "post-compact"], "timeout": 15 } ] } ],
     "SubagentStart": [ { "hooks": [ { "type": "command", "command": "node", "args": ["--disable-warning=ExperimentalWarning", "${CLAUDE_PLUGIN_ROOT}/dist/hook.js", "subagent-start"], "timeout": 5 } ] } ],
