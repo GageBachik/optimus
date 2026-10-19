@@ -26,3 +26,12 @@ test('facet+environment match outranks a newer unrelated finding; expired is dem
   const score = (title: string) => Number(ranked.find((r) => r.title === title)!.score.toFixed(2));
   assert.deepEqual(['strong', 'replacement', 'expired', 'newer unrelated'].map(score), [6.28, 4, 2, 1]);
 });
+
+test('a project that declares nothing yet gets its domain\'s findings as candidates (v1.4)', async () => {
+  const { candidateIds } = await import('../../src/kb/rank.js');
+  const { openDb } = await import('../../src/kb/db.js');
+  const db = openDb();
+  const domain = (db.sql.prepare("SELECT domain FROM note WHERE kind='finding' AND deleted_at IS NULL AND domain IS NOT NULL LIMIT 1").get() as { domain: string } | undefined)?.domain;
+  if (domain) { assert.ok(candidateIds(db, { project_id: 'fresh', domain }).length > 0); assert.equal(candidateIds(db, { project_id: 'fresh', domain: 'no-such-domain' }).length, 0); }
+  db.sql.close();
+});

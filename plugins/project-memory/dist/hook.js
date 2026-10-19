@@ -643,6 +643,7 @@ function candidateIds(db, cfg) {
     }).map((r) => r.id))];
     if (targets.length) for (const id of ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='validated_in' AND r.deleted_at IS NULL AND r.dst IN (${marks(targets)}) AND ${LIVE_FINDING}`).all(...targets))) out2.add(id);
   }
+  if (!out2.size && cfg.domain) for (const id of ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.domain=? AND ${LIVE_FINDING}`).all(cfg.domain))) out2.add(id);
   return [...out2];
 }
 function loadCandidates(db, findingIds) {
