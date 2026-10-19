@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.PROJECT_MEMORY_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
-const { autoRegister, inferDomain } = await import('../../src/kb/auto-register.js');
+const { autoRegister, inferDomain, settleFromPrompt, domainFromText } = await import('../../src/kb/auto-register.js');
+const { userPrompt } = await import('../../src/hooks/user-prompt.js');
 const { sessionStart } = await import('../../src/hooks/session-start.js');
 const home = mkdtempSync(path.join(tmpdir(), 'home-'));
 const mk = (rel: string, files: Record<string, string> = {}) => { const d = path.join(home, rel); mkdirSync(d, { recursive: true }); for (const [f, c] of Object.entries(files)) { mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); writeFileSync(path.join(d, f), c); } return d; };
@@ -41,5 +42,36 @@ test('session start in an unregistered folder registers it and says so in the br
     const text = r.hookSpecificOutput.additionalContext as string;
     assert.ok(text.includes('registered in the knowledge bank automatically: project `fresh2`, domain `tooling`'), text.slice(0, 300));
     assert.ok(existsSync(path.join(d, '.kb.json')));
+  } finally { process.env.HOME = prev; }
+});
+
+test('auto-register: the folder name is a hint when the files say nothing', () => {
+  const a = autoRegister(mk('projects/crypto-momentum'), home)!;
+  assert.equal(a.domain, 'trading'); assert.equal(a.confidence, 'low'); assert.match(a.reason, /folder name suggests trading/);
+  assert.equal(autoRegister(mk('projects/nft-minter-v2'), home)!.domain, 'solana');
+  assert.equal(autoRegister(mk('projects/notes'), home)!.domain, 'tooling');
+});
+
+test('domainFromText: needs clear evidence, tooling needs more, ties resolve to nothing', () => {
+  assert.equal(domainFromText('research, develop and trade a crypto momentum strategy; backtest it first', 3, 2)!.domain, 'trading');
+  assert.equal(domainFromText('build a cli tool with hooks and a plugin', 3, 2)!.domain, 'tooling');
+  assert.equal(domainFromText('hello, what should we do today?', 3, 2), null);
+  assert.equal(domainFromText('an anchor program that trades perps on a solana dex with momentum signals', 3, 2), null, 'solana and trading tie');
+});
+
+test('the first prompt settles a guessed domain, confirms a right guess, and never touches a hand-set one', async () => {
+  const d = mk('projects/mystery'); autoRegister(d, home);
+  assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'tooling');
+  const prev = process.env.HOME; process.env.HOME = home;
+  try {
+    const r = (await userPrompt({ hook_event_name: 'UserPromptSubmit', session_id: 's2', cwd: d, prompt: 'Today I want to research, develop and get ready to trade a crypto momentum strategy with a proper backtest' } as any)) as any;
+    const cfg = JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8'));
+    assert.equal(cfg.domain, 'trading'); assert.equal(cfg.auto.confidence, 'medium');
+    assert.ok(r.hookSpecificOutput.additionalContext.startsWith('Project domain changed from `tooling` to `trading`'), r.hookSpecificOutput.additionalContext.slice(0, 120));
+    assert.equal(settleFromPrompt(d, 'what time is it'), null, 'no signal, no change');
+    assert.equal(settleFromPrompt(d, 'more momentum backtests on crypto perps with sharpe and drawdown'), null, 'same domain: confirmed, not changed');
+    writeFileSync(path.join(d, '.kb.json'), JSON.stringify({ project_id: 'mystery', domain: 'ios' }));
+    assert.equal(settleFromPrompt(d, 'trade crypto momentum strategy backtest sharpe'), null, 'hand-set file is never touched');
+    assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'ios');
   } finally { process.env.HOME = prev; }
 });

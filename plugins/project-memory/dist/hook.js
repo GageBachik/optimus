@@ -877,6 +877,26 @@ var init_brief = __esm({
 import { existsSync as existsSync5, readdirSync, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
 import os2 from "node:os";
 import path9 from "node:path";
+function scoreDomains(text) {
+  const tokens2 = text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean), score = {};
+  for (const [domain, words] of Object.entries(LEXICON)) {
+    const set = new Set(words);
+    let n = 0;
+    const seen = {};
+    for (const t of tokens2) if (set.has(t) && (seen[t] = (seen[t] ?? 0) + 1) <= 3) n++;
+    score[domain] = n;
+  }
+  return score;
+}
+function domainFromText(text, minScore, margin = 1) {
+  const ranked = Object.entries(scoreDomains(text)).sort((a, b) => b[1] - a[1]);
+  const [top, second] = ranked;
+  if (!top) return null;
+  const need = top[0] === "tooling" ? minScore + 1 : minScore;
+  if (top[1] < need || top[1] - (second?.[1] ?? 0) < margin) return null;
+  const words = [...new Set(text.toLowerCase().split(/[^a-z0-9-]+/).filter((t) => LEXICON[top[0]].includes(t)))].slice(0, 4);
+  return { domain: top[0], score: top[1], reason: words.join(", ") };
+}
 function listing(dir) {
   const out2 = [];
   const walk = (d, rel, depth) => {
@@ -903,7 +923,45 @@ function inferDomain(cwd) {
   if (/"@gen\//.test(pkg) || /\bgenie\b|\bgen-sdk\b/.test(cargo) || has(/^gen\.toml$|^genie\.toml$/)) return { domain: "gen-l1", confidence: "high", reason: "Gen SDK or genie crate" };
   if (has(/^anchor\.toml$|^programs\/$|^surfpool\.yaml$|^txtx\.yml$/) || /@solana\/|@coral-xyz\/anchor|@metaplex|@raydium|@jup-ag|@pinocchio/.test(pkg) || /solana-program|anchor-lang|pinocchio|spl-token/.test(cargo)) return { domain: "solana", confidence: "high", reason: "Solana program or SDK dependencies" };
   if (has(/^backtests?\/$|^strategies\/$|^signals\/$|^backtest\.py$/) || /databento|ib_insync|ibapi|alpaca|thetadata|ccxt|backtrader|vectorbt|yfinance|polygon|quantstats|zipline|schwab|tastytrade|tradingview/.test(py + pkg)) return { domain: "trading", confidence: "high", reason: "market-data or broker dependencies" };
+  const byName = domainFromText(path9.basename(cwd).replace(/[-_.]+/g, " "), 1);
+  if (byName) return { domain: byName.domain, confidence: "low", reason: `folder name suggests ${byName.domain} (${byName.reason})` };
   return { domain: "tooling", confidence: "low", reason: files.length ? "no chain, mobile or market signals" : "empty folder" };
+}
+function settleFromPrompt(cwd, prompt) {
+  let dir = path9.resolve(cwd), file = "";
+  for (let i = 0; i < 8; i++) {
+    const f = path9.join(dir, ".kb.json");
+    if (existsSync5(f)) {
+      file = f;
+      break;
+    }
+    const up = path9.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  if (!file) return null;
+  let cfg;
+  try {
+    cfg = JSON.parse(readFileSync5(file, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!cfg.auto || cfg.auto.confidence === "high" || !cfg.domain) return null;
+  const guess = domainFromText(prompt, 3, 2);
+  if (!guess) return null;
+  const previous = cfg.domain;
+  if (guess.domain === previous) {
+    if (cfg.auto.confidence === "low") {
+      cfg.auto = { ...cfg.auto, confidence: "medium", reason: `confirmed by a prompt (${guess.reason})` };
+      writeFileSync3(file, JSON.stringify(cfg, null, 2) + "\n");
+    }
+    return null;
+  }
+  cfg.domain = guess.domain;
+  cfg.auto = { ...cfg.auto, confidence: "medium", reason: `a prompt mentions ${guess.reason}` };
+  writeFileSync3(file, JSON.stringify(cfg, null, 2) + "\n");
+  log("info", "domain settled from prompt", { file, previous, domain: guess.domain, reason: guess.reason });
+  return { file, project_id: String(cfg.project_id ?? ""), domain: guess.domain, previous, reason: guess.reason };
 }
 function looksLikeProject(cwd) {
   let entries = [];
@@ -932,12 +990,19 @@ function autoRegister(cwd, home = os2.homedir()) {
   log("info", "auto-registered project", { file, domain, confidence, reason });
   return { file, project_id, domain, confidence, reason };
 }
-var SKIP_DIRS, MANIFESTS, read, autoLine;
+var LEXICON, SKIP_DIRS, MANIFESTS, read, settledLine, autoLine;
 var init_auto_register = __esm({
   "src/kb/auto-register.ts"() {
     "use strict";
     init_project();
     init_log();
+    LEXICON = {
+      trading: ["trade", "trading", "trader", "momentum", "crypto", "options", "0dte", "backtest", "backtests", "backtesting", "quant", "strategy", "strategies", "perp", "perps", "futures", "alpha", "signal", "signals", "sniper", "arb", "arbitrage", "orderbook", "portfolio", "sharpe", "drawdown", "broker", "exchange", "binance", "bybit", "hyperliquid", "coinbase", "spy", "spx", "btc", "eth", "ohlc", "candles", "pnl", "leaps", "iron", "condor", "straddle"],
+      solana: ["solana", "sol", "anchor", "spl", "nft", "nfts", "mint", "minter", "candy", "token", "tokens", "pump", "raydium", "jupiter", "dex", "amm", "stake", "staking", "airdrop", "wallet", "program", "programs", "pda", "lamports", "devnet", "metaplex", "pinocchio", "surfpool"],
+      "gen-l1": ["gen", "genie", "gen-l1", "clob", "genibook", "geniswap", "activation", "activations", "gvm"],
+      ios: ["ios", "swift", "swiftui", "iphone", "ipad", "macos", "xcode", "testflight", "watchos", "flutter", "appstore"],
+      tooling: ["cli", "tool", "tools", "plugin", "plugins", "agent", "agents", "mcp", "script", "scripts", "memory", "docs", "site", "website", "server", "api", "pipeline", "hook", "hooks", "extension", "dashboard", "scraper", "skill", "skills"]
+    };
     SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "target", "dist", "build", ".next", "vendor", "Pods"]);
     MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "requirements.txt", "go.mod", "Package.swift", "pubspec.yaml", "Anchor.toml"];
     read = (p) => {
@@ -947,6 +1012,7 @@ var init_auto_register = __esm({
         return "";
       }
     };
+    settledLine = (s) => `Project domain changed from \`${s.previous}\` to \`${s.domain}\` because this prompt mentions ${s.reason}; the brief below is for ${s.domain}. Say "this is a <domain> project" to override.`;
     autoLine = (a) => `This folder was registered in the knowledge bank automatically: project \`${a.project_id}\`, domain \`${a.domain}\` (${a.confidence} confidence: ${a.reason}).${a.confidence === "low" ? " If the work turns out to be trading, solana, gen-l1 or ios, run `kb project init --domain <d>` here and say so." : ""} The file is \`.kb.json\`; commit it when you commit.`;
   }
 });
@@ -1127,7 +1193,16 @@ __export(user_prompt_exports, {
   userPrompt: () => userPrompt
 });
 async function userPrompt(input) {
-  const prompt = String(input.prompt ?? ""), cfg = prompt.trim() ? loadProjectConfig(String(input.cwd ?? "")) : null;
+  const prompt = String(input.prompt ?? ""), cwd = String(input.cwd ?? "");
+  let settled = null;
+  if (prompt.trim() && !input.agent_id) {
+    try {
+      settled = settleFromPrompt(cwd, prompt);
+    } catch (e) {
+      log("warn", "settle from prompt failed", String(e));
+    }
+  }
+  const cfg = prompt.trim() ? loadProjectConfig(cwd) : null;
   if (!cfg) return void 0;
   const sessionId = String(input.session_id ?? "unknown"), agentId = input.agent_id ? String(input.agent_id) : "main";
   const state = loadState(sessionId, agentId);
@@ -1147,6 +1222,9 @@ async function userPrompt(input) {
     log("warn", "recall brief failed; injecting the cached brief", String(e));
     text = state.lastBrief ?? null;
   }
+  if (settled) text = `${settledLine(settled)}
+
+${text ?? ""}`.trim();
   return text ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } } : void 0;
 }
 var handler3;
@@ -1158,6 +1236,7 @@ var init_user_prompt = __esm({
     init_db();
     init_project();
     init_brief();
+    init_auto_register();
     handler3 = userPrompt;
   }
 });
