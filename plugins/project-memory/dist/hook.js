@@ -396,7 +396,7 @@ var init_task_state = __esm({
       let t = line.trim();
       if (/^\|?[\s:|-]+\|?$/.test(t) || /^`/.test(t)) return "";
       if (t.startsWith("|")) t = t.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).filter(Boolean).join(" \xB7 ");
-      t = t.replace(/^[\s>*•\-\d.)]+/, "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+      t = t.replace(/^(?:[>*•\-]\s+|\d+[.)]\s+)+/, "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
       VALUE_RE.lastIndex = 0;
       return t.length >= 12 && t.length <= 400 && VALUE_RE.test(t) ? cap(t, 160) : "";
     };
