@@ -7832,7 +7832,7 @@ function doctorChecks(home2) {
   const sessionsDir = path7.join(state, "sessions");
   out.push({ status: "INFO", name: "sessions", detail: `${existsSync4(sessionsDir) ? readdirSync2(sessionsDir).length : 0} session dirs` });
   const settings = readJsonFile(path7.join(home2, ".claude", "settings.json")) ?? {};
-  out.push(settings.autoCompactWindow === 2e5 ? { status: "PASS", name: "autoCompactWindow", detail: "200000" } : { status: "WARN", name: "autoCompactWindow", detail: `${settings.autoCompactWindow ?? "unset"} (run \`kb setup\` to set 200000)` });
+  out.push(settings.autoCompactWindow === 333e3 ? { status: "PASS", name: "autoCompactWindow", detail: "333000" } : { status: "WARN", name: "autoCompactWindow", detail: `${settings.autoCompactWindow ?? "unset"} (run \`kb setup\` to set 200000)` });
   const enabled = settings.enabledPlugins ?? {};
   const installed = installedPlugins(home2);
   const ours = installed.filter((p) => p.name.startsWith("project-memory@"));
@@ -8027,16 +8027,17 @@ function compactionInstructionsPath() {
   const here = path10.dirname(fileURLToPath2(import.meta.url));
   return [path10.join(here, "..", "skills", "kb", "compaction-instructions.md"), path10.join(here, "..", "..", "skills", "kb", "compaction-instructions.md")].find(existsSync8) ?? path10.join(here, "..", "skills", "kb", "compaction-instructions.md");
 }
+var AUTO_COMPACT_WINDOW = 333e3;
 function setup(home2, opts = {}) {
   const print = opts.print ?? ((l) => process.stdout.write(l + "\n"));
   const settingsPath = path10.join(home2, ".claude", "settings.json");
   const settings = existsSync8(settingsPath) ? JSON.parse(readFileSync9(settingsPath, "utf8")) : {};
-  if (settings.autoCompactWindow === 2e5) print(`autoCompactWindow already 200000 in ${settingsPath}`);
+  if (settings.autoCompactWindow === AUTO_COMPACT_WINDOW) print(`autoCompactWindow already ${AUTO_COMPACT_WINDOW} in ${settingsPath}`);
   else {
     editJson(settingsPath, (s) => {
-      s.autoCompactWindow = 2e5;
+      s.autoCompactWindow = AUTO_COMPACT_WINDOW;
     });
-    print(`set autoCompactWindow: 200000 in ${settingsPath} (backup written)`);
+    print(`set autoCompactWindow: ${AUTO_COMPACT_WINDOW} in ${settingsPath} (backup written)`);
   }
   const deviceId2 = defaultDeviceId(opts.device ?? os2.hostname());
   paths.saveConfig({ deviceId: deviceId2 });

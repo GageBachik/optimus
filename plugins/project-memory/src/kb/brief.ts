@@ -13,7 +13,8 @@ import type { LastSession } from '../compaction/task-state.js';
 import { PREAMBLE } from '../compaction/restore-brief.js';
 
 /** Findings per brief before fitBrief trims; ~200 chars a line. */
-const TOP_FINDINGS = 20;
+// v1.4: six at startup and five per prompt. Twenty filled the 9,000-character cap and were never read (two live sessions, zero citations).
+const TOP_FINDINGS = 6, RECALL_FINDINGS = 5;
 const MEMORY_TITLES = 40;
 /** kb_write's evidence origins (write.ts `Evidence.kind`); any other origin was written by an importer (DESIGN §4.10), i.e. is an imported memory. */
 const WRITE_ORIGINS = ['commit', 'path', 'transcript', 'url'];
@@ -25,6 +26,7 @@ export function lastSessionSection(projectKey: string): Section[] {
   const t = last.taskState;
   return [{ title: 'Last session in this project', priority: 10, items: [
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`, `Goal: ${t.goalFirst}`, `Latest: ${t.goalLatest}`,
+    ...(last.drafts ? [`Draft findings from that session: ${last.drafts.count} — review ${last.drafts.file}, then record them with: kb write ${last.drafts.file}`] : []),
     ...t.openItems.map((o) => `Open: ${o}`), ...t.decisions, ...t.files.map((f) => `${f.path} (${f.action})`), ...t.pointers,
   ] }];
 }
@@ -94,7 +96,7 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
   if (!names.length) return null;
   const fresh = [...new Set([...findingsAbout(db, [...new Set(hits.map((h) => h.concept_id))]), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
-  const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, TOP_FINDINGS);
+  const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));
   return fitBrief(PREAMBLE, [{ title: `Knowledge bank on ${names.join(', ')}`, priority: 7, items: ranked.map((f) => findingLine(f, cfg)) }]).text;
 }

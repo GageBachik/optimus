@@ -7,12 +7,15 @@ import { redactJson } from '../lib/redaction.js';
 import { loadState, type SessionState } from '../lib/session-state.js';
 export type TaskState = { goalFirst: string; goalLatest: string; constraints: string[]; decisions: string[]; files: { path: string; action: string; at: string }[]; commands: { cmd: string; at: string }[]; tests: { cmd: string; lastLine: string }[]; openItems: string[]; errors: string[]; exactValues: string[]; pointers: string[] };
 /** The last-session record (DESIGN §3.11): written by the Stop hook to projects/<key>/last-session.json, shown at the next startup in that project. */
-export type LastSession = { at: string; sessionId: string; cwd: string; taskState: TaskState };
+export type LastSession = { at: string; sessionId: string; cwd: string; taskState: TaskState; drafts?: { file: string; count: number } };
 const cap = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const uniq = <T,>(a: T[]) => [...new Set(a)];
 const TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test|go test|bun test)\b/;
 // DESIGN §3.4 exact values. `%` sits outside the trailing \b: a word boundary never follows `%` before a space or full stop.
-const VALUE_RE = /\b\d+(?:\.\d+)?\s?(?:%|(?:ms|s|K|M|GB|MB|KB|tokens|bps)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
+// v1.4: a value is kept with the line that states it (a sentence a draft finding can be made from), and the lines come from the last
+// assistant entries that carry text: a tool-calling turn is ten entries without a word, and the old window of 20 entries saw only those.
+const VALUE_RE = /\$\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:%|x\b|(?:ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|bars)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
+const valueLine = (line: string) => { const t = line.replace(/^[\s>*•\-\d.)]+/, '').replace(/\s+/g, ' ').trim(); return t.length >= 12 && t.length <= 400 && !/^[|`]/.test(t) && VALUE_RE.test(t) ? cap(t, 160) : ''; };
 
 /** What the user actually typed in a user entry; '' for harness records: skill bodies and caveats (isMeta), async subagent replies
  *  (origin task-notification), the post-compaction summary, local command output. A slash command counts as its arguments. */
@@ -40,9 +43,9 @@ export function extractTaskState(entries: TranscriptEntry[], pointers: string[])
       if (TEST_RE.test(cmd)) { const out = results.get(String(b.id)) ?? ''; const last = out.trim().split('\n').filter(Boolean).pop() ?? ''; tests.push({ cmd, lastLine: cap(last, 160) }); } }
     if ((b.name === 'TodoWrite' || b.name === 'TaskCreate') && Array.isArray(inp.todos)) openItems = inp.todos.filter((t: any) => t.status !== 'completed').map((t: any) => cap(String(t.content ?? t.subject ?? ''), 160));
   }
-  const recent = assistants.slice(-20).map(textOf).join('\n');
+  const recent = assistants.map(textOf).filter(Boolean).slice(-20).join('\n');
   for (const line of recent.split('\n')) if (/(Error|error:|Traceback|panic|FAIL)/.test(line)) errors.push(cap(line.trim(), 200));
-  for (const m of recent.matchAll(VALUE_RE)) values.push(m[0]);
+  for (const line of recent.split('\n')) { VALUE_RE.lastIndex = 0; const v = valueLine(line); if (v) values.push(v); }
   const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
   return {
     goalFirst: cap(users[0] ?? '', 600), goalLatest: cap(users.at(-1) ?? '', 600),

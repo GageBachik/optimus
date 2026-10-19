@@ -8,6 +8,8 @@ import { readTranscript } from '../lib/transcript.js';
 import { loadState } from '../lib/session-state.js';
 import { spawnKbSync } from '../lib/kb-sync.js';
 import { type LastSession, type TaskState, extractTaskState, recallPointers } from '../compaction/task-state.js';
+import { buildDrafts, writeDrafts } from '../compaction/drafts.js';
+import { loadProjectConfig } from '../kb/project.js';
 
 // DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample; runs `kb sync` when the last one is older than 60 s. No report files.
 export async function stop(input: HookInput): Promise<undefined> {
@@ -18,7 +20,9 @@ export async function stop(input: HookInput): Promise<undefined> {
   // No transcript: keep the previous last-session record rather than overwrite it with an empty one.
   if (entries.length) {
     const taskState: TaskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
-    const last: LastSession = { at, sessionId, cwd, taskState };
+    const cfg = loadProjectConfig(cwd);
+    const drafts = cfg ? writeDrafts(paths.projectKey(cwd), buildDrafts(cfg, taskState, tp)) : undefined;
+    const last: LastSession = { at, sessionId, cwd, taskState, ...(drafts ? { drafts } : {}) };
     writeFileAtomic(path.join(paths.projectDir(paths.projectKey(cwd)), 'last-session.json'), JSON.stringify(last) + '\n');
   }
   // Ruling R2: a turn without usage fields (or no transcript) still gets a line with nulls, so the measurement never skips a turn silently.

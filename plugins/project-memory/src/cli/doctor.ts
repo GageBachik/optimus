@@ -77,7 +77,7 @@ export function doctorChecks(home: string): Check[] {
   const sessionsDir = path.join(state, 'sessions');
   out.push({ status: 'INFO', name: 'sessions', detail: `${existsSync(sessionsDir) ? readdirSync(sessionsDir).length : 0} session dirs` });
   const settings = readJsonFile(path.join(home, '.claude', 'settings.json')) ?? {};
-  out.push(settings.autoCompactWindow === 200000 ? { status: 'PASS', name: 'autoCompactWindow', detail: '200000' } : { status: 'WARN', name: 'autoCompactWindow', detail: `${settings.autoCompactWindow ?? 'unset'} (run \`kb setup\` to set 200000)` });
+  out.push(settings.autoCompactWindow === 333000 ? { status: 'PASS', name: 'autoCompactWindow', detail: '333000' } : { status: 'WARN', name: 'autoCompactWindow', detail: `${settings.autoCompactWindow ?? 'unset'} (run \`kb setup\` to set 200000)` });
   const enabled: Record<string, boolean> = settings.enabledPlugins ?? {}; const installed = installedPlugins(home);
   const ours = installed.filter((p) => p.name.startsWith('project-memory@'));
   const live = ours.find((p) => enabled[p.name] && existsSync(path.join(p.installPath, 'hooks', 'hooks.json')) && existsSync(path.join(p.installPath, 'dist', 'hook.js')));

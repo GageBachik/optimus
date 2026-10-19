@@ -159,7 +159,7 @@ Fields over 1,000,000 characters are replaced wholesale by `[REDACTED:oversize <
 
 ### 3.8 Settings the plugin asks the user to set (`kb setup` writes them, with a backup)
 
-`~/.claude/settings.json`: `"autoCompactWindow": 200000`. Nothing else. `kb setup` also records this machine's `deviceId` (short lowercase hostname, overridable with `--device`) in `~/.project-memory/config.json`. (`autoMemoryDirectory` redirection is deferred until its per-project semantics are verified; the importer covers today's files.)
+`~/.claude/settings.json`: `"autoCompactWindow": 333000` (v1.4; was 200000: a live session compacted three times in 50 minutes with a 160K floor after each). Nothing else. `kb setup` also records this machine's `deviceId` (short lowercase hostname, overridable with `--device`) in `~/.project-memory/config.json`. (`autoMemoryDirectory` redirection is deferred until its per-project semantics are verified; the importer covers today's files.)
 
 ### 3.9 Compaction instructions
 
@@ -170,6 +170,8 @@ The retention doctrine (billion-context `kernel/src/compression-rules.ts`, MIT w
 `kb doctor --baseline` reads `~/.claude/projects/**/*.jsonl` usage fields and prints: sessions, turns, context per turn p50/p90/p99/max, compactions per week, cache-read share. Baseline on 2026-10-16: p50 336K, p90 613K, max 966K, 2 compactions in 5,427 turns. Targets after phase 1 on real work: p50 < 200K, compactions actually occurring, zero unresolved audit omissions in a forced-compaction test, cache-read share unchanged with offload on.
 
 ### 3.11 Session continuity (what replaces `/sc:load` and `/sc:save`)
+
+> v1.4: the Stop hook also drafts findings. Every assistant line that states a number (a percentage, a dollar figure, a count with a unit) becomes a draft finding (state observed, evidence = the transcript and the files touched, at most 8 per session) in `~/.project-memory/projects/<key>/draft-findings.json`; the next startup brief names the file and the one command (`kb write <file>`) that records them after a person has edited the titles. Nothing reaches the bank without that step. The startup brief shows at most 6 findings and a prompt brief at most 5 (was 20: two live sessions cited none). Shell output offloads from 10,000 characters (other tools 20,000).
 
 Gage's requirement (16 Oct, evening): opening a session in a project must load the right context by itself, with no command. Three layers, all automatic:
 

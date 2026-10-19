@@ -12,13 +12,15 @@ export function compactionInstructionsPath(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return [path.join(here, '..', 'skills', 'kb', 'compaction-instructions.md'), path.join(here, '..', '..', 'skills', 'kb', 'compaction-instructions.md')].find(existsSync) ?? path.join(here, '..', 'skills', 'kb', 'compaction-instructions.md');
 }
-/** DESIGN §3.8/§3.9: autoCompactWindow 200000 (settings backed up first), deviceId into config.json, optional CLAUDE.md append. */
+/** DESIGN §3.8/§3.9: autoCompactWindow (settings backed up first), deviceId into config.json, optional CLAUDE.md append.
+ *  v1.4: 333000, a third of the 1M window. At 200000 a live session compacted three times in 50 minutes with a 160K floor after each. */
+export const AUTO_COMPACT_WINDOW = 333000;
 export function setup(home: string, opts: { device?: string; appendClaudeMd?: boolean; print?: (line: string) => void } = {}): void {
   const print = opts.print ?? ((l: string) => process.stdout.write(l + '\n'));
   const settingsPath = path.join(home, '.claude', 'settings.json');
   const settings = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, 'utf8')) : {};
-  if (settings.autoCompactWindow === 200000) print(`autoCompactWindow already 200000 in ${settingsPath}`);
-  else { editJson(settingsPath, (s) => { s.autoCompactWindow = 200000; }); print(`set autoCompactWindow: 200000 in ${settingsPath} (backup written)`); }
+  if (settings.autoCompactWindow === AUTO_COMPACT_WINDOW) print(`autoCompactWindow already ${AUTO_COMPACT_WINDOW} in ${settingsPath}`);
+  else { editJson(settingsPath, (s) => { s.autoCompactWindow = AUTO_COMPACT_WINDOW; }); print(`set autoCompactWindow: ${AUTO_COMPACT_WINDOW} in ${settingsPath} (backup written)`); }
   const deviceId = defaultDeviceId(opts.device ?? os.hostname());
   paths.saveConfig({ deviceId }); print(`deviceId: ${deviceId} (${paths.configPath()})`);
   const instructions = compactionInstructionsPath(); const claudeMd = path.join(home, '.claude', 'CLAUDE.md');

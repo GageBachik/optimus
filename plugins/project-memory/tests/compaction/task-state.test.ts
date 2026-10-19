@@ -16,8 +16,8 @@ test('task-state extracts the record; bare small integers are not exact values',
   assert.deepEqual(ts.files.map((f) => f.path), ['/w/sizing.py']); assert.ok(ts.commands.some((c) => c.cmd.startsWith('pytest')));
   assert.equal(ts.tests[0].lastLine, '4 passed in 1.2s'); assert.deepEqual(ts.openItems, ['re-run walk-forward on NQ']);
   assert.ok(ts.errors.some((e) => /FileNotFoundError/.test(e)));
-  assert.ok(ts.exactValues.includes('30001')); assert.ok(!ts.exactValues.includes('4'));
-  assert.ok(ts.exactValues.includes('0.5%')); // a % unit is followed by a non-word char, so it must not need a trailing \b
+  assert.ok(ts.exactValues.some((v) => v.includes('30001'))); assert.ok(!ts.exactValues.some((v) => /\b4\b/.test(v) && !/30001|0\.5%/.test(v)));
+  assert.ok(ts.exactValues.some((v) => v.includes('0.5%'))); // a % unit is followed by a non-word char, so it must not need a trailing \b
   assert.ok(renderTaskState(ts).startsWith('## Goal'));
 });
 test('harness user entries (skill body, task-notification, compact summary, command output) are not the goal or constraints', () => {

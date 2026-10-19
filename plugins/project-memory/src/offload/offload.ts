@@ -16,7 +16,8 @@ export function setAtPath(obj: unknown, p: (string | number)[], value: string): 
 }
 export function offload(input: HookInput) {
   const started = Date.now(); const cfg = paths.config().offload ?? {};
-  const threshold = cfg.thresholdChars ?? 20000, headLines = cfg.headLines ?? 30, tailLines = cfg.tailLines ?? 15;
+  // v1.4: shell output offloads from 10,000 chars (134 shell results in one live session summed to 434K chars with only three over 20K); other tools keep 20,000.
+  const threshold = cfg.thresholdChars ?? (input.tool_name === 'Bash' ? 10000 : 20000), headLines = cfg.headLines ?? 30, tailLines = cfg.tailLines ?? 15;
   const sessionId = String(input.session_id ?? 'unknown'); const agentId = input.agent_id ? String(input.agent_id) : 'main';
   const target = largestStringField(input.tool_response); if (!target || target.value.length < threshold) return undefined;
   const state = loadState(sessionId, agentId);
