@@ -23,7 +23,7 @@ test('kb_write and kb_link over MCP; a bad gate comes back as an error payload',
     assert.deepEqual(rows.map((r: any) => [r.findingId, r.approachValue, r.metric, r.value]), [[f.id, 'fixed-fractional', 'sharpe', 1.2]]);
     assert.match((await call('kb_write', { kind: 'finding', title: 'x', domain: 'trading', attrs: { gate: 'mainnet' } })).error, /allowed gates/);
     assert.ok(existsSync(path.join(process.env.PROJECT_MEMORY_BANK!, 'notes', 'finding', `${f.id}.md`)));
-    const b = await call('kb_brief', { project: 'es' }); assert.ok(b.text.includes('## Project es'), b.text); assert.ok(b.text.includes('Domain trading')); assert.deepEqual(b.items, []);
+    const b = await call('kb_brief', { project: 'es' }); assert.ok(b.text.includes('## Project es'), b.text); assert.ok(b.text.includes('Domain trading')); assert.deepEqual(b.items.map((i: any) => i.id ?? i), [f.id]); // v1.4: a project with no facets still gets its domain's findings
     assert.match((await call('kb_brief', {})).error, /no \.kb\.json/);
   } finally { await client.close(); }
 });
