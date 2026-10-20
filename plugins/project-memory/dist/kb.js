@@ -9908,14 +9908,21 @@ else if (cmd === "sync") {
     const spec = JSON.parse(readFileSync14(args[0] === "-" ? 0 : args[0], "utf8"));
     const defaults = spec.defaults ?? {}, records = spec.records ?? spec;
     const ids2 = /* @__PURE__ */ new Map(), now = (/* @__PURE__ */ new Date()).toISOString();
-    let written = 0, failed = 0;
-    for (const { key, ...r } of records) {
+    let written = 0, failed = 0, already = 0;
+    const draftFile = args[0] !== "-" && path17.basename(args[0]) === "draft-findings.json";
+    for (const rec of records) {
+      const { key, written: done, ...r } = rec;
+      if (done) {
+        already++;
+        continue;
+      }
       try {
         const rels = (r.rels ?? []).map((l) => ({ ...l, dst: l.dst.startsWith("@") ? ids2.get(l.dst.slice(1)) ?? (() => {
           throw new Error(`unknown key ${l.dst}`);
         })() : l.dst }));
         const res = kbWrite(db, bank, { domain: defaults.domain, project: defaults.project, ...r, rels }, now);
         if (key) ids2.set(key, res.id);
+        if (draftFile) rec.written = res.id;
         written++;
         process.stdout.write(`${res.created ? "created" : "updated"}  ${res.id}  ${r.kind}  ${r.title}${res.transfers.length ? `  (${res.transfers.length} transfer${res.transfers.length === 1 ? "" : "s"} proposed)` : ""}
 `);
@@ -9925,7 +9932,8 @@ else if (cmd === "sync") {
 `);
       }
     }
-    process.stdout.write(`${written} written, ${failed} failed
+    if (draftFile && written) writeFileAtomic(args[0], JSON.stringify({ ...spec, records }, null, 2) + "\n");
+    process.stdout.write(`${written} written, ${failed} failed${already ? `, ${already} already recorded` : ""}
 `);
     if (failed) process.exitCode = 1;
   } catch (e) {
