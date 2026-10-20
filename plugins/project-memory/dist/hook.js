@@ -1366,7 +1366,7 @@ __export(user_prompt_exports, {
 });
 async function userPrompt(input) {
   const prompt = String(input.prompt ?? ""), cwd = String(input.cwd ?? "");
-  if (!prompt.trim() || !loadProjectConfig(cwd)) return void 0;
+  if (!prompt.trim() || HARNESS_RE.test(prompt) || !loadProjectConfig(cwd)) return void 0;
   let db = null, lex = DEFAULT_LEXICON;
   try {
     db = openDb();
@@ -1417,7 +1417,7 @@ async function userPrompt(input) {
 ${text ?? ""}`.trim();
   return text ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } } : void 0;
 }
-var handler3;
+var HARNESS_RE, handler3;
 var init_user_prompt = __esm({
   "src/hooks/user-prompt.ts"() {
     "use strict";
@@ -1427,6 +1427,7 @@ var init_user_prompt = __esm({
     init_project();
     init_brief();
     init_auto_register();
+    HARNESS_RE = /^\s*(?:<task-notification>|<command-name>|<local-command-stdout>|<local-command-caveat>|<system-reminder>|\[SYSTEM NOTIFICATION)/;
     handler3 = userPrompt;
   }
 });

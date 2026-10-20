@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.PROJECT_MEMORY_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.PROJECT_MEMORY_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
@@ -59,6 +59,18 @@ test('v1.5 recall is domain-first and ignores paths: a solana finding about the 
   assert.equal(r4, undefined, 'a path containing the project name "es" is not a mention of that project');
   const r5: any = await userPrompt({ session_id: 'u12', cwd: d2, prompt: 'what did the es project conclude about sizing' });
   assert.ok(r5 && r5.hookSpecificOutput.additionalContext.includes('Knowledge bank on es'), 'a project named in prose still is');
+});
+
+test('v1.5: harness-injected user turns (task notifications, slash-command records, command output, system reminders) are not prompts', async () => {
+  const notice = '<task-notification>\n<task-id>w1</task-id>\n<summary>Workflow done</summary>\n<result>risk sizing scripts for the agents: 4 agents ran the scripts</result>\n</task-notification>';
+  assert.equal(await userPrompt({ session_id: 'h1', cwd, prompt: notice }), undefined, 'no brief for a notification, even one naming a concept');
+  assert.equal(await userPrompt({ session_id: 'h1', cwd, prompt: '<command-name>/effort</command-name> <command-args></command-args>' }), undefined);
+  assert.equal(await userPrompt({ session_id: 'h1', cwd, prompt: '[SYSTEM NOTIFICATION - NOT USER INPUT]\nrisk sizing' }), undefined);
+  const d = mkdtempSync(path.join(tmpdir(), 'notice-')); writeFileSync(path.join(d, '.kb.json'), JSON.stringify({ project_id: 'notice', domain: 'trading', auto: { registered: '2026-10-20', confidence: 'low', reason: 'folder name' } }));
+  await userPrompt({ session_id: 'h2', cwd: d, prompt: '<task-notification><result>the agents ran the scripts and hooks for the plugin api server</result></task-notification>' });
+  assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'trading', 'a notification never settles or re-files a folder');
+  const r: any = await userPrompt({ session_id: 'h2', cwd, prompt: 'Should we revisit risk sizing for the SPY book?' });
+  assert.ok(r && r.hookSpecificOutput.additionalContext.includes('Knowledge bank on risk sizing'), 'a typed prompt still briefs');
 });
 
 test('when the bank query throws, the last successful brief cached in state.json is injected (DESIGN §3.1)', async () => {

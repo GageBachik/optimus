@@ -10,9 +10,13 @@ import { DEFAULT_LEXICON, decisionLine, loadLexicon, needsDecision, settleFromPr
 // if the bank query throws, the last successful brief cached in state.json is injected instead. Nothing without a .kb.json.
 // v1.5: the domain lexicon comes from the bank's templates (built-in words when the bank is unreachable); a low-confidence folder whose
 // first substantive prompt did not settle it gets the domain decision line, once per folder (the mark is in .kb.json).
+// Claude Code fires UserPromptSubmit for text the harness itself injects as a user turn: background-task notices, slash-command records,
+// local command output, system reminders. None is a prompt: on 2026-10-20 a Workflow completion notice settled a trading folder to
+// "tooling" because its text said "scripts" and "agents", and such notices briefed, settled and spent the once-per-folder decision for hours.
+const HARNESS_RE = /^\s*(?:<task-notification>|<command-name>|<local-command-stdout>|<local-command-caveat>|<system-reminder>|\[SYSTEM NOTIFICATION)/;
 export async function userPrompt(input: HookInput) {
   const prompt = String(input.prompt ?? ''), cwd = String(input.cwd ?? '');
-  if (!prompt.trim() || !loadProjectConfig(cwd)) return undefined; // no .kb.json: the bank is not opened at all
+  if (!prompt.trim() || HARNESS_RE.test(prompt) || !loadProjectConfig(cwd)) return undefined; // no .kb.json: the bank is not opened at all
   let db: Db | null = null, lex = DEFAULT_LEXICON;
   try { db = openDb(); lex = loadLexicon(db); } catch (e) { log('warn', 'bank unavailable; built-in domain lexicon', String(e)); }
   let head = '';
