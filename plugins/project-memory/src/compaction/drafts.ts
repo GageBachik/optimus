@@ -7,7 +7,7 @@ import { writeFileAtomic } from '../lib/atomic.js';
 
 /** A `kb write` spec drafted from a session's value lines: one finding per distinct sentence that states a number, backed by the transcript and
  *  the files the session touched. Nothing is written to the bank until a person runs `kb write <file>`, so a draft is a review step, not a habit. */
-export type DraftSpec = { defaults: { domain: string; project: string }; records: { kind: 'finding'; title: string; body: string; attrs: Record<string, string>; evidence: { kind: 'transcript' | 'path'; ref: string }[] }[] };
+export type DraftSpec = { defaults: { domain: string; project: string }; records: { kind: 'finding'; title: string; body: string; attrs: Record<string, string>; evidence: { kind: 'transcript' | 'path'; ref: string }[]; written?: string }[] };
 const MAX_DRAFTS = 8;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').trim();
 // A draft is an impersonal claim with a measurement in it. Narration ("I'll raise the window from 200K to 300K") has numbers too; the
@@ -26,22 +26,32 @@ export function buildDrafts(cfg: ProjectConfig, ts: TaskState, transcriptPath: s
   for (const line of ts.exactValues) {
     const title = line.replace(/\*\*/g, '').replace(/[.;:,]+$/, '').trim(); if (title.length < 24 || !isClaim(title)) continue;
     const k = norm(title); if (seen.has(k)) continue; seen.add(k);
-    records.push({ kind: 'finding', title: title.slice(0, 120), body: `## Claim\n${title}\n\n## Evidence\nDrafted by project-memory from the session transcript on ${day}; the numbers are as the session stated them, not re-measured. Edit the title into a claim, add a gate, or delete this record before running kb write.`, attrs: { state: 'observed', valid_from: day }, evidence });
+    records.push({ kind: 'finding', title: shortTitle(title), body: `## Claim\n${title}\n\n## Evidence\nDrafted by project-memory from the session transcript on ${day}; the numbers are as the session stated them, not re-measured. Edit the title into a claim, add a gate, or delete this record before running kb write.`, attrs: { state: 'observed', valid_from: day }, evidence });
     if (records.length >= MAX_DRAFTS) break;
   }
   return { defaults: { domain: cfg.domain, project: cfg.project_id }, records };
 }
+/** A bank title is a claim, so a long line is cut at a word, never mid-word; the body carries the whole line. */
+const shortTitle = (s: string) => (s.length <= 120 ? s : s.slice(0, 120).replace(/\s+\S*$/, '') + '…');
 export const draftsFile = (projectKey: string) => path.join(paths.projectDir(projectKey), 'draft-findings.json');
-const MAX_FILE = 20;
+const MAX_FILE = 20, MAX_WRITTEN = 40;
+const readDrafts = (file: string): DraftSpec['records'] => { try { return existsSync(file) ? ((JSON.parse(readFileSync(file, 'utf8')) as DraftSpec).records ?? []) : []; } catch { return []; } };
 /** Merges the spec into the project's draft file (the main agent and every subagent add to the same file; same sentence once; newest
- *  kept up to 20) and returns what the last-session record should carry; undefined when there is nothing drafted at all. */
+ *  pending kept up to 20). v1.5: a record `kb write` has recorded stays in the file with its `written` id (up to 40), so the same
+ *  sentence is never drafted or written twice; `count` is the records still waiting for review, undefined when none are. */
 export function writeDrafts(projectKey: string, spec: DraftSpec): { file: string; count: number } | undefined {
-  const file = draftsFile(projectKey);
-  let prev: DraftSpec['records'] = [];
-  try { if (existsSync(file)) prev = (JSON.parse(readFileSync(file, 'utf8')) as DraftSpec).records ?? []; } catch { prev = []; }
-  const seen = new Set<string>(); const records: DraftSpec['records'] = [];
-  for (const r of [...spec.records, ...prev]) { const k = norm(r.title); if (seen.has(k)) continue; seen.add(k); records.push(r); if (records.length >= MAX_FILE) break; }
-  if (!records.length) return undefined;
-  writeFileAtomic(file, JSON.stringify({ ...spec, records }, null, 2) + '\n');
-  return { file, count: records.length };
+  const file = draftsFile(projectKey), prev = readDrafts(file);
+  const seen = new Set<string>(); const pending: DraftSpec['records'] = [], written: DraftSpec['records'] = [];
+  for (const r of [...prev.filter((p) => p.written), ...spec.records, ...prev.filter((p) => !p.written)]) {
+    const k = norm(r.title); if (seen.has(k)) continue; seen.add(k);
+    if (r.written) { if (written.length < MAX_WRITTEN) written.push(r); } else if (pending.length < MAX_FILE) pending.push(r);
+  }
+  if (!pending.length && !written.length) return undefined;
+  writeFileAtomic(file, JSON.stringify({ ...spec, records: [...pending, ...written] }, null, 2) + '\n');
+  return pending.length ? { file, count: pending.length } : undefined;
 }
+/** The drafts still waiting for review in the project's file, for the brief's one line; undefined when there are none. */
+export const pendingDrafts = (projectKey: string): { file: string; count: number } | undefined => {
+  const file = draftsFile(projectKey), count = readDrafts(file).filter((r) => !r.written).length;
+  return count ? { file, count } : undefined;
+};

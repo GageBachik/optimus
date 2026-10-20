@@ -40,7 +40,9 @@ test('drafts: one finding per distinct value line, written as a kb write spec th
   const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml')); db.sql.close();
   const r = spawnSync(process.execPath, ['dist/kb.js', 'write', w.file], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /2 written, 0 failed/);
-  assert.equal(writeDrafts(key, { ...spec, records: [] })!.count, 2, 'an empty pass keeps what is already drafted'); // v1.4: the file merges across turns and agents
+  // v1.5: kb write marked both as recorded, so the next pass has nothing pending, yet the file keeps them so they are never drafted again
+  assert.equal(writeDrafts(key, { ...spec, records: [] }), undefined); assert.equal((JSON.parse(readFileSync(w.file, 'utf8')).records as { written?: string }[]).filter((r) => r.written).length, 2);
+  assert.equal(writeDrafts(key, spec), undefined, 'the same two sentences drafted again are recognised as recorded');
 });
 
 test('values come from result tables and from the reports subagents returned', () => {
@@ -74,4 +76,29 @@ test('drafts v1.5: a claim may say "I" mid-sentence; correlation, signed decimal
   const ts = extractTaskState(entries, []);
   assert.ok(ts.exactValues.some((v) => /11\.1% a year/.test(v)), JSON.stringify(ts.exactValues));
   assert.ok(!ts.exactValues.some((v) => /^(Transcript dir|Script file|\(Edit this file)|internal metadata/.test(v)), JSON.stringify(ts.exactValues));
+});
+
+test('drafts v1.5: a recorded draft stays in the file as written, is never drafted again, and the brief counts only the pending ones', async () => {
+  const { pendingDrafts, draftsFile } = await import('../../src/compaction/drafts.js');
+  const cwd = mkdtempSync(path.join(tmpdir(), 'proj-')); writeFileSync(path.join(cwd, '.kb.json'), JSON.stringify({ project_id: 'zn', domain: 'trading' }));
+  const key = paths.projectKey(cwd);
+  const long = 'Stocks and bonds currently move together. Their one-year correlation is +0.35, the highest since 1997. In periods like this a 60/40 ES/ZN mix loses most of its diversification.';
+  const ts = extractTaskState([u('go'), a(long), a('ZN month-end settle return was +5.6 bps held-out 2018-2026.')] as any, []);
+  const spec = buildDrafts({ project_id: 'zn', domain: 'trading' }, ts, '', new Date('2026-10-20T00:00:00Z'));
+  assert.equal(spec.records.length, 2);
+  const t = spec.records[0].title; assert.ok(t.length <= 121 && t.endsWith('…') && long.startsWith(t.slice(0, -1)) && long[t.length - 1] === ' ', 'cut at a word boundary: ' + t);
+  assert.equal(writeDrafts(key, spec)!.count, 2);
+  // kb write marks the first one as recorded
+  const file = draftsFile(key); const d = JSON.parse(readFileSync(file, 'utf8')); d.records[0].written = 'f_test'; writeFileSync(file, JSON.stringify(d));
+  assert.deepEqual(pendingDrafts(key), { file, count: 1 });
+  // the next turn drafts the same two sentences again: the recorded one is not re-added, the pending one is kept once
+  const again = writeDrafts(key, spec)!; assert.equal(again.count, 1);
+  const d2 = JSON.parse(readFileSync(file, 'utf8')) as { records: { title: string; written?: string }[] };
+  assert.equal(d2.records.length, 2); assert.equal(d2.records.filter((r) => r.written).length, 1);
+  // the brief line reads the file, not the last-session record
+  writeFileSync(path.join(paths.projectDir(key), 'last-session.json'), JSON.stringify({ at: 'now', sessionId: 's', cwd, taskState: { goalFirst: 'g', goalLatest: 'l', openItems: [], decisions: [], files: [], pointers: [] }, drafts: { file, count: 2 } }));
+  const items = lastSessionSection(key)[0].items; assert.ok(items.some((i) => i.startsWith('Draft findings waiting for review: 1 ')), items.join('\n'));
+  d2.records.forEach((r) => (r.written = r.written ?? 'f_test2')); writeFileSync(file, JSON.stringify(d2));
+  assert.equal(pendingDrafts(key), undefined); assert.ok(!lastSessionSection(key)[0].items.some((i) => i.startsWith('Draft findings')), 'no line once everything is recorded');
+  assert.equal(writeDrafts(key, spec), undefined, 'nothing pending: the Stop hook carries no drafts line');
 });

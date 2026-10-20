@@ -10,6 +10,7 @@ import { readJson } from '../lib/atomic.js';
 import { paths } from '../lib/paths.js';
 import type { SessionState } from '../lib/session-state.js';
 import type { LastSession } from '../compaction/task-state.js';
+import { pendingDrafts } from '../compaction/drafts.js';
 import { PREAMBLE } from '../compaction/restore-brief.js';
 
 /** Findings per brief before fitBrief trims; ~200 chars a line. */
@@ -24,9 +25,11 @@ export function lastSessionSection(projectKey: string): Section[] {
   const last = readJson<LastSession>(path.join(paths.projectDir(projectKey), 'last-session.json'));
   if (!last) return [];
   const t = last.taskState;
+  // v1.5: the count comes from the draft file itself, not the last-session record, so a `kb write` run between turns stops the line.
+  const drafts = pendingDrafts(projectKey);
   return [{ title: 'Last session in this project', priority: 10, items: [
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`, `Goal: ${t.goalFirst}`, `Latest: ${t.goalLatest}`,
-    ...(last.drafts ? [`Draft findings from that session: ${last.drafts.count} — review ${last.drafts.file}, then record them with: kb write ${last.drafts.file}`] : []),
+    ...(drafts ? [`Draft findings waiting for review: ${drafts.count} — review ${drafts.file}, then record them with: kb write ${drafts.file}`] : []),
     ...t.openItems.map((o) => `Open: ${o}`), ...t.decisions, ...t.files.map((f) => `${f.path} (${f.action})`), ...t.pointers,
   ] }];
 }
