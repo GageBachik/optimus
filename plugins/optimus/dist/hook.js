@@ -765,7 +765,17 @@ function rankCandidates(db, cands, cfg, today = /* @__PURE__ */ new Date()) {
     return true;
   });
 }
-var NOT_SUPERSEDED, LIVE_FINDING, marks, ids, cmp, expired, candidateFindings, rankFindings;
+function rankFindings(db, cfg, limit, today = /* @__PURE__ */ new Date()) {
+  const ranked = rankCandidates(db, candidateFindings(db, cfg), cfg, today);
+  const own = ranked.filter((f) => f.project === cfg.project_id), other = ranked.filter((f) => f.project !== cfg.project_id);
+  const out2 = [];
+  for (let i = 0; out2.length < limit && (i < own.length || i < other.length); i++) {
+    if (i < own.length) out2.push(own[i]);
+    if (out2.length < limit && i < other.length) out2.push(other[i]);
+  }
+  return out2;
+}
+var NOT_SUPERSEDED, LIVE_FINDING, marks, ids, cmp, expired, candidateFindings;
 var init_rank = __esm({
   "src/kb/rank.ts"() {
     "use strict";
@@ -782,7 +792,6 @@ var init_rank = __esm({
       return !!to && Date.parse(to) < today.getTime();
     };
     candidateFindings = (db, cfg) => loadCandidates(db, candidateIds(db, cfg));
-    rankFindings = (db, cfg, limit, today = /* @__PURE__ */ new Date()) => rankCandidates(db, candidateFindings(db, cfg), cfg, today).slice(0, limit);
   }
 });
 

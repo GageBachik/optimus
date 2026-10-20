@@ -129,4 +129,16 @@ export function rankCandidates(db: Db, cands: Candidate[], cfg: ProjectConfig, t
   return ranked.filter((c) => { const k = c.title.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').trim(); if (seen.has(k)) return false; seen.add(k); return true; });
 }
 export const candidateFindings = (db: Db, cfg: ProjectConfig): Candidate[] => loadCandidates(db, candidateIds(db, cfg));
-export const rankFindings = (db: Db, cfg: ProjectConfig, limit: number, today = new Date()): Ranked[] => rankCandidates(db, candidateFindings(db, cfg), cfg, today).slice(0, limit);
+/** The top `limit` findings for a brief. v1.5: the project's own findings and other projects' are interleaved (own, other, own, …, each in
+ *  rank order), so a session's fresh findings cannot crowd every cross-project one out of a five-slot card — a second Duo app's agents
+ *  saw only what their sibling agents had recorded in the last hour, and not the Duo inset recorded the day before. */
+export function rankFindings(db: Db, cfg: ProjectConfig, limit: number, today = new Date()): Ranked[] {
+  const ranked = rankCandidates(db, candidateFindings(db, cfg), cfg, today);
+  const own = ranked.filter((f) => f.project === cfg.project_id), other = ranked.filter((f) => f.project !== cfg.project_id);
+  const out: Ranked[] = [];
+  for (let i = 0; out.length < limit && (i < own.length || i < other.length); i++) {
+    if (i < own.length) out.push(own[i]);
+    if (out.length < limit && i < other.length) out.push(other[i]);
+  }
+  return out;
+}

@@ -29607,7 +29607,16 @@ function rankCandidates(db2, cands, cfg, today = /* @__PURE__ */ new Date()) {
   });
 }
 var candidateFindings = (db2, cfg) => loadCandidates(db2, candidateIds(db2, cfg));
-var rankFindings = (db2, cfg, limit, today = /* @__PURE__ */ new Date()) => rankCandidates(db2, candidateFindings(db2, cfg), cfg, today).slice(0, limit);
+function rankFindings(db2, cfg, limit, today = /* @__PURE__ */ new Date()) {
+  const ranked = rankCandidates(db2, candidateFindings(db2, cfg), cfg, today);
+  const own = ranked.filter((f) => f.project === cfg.project_id), other = ranked.filter((f) => f.project !== cfg.project_id);
+  const out = [];
+  for (let i = 0; out.length < limit && (i < own.length || i < other.length); i++) {
+    if (i < own.length) out.push(own[i]);
+    if (out.length < limit && i < other.length) out.push(other[i]);
+  }
+  return out;
+}
 
 // src/kb/compare.ts
 var live = (db2, id) => {

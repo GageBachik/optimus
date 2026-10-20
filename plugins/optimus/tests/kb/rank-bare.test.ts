@@ -24,3 +24,13 @@ test('v1.5: a project that declares nothing is served newest-first within its do
   assert.equal(scored.length, 2);
   db.sql.close();
 });
+
+test('v1.5: the top findings interleave the project\'s own with other projects\', so a session\'s fresh findings cannot crowd every cross-project one out', () => {
+  const db = openDb(); const bank = paths.bankDir(); const ev = [{ kind: 'path' as const, ref: 'README.md' }];
+  for (let i = 0; i < 6; i++) kbWrite(db, bank, { kind: 'finding', title: `Own finding number ${i} measured ${10 + i} ms`, domain: 'ios', project: 'two-trees', attrs: { state: 'observed' }, evidence: ev }, `2026-10-20T10:0${i}:00Z`);
+  const top = rankFindings(db, { project_id: 'two-trees', domain: 'ios' }, 5, new Date('2026-10-20T12:00:00Z'));
+  const own = top.filter((f) => f.project === 'two-trees').length, other = top.length - own;
+  assert.equal(top.length, 5); assert.equal(own, 3); assert.equal(other, 2, top.map((f) => f.project + ': ' + f.title.slice(0, 40)).join(' | '));
+  assert.ok(top.some((f) => /84pt trailing-only/.test(f.title)), 'the sibling app\'s inset finding keeps a slot');
+  db.sql.close();
+});
