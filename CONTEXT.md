@@ -1,4 +1,4 @@
-# Project Memory — Ubiquitous Language (confirmed by Gage, 2026-10-16; Transfer and Project entries amended after review)
+# Optimus — Ubiquitous Language (confirmed by Gage, 2026-10-16; Transfer and Project entries amended after review)
 
 This file is a glossary only. It defines the words the plugin, the briefs, the map and the conversations use. No implementation detail belongs here.
 

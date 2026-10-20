@@ -1,6 +1,6 @@
 {
-  "name": "project-memory",
+  "name": "optimus",
   "owner": { "name": "Gage" },
   "metadata": { "description": "Infinite-context session layer and cross-device knowledge bank for Claude Code" },
-  "plugins": [ { "name": "project-memory", "source": "./plugins/project-memory", "description": "Offload, snapshot/audit/restore around native compaction, bounded briefs, knowledge bank" } ]
+  "plugins": [ { "name": "optimus", "source": "./plugins/optimus", "description": "Offload, snapshot/audit/restore around native compaction, bounded briefs, knowledge bank" } ]
 }

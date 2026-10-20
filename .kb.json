@@ -1,5 +1,5 @@
 {
-  "project_id": "project-memory",
+  "project_id": "optimus",
   "domain": "tooling",
   "facets": {
     "stack": "typescript-esbuild",

@@ -9,6 +9,6 @@ Four independent designs for the knowledge bank were scored by three judges agai
 One SQLite file per machine (`node:sqlite`, FTS5) is a rebuildable index. The truth is a folder of Markdown files with YAML frontmatter (attrs and relations by stable id) in a private git repo; the Mac mini hosts the bare remote over SSH on Tailscale. A self-contained `map.html` is generated from the index and opened from disk. No daemons.
 
 ## Consequences
-- Zero servers to run; full offline on every machine; conflicts visible in git. One file per note and deterministic ids make same-file conflicts rare; when a rebase does conflict, `kb sync` aborts it, keeps the local commit, and `kb doctor` reports it (the review removed the custom merge driver; see `docs/REVIEW-2026-10-16.md`).
+- Zero servers to run; full offline on every machine; conflicts visible in git. One file per note and deterministic ids make same-file conflicts rare; when a rebase does conflict, `kb sync` aborts it, keeps the local commit, and `kb doctor` reports it.
 - Lost: a rich editor, kanban boards, a mobile app. The export folder opens in Obsidian or VS Code; a one-way export into Trilium later costs about fifty lines if an editor is ever wanted.
 - The model's load-bearing parts (edge properties, Transfer state, ranking weights, leaderboard) are plain SQL.
