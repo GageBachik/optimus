@@ -116,3 +116,11 @@ test('drafts v1.5: a record written with the old mid-word title still counts as 
   assert.equal(spec.records.length, 1); assert.notEqual(spec.records[0].title, legacy.title, 'the new title is cut at a word, the legacy one mid-word');
   assert.equal(writeDrafts(key, spec), undefined, 'recognised as the recorded sentence'); assert.equal(pendingDrafts(key), undefined);
 });
+
+test('drafts v1.5: progress reports with a number in them are narration, not claims', async () => {
+  const { isClaim } = await import('../../src/compaction/drafts.js');
+  assert.equal(isClaim('Accuracy now reads correctly (SS 100%). One visual problem: the saber trail renders as a large white wedge'), false);
+  assert.equal(isClaim('Live rendering in both modes looks right. Now verifying the miss floor flash at 0.5 s'), false);
+  assert.equal(isClaim('Building AVAudioEngine on the main thread stalled frames up to 524 ms; a serial queue brought the worst step to 33 ms'), true);
+  assert.equal(isClaim('Beatmap generator builds a 3-minute 150 BPM Expert map in about 2.7 ms'), true);
+});
