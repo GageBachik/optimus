@@ -53,7 +53,8 @@ test('values come from result tables and from the reports subagents returned', (
     a('Results:\n| Strategy | Sharpe | MaxDD |\n|---|---|---|\n| 12-1 momentum | 0.9 | 72.5% |\n| buy and hold | 1.1 | 83% |'),
   ];
   const ts = extractTaskState(entries, []);
-  assert.ok(ts.exactValues.some((v) => v === '12-1 momentum · 0.9 · 72.5%'), JSON.stringify(ts.exactValues));
+  assert.ok(ts.exactValues.some((v) => v === 'Strategy · Sharpe · MaxDD → 12-1 momentum · 0.9 · 72.5%'), 'a table row carries its header: ' + JSON.stringify(ts.exactValues));
+  assert.ok(ts.exactValues.some((v) => v === 'Strategy · Sharpe · MaxDD → buy and hold · 1.1 · 83%'), JSON.stringify(ts.exactValues));
   assert.ok(ts.exactValues.some((v) => /Sharpe 0.9, max drawdown 72.5%/.test(v)), 'workflow report mined');
   assert.ok(!ts.exactValues.some((v) => /^-+/.test(v)), 'separator row skipped');
   const spec = buildDrafts({ project_id: 'es', domain: 'trading' }, ts, '', new Date('2026-10-19T12:00:00Z'));

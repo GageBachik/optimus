@@ -18,9 +18,10 @@ const VALUE_RE = /\$\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:%|x\b|(?:ms|s|K|M|GB
 // A markdown table row becomes "a · b · c" (results tables are where a session's numbers usually are); a separator row or code line is skipped.
 // Workflow/Agent results open with path boilerplate whose run ids look like hashes ("Transcript dir: …/wf_1344b0b0-3a5"); never a value.
 const BOILERPLATE_RE = /^(?:Transcript dir|Script file|To resume|\(Edit this file)\b|internal metadata/;
+const cells = (row: string) => row.replace(/^\||\|$/g, '').split('|').map((c) => c.trim()).filter(Boolean).join(' · ');
 const valueLine = (line: string) => {
   let t = line.trim(); if (/^\|?[\s:|-]+\|?$/.test(t) || /^`/.test(t) || BOILERPLATE_RE.test(t)) return '';
-  if (t.startsWith('|')) t = t.replace(/^\||\|$/g, '').split('|').map((c) => c.trim()).filter(Boolean).join(' · ');
+  if (t.startsWith('|')) t = cells(t);
   t = t.replace(/^(?:[>*•\-]\s+|\d+[.)]\s+)+/, '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim(); // list markers only: "12-1 momentum" keeps its 12-1
   VALUE_RE.lastIndex = 0; return t.length >= 12 && t.length <= 400 && VALUE_RE.test(t) ? cap(t, 160) : '';
 };
@@ -57,7 +58,14 @@ export function extractTaskState(entries: TranscriptEntry[], pointers: string[])
   // Values: the recent assistant text, then the reports subagents and workflows returned (a two-hour experiment run states its numbers there).
   const reports: string[] = [];
   for (const e of entries) for (const b of blocks(e)) if (b?.type === 'tool_use' && REPORT_TOOLS.has(b.name)) { const r = results.get(String(b.id)); if (r) reports.push(r.slice(0, 20000)); }
-  for (const line of [...recent.split('\n'), ...reports.slice(-10).join('\n').split('\n')]) { const v = valueLine(line); if (v) values.push(v); }
+  // v1.5: a table row carries its header ("Strategy · Sharpe → 12-1 momentum · 0.9"); alone, "3.2%/yr · 1.2%/yr" says nothing in the bank.
+  const lines = [...recent.split('\n'), ...reports.slice(-10).join('\n').split('\n')]; let header = '';
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim(), row = t.startsWith('|');
+    if (!row) header = '';
+    else if (/^\|?[\s:|-]+\|?$/.test(lines[i + 1]?.trim() ?? '')) { header = cells(t); continue; }
+    const v = valueLine(lines[i]); if (v) values.push(row && header ? cap(`${header} → ${v}`, 160) : v);
+  }
   const lastAt = new Map(commands.map((c) => [c.cmd, c.at]));
   return {
     goalFirst: cap(users[0] ?? '', 600), goalLatest: cap(users.at(-1) ?? '', 600),
