@@ -16,8 +16,10 @@ const TEST_RE = /\b(pytest|vitest|jest|cargo test|npm test|pnpm test|node --test
 // assistant entries that carry text: a tool-calling turn is ten entries without a word, and the old window of 20 entries saw only those.
 const VALUE_RE = /\$\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:%|x\b|(?:ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|bars)\b)|\b\d{4,}(?:\.\d+)?\b|\b[0-9a-f]{7,40}\b/g;
 // A markdown table row becomes "a · b · c" (results tables are where a session's numbers usually are); a separator row or code line is skipped.
+// Workflow/Agent results open with path boilerplate whose run ids look like hashes ("Transcript dir: …/wf_1344b0b0-3a5"); never a value.
+const BOILERPLATE_RE = /^(?:Transcript dir|Script file|To resume|\(Edit this file)\b|internal metadata/;
 const valueLine = (line: string) => {
-  let t = line.trim(); if (/^\|?[\s:|-]+\|?$/.test(t) || /^`/.test(t)) return '';
+  let t = line.trim(); if (/^\|?[\s:|-]+\|?$/.test(t) || /^`/.test(t) || BOILERPLATE_RE.test(t)) return '';
   if (t.startsWith('|')) t = t.replace(/^\||\|$/g, '').split('|').map((c) => c.trim()).filter(Boolean).join(' · ');
   t = t.replace(/^(?:[>*•\-]\s+|\d+[.)]\s+)+/, '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim(); // list markers only: "12-1 momentum" keeps its 12-1
   VALUE_RE.lastIndex = 0; return t.length >= 12 && t.length <= 400 && VALUE_RE.test(t) ? cap(t, 160) : '';

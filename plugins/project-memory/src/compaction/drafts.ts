@@ -12,8 +12,11 @@ const MAX_DRAFTS = 8;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').trim();
 // A draft is an impersonal claim with a measurement in it. Narration ("I'll raise the window from 200K to 300K") has numbers too; the
 // first run on a working session drafted eight lines of it. Measurement: a %, a $ figure, a unit, or a metric word. Narration: a person.
-const MEASURE_RE = /%|\$\d|\b\d+(?:\.\d+)?\s?(?:x|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|bars)\b|\b(?:sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|compute units|cu)\b/i;
-const NARRATION_RE = /\b(?:I|I'll|I'm|I've|I'd|we|we'll|we're|you|you'll|your|let me|let's|say|pushed|committed|watcher|re-armed|next:)\b|`|\?\s*$/i;
+// v1.5 (first real session, quant-research): a signed decimal ("correlation is +0.35"), "5 times", "a year" and the word correlation are
+// measurements too; and a bare "I" counts as narration only at the start of the line ("I turned every idea into a backtest"), not inside a
+// claim ("under all 16 ways I tried of defining high VIX").
+const MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|years|bars)\b|\b(?:a year|per year|sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|correlation|compute units|cu)\b/i;
+const NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|you'll|let me|let's|pushed|committed|watcher|re-armed|next:)\b|^(?:I|we|you|your|say|still|now|then|next)\b|`|\?\s*$/i;
 export const isClaim = (line: string) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
 export function buildDrafts(cfg: ProjectConfig, ts: TaskState, transcriptPath: string, today = new Date()): DraftSpec {
   const day = today.toISOString().slice(0, 10);

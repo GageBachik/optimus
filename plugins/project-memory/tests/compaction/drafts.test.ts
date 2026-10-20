@@ -57,3 +57,21 @@ test('values come from result tables and from the reports subagents returned', (
   const spec = buildDrafts({ project_id: 'es', domain: 'trading' }, ts, '', new Date('2026-10-19T12:00:00Z'));
   assert.ok(spec.records.some((r) => /Sharpe 0.9/.test(r.title)));
 });
+
+test('drafts v1.5: a claim may say "I" mid-sentence; correlation, signed decimals and "N times" are measurements; workflow path boilerplate is never a value', async () => {
+  const { isClaim } = await import('../../src/compaction/drafts.js');
+  assert.equal(isClaim('On the S&P 500 index it earned about 11% a year after costs, under all 16 ways I tried of defining "high VIX."'), true);
+  assert.equal(isClaim('Stocks and bonds currently move together. Their one-year correlation is +0.35, the highest since 1997.'), true);
+  assert.equal(isClaim('On real ES data it promised about 5 times more than it delivered out of sample.'), true);
+  assert.equal(isClaim('I turned every testable idea from the five digests into a backtest on 16 years of ES data.'), false);
+  assert.equal(isClaim('Still inventorying: found ES 1-minute bars back to 2010 and 4,200 option surfaces.'), false);
+  const entries: any[] = [
+    u('run it'),
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'w2', name: 'Workflow', input: { script: 'x' } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w2', content: 'Workflow started.\nTranscript dir: /Users/x/.claude/projects/p/subagents/workflows/wf_1344b0b0-3a5\nScript file: /Users/x/.claude/projects/p/workflows/scripts/quant-digest-wf_1344b0b0-3a5.js\n(Edit this file with Write/Edit and re-invoke Workflow with {scriptPath: "/Users/x/wf_1344b0b0-3a5.js"})\nES 5-day mean reversion earned 11.1% a year net on high-VIX days 1991-2026.' }] } },
+    a('[{"type":"text","text":"Spawned successfully. (This tool result is internal metadata — never quote it, agent id 0a1b2c3d4e5f)"}]'),
+  ];
+  const ts = extractTaskState(entries, []);
+  assert.ok(ts.exactValues.some((v) => /11\.1% a year/.test(v)), JSON.stringify(ts.exactValues));
+  assert.ok(!ts.exactValues.some((v) => /^(Transcript dir|Script file|\(Edit this file)|internal metadata/.test(v)), JSON.stringify(ts.exactValues));
+});
