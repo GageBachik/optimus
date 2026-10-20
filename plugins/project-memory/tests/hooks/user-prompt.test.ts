@@ -36,7 +36,7 @@ test('a prompt naming a known concept gets a recall brief once; the same prompt 
 test('startup in a .kb.json project appends the bank sections; synonym questions once per session; briefed findings are not recalled again', async () => {
   const s: any = await sessionStart({ session_id: 'u2', source: 'startup', cwd });
   const t = s.hookSpecificOutput.additionalContext;
-  assert.ok(t.includes('## Project spy'), t); assert.ok(t.includes('## Pending concept questions')); assert.ok(t.includes('kb concepts accept pm1'));
+  assert.ok(t.includes('## Project spy'), t); assert.ok(t.includes('## Pending concept questions')); assert.ok(/node \S+\/dist\/kb\.js concepts accept pm1/.test(t), t);
   assert.ok(t.indexOf('## Pending concept questions') < t.indexOf('## Relevant findings')); assert.ok(t.includes(title)); assert.ok(t.length <= 9000);
   const again: any = await sessionStart({ session_id: 'u2', source: 'clear', cwd });
   assert.ok(!again.hookSpecificOutput.additionalContext.includes('## Pending concept questions')); assert.ok(again.hookSpecificOutput.additionalContext.includes(title));

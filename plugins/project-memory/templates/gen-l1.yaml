@@ -2,6 +2,7 @@ domain: gen-l1
 facets: [state_layout, entity_partition, activation_shape, settlement_path, custody]
 methods: [microbenchmark, burst-tournament, soak, probe, adversarial-review, golden-test, conservation-check]
 gates: [unit, local-validator, devnet, testnet, mainnet]
+keywords: [gen, genie, gen-l1, clob, genibook, geniswap, activation, activations, gvm]
 environment: cluster-runtime
 subject: program-or-entity
 seed_concepts:

@@ -109,17 +109,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path18) {
-      const ctrl = callVisitor(key, node, visitor, path18);
+    function visit_(key, node, visitor, path19) {
+      const ctrl = callVisitor(key, node, visitor, path19);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path18, ctrl);
-        return visit_(key, ctrl, visitor, path18);
+        replaceNode(key, path19, ctrl);
+        return visit_(key, ctrl, visitor, path19);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path18 = Object.freeze(path18.concat(node));
+          path19 = Object.freeze(path19.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path18);
+            const ci = visit_(i, node.items[i], visitor, path19);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -130,13 +130,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path18 = Object.freeze(path18.concat(node));
-          const ck = visit_("key", node.key, visitor, path18);
+          path19 = Object.freeze(path19.concat(node));
+          const ck = visit_("key", node.key, visitor, path19);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path18);
+          const cv = visit_("value", node.value, visitor, path19);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -157,17 +157,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path18) {
-      const ctrl = await callVisitor(key, node, visitor, path18);
+    async function visitAsync_(key, node, visitor, path19) {
+      const ctrl = await callVisitor(key, node, visitor, path19);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path18, ctrl);
-        return visitAsync_(key, ctrl, visitor, path18);
+        replaceNode(key, path19, ctrl);
+        return visitAsync_(key, ctrl, visitor, path19);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path18 = Object.freeze(path18.concat(node));
+          path19 = Object.freeze(path19.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path18);
+            const ci = await visitAsync_(i, node.items[i], visitor, path19);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -178,13 +178,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path18 = Object.freeze(path18.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path18);
+          path19 = Object.freeze(path19.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path19);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path18);
+          const cv = await visitAsync_("value", node.value, visitor, path19);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -211,23 +211,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path18) {
+    function callVisitor(key, node, visitor, path19) {
       if (typeof visitor === "function")
-        return visitor(key, node, path18);
+        return visitor(key, node, path19);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path18);
+        return visitor.Map?.(key, node, path19);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path18);
+        return visitor.Seq?.(key, node, path19);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path18);
+        return visitor.Pair?.(key, node, path19);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path18);
+        return visitor.Scalar?.(key, node, path19);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path18);
+        return visitor.Alias?.(key, node, path19);
       return void 0;
     }
-    function replaceNode(key, path18, node) {
-      const parent = path18[path18.length - 1];
+    function replaceNode(key, path19, node) {
+      const parent = path19[path19.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -839,10 +839,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path18, value2) {
+    function collectionFromPath(schema, path19, value2) {
       let v = value2;
-      for (let i = path18.length - 1; i >= 0; --i) {
-        const k = path18[i];
+      for (let i = path19.length - 1; i >= 0; --i) {
+        const k = path19[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -861,7 +861,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path18) => path18 == null || typeof path18 === "object" && !!path18[Symbol.iterator]().next().done;
+    var isEmptyPath = (path19) => path19 == null || typeof path19 === "object" && !!path19[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -891,11 +891,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path18, value2) {
-        if (isEmptyPath(path18))
+      addIn(path19, value2) {
+        if (isEmptyPath(path19))
           this.add(value2);
         else {
-          const [key, ...rest] = path18;
+          const [key, ...rest] = path19;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value2);
@@ -909,8 +909,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path18) {
-        const [key, ...rest] = path18;
+      deleteIn(path19) {
+        const [key, ...rest] = path19;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -924,8 +924,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path18, keepScalar) {
-        const [key, ...rest] = path18;
+      getIn(path19, keepScalar) {
+        const [key, ...rest] = path19;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -943,8 +943,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path18) {
-        const [key, ...rest] = path18;
+      hasIn(path19) {
+        const [key, ...rest] = path19;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -954,8 +954,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path18, value2) {
-        const [key, ...rest] = path18;
+      setIn(path19, value2) {
+        const [key, ...rest] = path19;
         if (rest.length === 0) {
           this.set(key, value2);
         } else {
@@ -3470,9 +3470,9 @@ var require_Document = __commonJS({
           this.contents.add(value2);
       }
       /** Adds a value to the document. */
-      addIn(path18, value2) {
+      addIn(path19, value2) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path18, value2);
+          this.contents.addIn(path19, value2);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3547,14 +3547,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path18) {
-        if (Collection.isEmptyPath(path18)) {
+      deleteIn(path19) {
+        if (Collection.isEmptyPath(path19)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path18) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path19) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3569,10 +3569,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path18, keepScalar) {
-        if (Collection.isEmptyPath(path18))
+      getIn(path19, keepScalar) {
+        if (Collection.isEmptyPath(path19))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path18, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path19, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3583,10 +3583,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path18) {
-        if (Collection.isEmptyPath(path18))
+      hasIn(path19) {
+        if (Collection.isEmptyPath(path19))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path18) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path19) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3603,13 +3603,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path18, value2) {
-        if (Collection.isEmptyPath(path18)) {
+      setIn(path19, value2) {
+        if (Collection.isEmptyPath(path19)) {
           this.contents = value2;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path18), value2);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path19), value2);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path18, value2);
+          this.contents.setIn(path19, value2);
         }
       }
       /**
@@ -5570,9 +5570,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path18) => {
+    visit.itemAtPath = (cst, path19) => {
       let item = cst;
-      for (const [field, index] of path18) {
+      for (const [field, index] of path19) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5581,23 +5581,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path18) => {
-      const parent = visit.itemAtPath(cst, path18.slice(0, -1));
-      const field = path18[path18.length - 1][0];
+    visit.parentCollection = (cst, path19) => {
+      const parent = visit.itemAtPath(cst, path19.slice(0, -1));
+      const field = path19[path19.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path18, item, visitor) {
-      let ctrl = visitor(item, path18);
+    function _visit(path19, item, visitor) {
+      let ctrl = visitor(item, path19);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path18.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path19.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5608,10 +5608,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path18);
+            ctrl = ctrl(item, path19);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path18) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path19) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7364,7 +7364,7 @@ var require_dist = __commonJS({
 
 // src/cli/index.ts
 import os4 from "node:os";
-import path17 from "node:path";
+import path18 from "node:path";
 
 // src/cli/doctor.ts
 import { existsSync as existsSync4, readFileSync as readFileSync5, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync3, unlinkSync } from "node:fs";
@@ -7375,6 +7375,7 @@ import path7 from "node:path";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 function ensure(p) {
   if (!existsSync(p)) mkdirSync(p, { recursive: true });
@@ -7433,6 +7434,13 @@ var paths = {
   },
   projectDir(key) {
     return ensure(path.join(this.stateDir(), "projects", safe(key)));
+  },
+  /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
+   *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
+  kbCli() {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+    return "kb";
   }
 };
 
@@ -7601,12 +7609,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, mkdtempSync, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { tmpdir } from "node:os";
 import path6 from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path18, fromOffset = 0) {
-  const fd = openSync(path18, "r");
+function readTranscript(path19, fromOffset = 0) {
+  const fd = openSync(path19, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -7685,7 +7693,7 @@ var parse = (s) => {
   }
 };
 function findHookJs() {
-  for (let d = path6.dirname(fileURLToPath(import.meta.url)); ; d = path6.dirname(d)) {
+  for (let d = path6.dirname(fileURLToPath2(import.meta.url)); ; d = path6.dirname(d)) {
     const f = path6.join(d, "dist", "hook.js");
     if (existsSync3(f)) return f;
     if (path6.dirname(d) === d) throw new Error("dist/hook.js not found; run npm run build");
@@ -8020,11 +8028,11 @@ function planCleanup(home2) {
 import os2 from "node:os";
 import path10 from "node:path";
 import { existsSync as existsSync8, readFileSync as readFileSync9, appendFileSync as appendFileSync2 } from "node:fs";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 var defaultDeviceId = (host = os2.hostname()) => host.split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-");
 var HEADING = "## Compaction instructions (project-memory)";
 function compactionInstructionsPath() {
-  const here = path10.dirname(fileURLToPath2(import.meta.url));
+  const here = path10.dirname(fileURLToPath3(import.meta.url));
   return [path10.join(here, "..", "skills", "kb", "compaction-instructions.md"), path10.join(here, "..", "..", "skills", "kb", "compaction-instructions.md")].find(existsSync8) ?? path10.join(here, "..", "skills", "kb", "compaction-instructions.md");
 }
 var AUTO_COMPACT_WINDOW = 333e3;
@@ -8065,7 +8073,7 @@ ${readFileSync9(instructions, "utf8")}`);
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { copyFileSync as copyFileSync2, existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12, readdirSync as readdirSync5, writeFileSync as writeFileSync5 } from "node:fs";
 import path13 from "node:path";
-import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // src/kb/normalize.ts
 var STOP = new Set("a an and are as at be by for from has have in is it its of on or that the this to was were will with".split(" "));
@@ -8154,11 +8162,13 @@ var slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, 
 var domainNoteId = (domain) => `d_${slug(domain).padEnd(26, "0").slice(0, 26)}`;
 var templateNoteId = (domain) => `m_${slug(domain).padEnd(26, "0").slice(0, 26)}`;
 var conceptNoteId = (name) => `c_${normalizeName(name).replace(/-/g, "").padEnd(26, "0").slice(0, 26)}`;
+var normalizeKeywords = (v) => [...new Set((Array.isArray(v) ? v : [v]).flatMap((x) => String(x ?? "").toLowerCase().split(/[,\s]+/)).map((s) => s.replace(/^-+|-+$/g, "")).filter((s) => /^[a-z0-9][a-z0-9-]*$/.test(s)))];
 function installTemplate(db, t, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const base = { project: null, body: "", created_at: now, updated_at: now, deleted_at: null, device_id: "init" };
   upsertNote(db, { id: domainNoteId(t.domain), kind: "domain", domain: t.domain, title: t.domain, ...base });
   upsertNote(db, { id: templateNoteId(t.domain), kind: "template", domain: t.domain, title: `${t.domain} template`, ...base });
-  setAttrs(db, templateNoteId(t.domain), { facet: t.facets, method: t.methods, ...Object.fromEntries(t.gates.map((g, i) => [`gate:${i}`, g])), env_axis: t.environment, subject_axis: t.subject });
+  const keywords = normalizeKeywords(t.keywords ?? []);
+  setAttrs(db, templateNoteId(t.domain), { facet: t.facets, method: t.methods, ...Object.fromEntries(t.gates.map((g, i) => [`gate:${i}`, g])), env_axis: t.environment, subject_axis: t.subject, ...keywords.length ? { keyword: keywords } : {} });
   const ins = db.sql.prepare("INSERT OR IGNORE INTO alias(name_norm, concept_id) VALUES(?,?)");
   for (const c of t.seed_concepts ?? []) {
     const id = conceptNoteId(c.name), aliases = c.aliases ?? [];
@@ -8174,8 +8184,9 @@ function templateFor(db, domain) {
   for (const r of db.sql.prepare("SELECT key, value FROM attr WHERE note_id=? ORDER BY rowid").all(templateNoteId(domain))) (a[r.key] ??= []).push(r.value);
   if (!a.facet) return null;
   const gates = Object.entries(a).filter(([k]) => k.startsWith("gate:")).sort(([x], [y]) => Number(x.slice(5)) - Number(y.slice(5))).map(([, v]) => v[0]);
-  return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [] };
+  return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [], keywords: a.keyword ?? [] };
 }
+var installedDomains = (db) => db.sql.prepare("SELECT domain FROM note WHERE kind='template' AND deleted_at IS NULL AND domain IS NOT NULL ORDER BY domain").all().map((r) => r.domain);
 function validateApproachFacets(db, domain, facets) {
   const t = templateFor(db, domain);
   if (!t) throw new Error(`unknown domain ${domain}`);
@@ -8321,14 +8332,23 @@ function inTransaction(db, fn) {
     throw e;
   }
 }
+function installBankTemplates(db, bankDir) {
+  const dir = path11.join(bankDir, "templates");
+  if (!existsSync9(dir)) return 0;
+  const files = readdirSync4(dir).filter((f) => f.endsWith(".yaml")).sort();
+  for (const f of files) installTemplate(db, loadTemplate(path11.join(dir, f)));
+  return files.length;
+}
 function importAll(db, bankDir) {
-  return inTransaction(db, () => importNotes(db, bankDir));
+  return inTransaction(db, () => {
+    installBankTemplates(db, bankDir);
+    return importNotes(db, bankDir);
+  });
 }
 function rebuild(db, bankDir) {
   return inTransaction(db, () => {
     db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
-    const templates = path11.join(bankDir, "templates");
-    if (existsSync9(templates)) for (const f of readdirSync4(templates).filter((f2) => f2.endsWith(".yaml")).sort()) installTemplate(db, loadTemplate(path11.join(templates, f)));
+    installBankTemplates(db, bankDir);
     return importNotes(db, bankDir);
   });
 }
@@ -8425,7 +8445,7 @@ function sync(bankDir) {
 
 // src/cli/init.ts
 function shippedTemplatesDir() {
-  const here = path13.dirname(fileURLToPath3(import.meta.url));
+  const here = path13.dirname(fileURLToPath4(import.meta.url));
   return [path13.join(here, "..", "templates"), path13.join(here, "..", "..", "templates")].find(existsSync11) ?? path13.join(here, "..", "templates");
 }
 function git2(cwd, ...args2) {
@@ -8433,7 +8453,7 @@ function git2(cwd, ...args2) {
   if (r.status !== 0) throw new Error(`git ${args2.join(" ")} failed: ${(r.stderr || r.error?.message || "").trim()}`);
   return r.stdout;
 }
-function installBankTemplates(bank) {
+function installBankTemplates2(bank) {
   const dir = path13.join(bank, "templates");
   if (!existsSync11(dir)) return [];
   const db = openDb();
@@ -8469,7 +8489,7 @@ function initBank(opts = {}) {
       written.push(`templates/${f}`);
     }
   }
-  const installed = installBankTemplates(bank);
+  const installed = installBankTemplates2(bank);
   if (opts.clone) {
     const db = openDb();
     try {
@@ -8718,7 +8738,7 @@ function compareLine(r, key) {
 function pendingQuestions(db, max = 3) {
   const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
     WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max);
-  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
+  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? ${paths.kbCli()} concepts accept ${r.id} | ${paths.kbCli()} concepts reject ${r.id}`);
 }
 
 // src/kb/write.ts
@@ -8895,24 +8915,59 @@ function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()
 }
 
 // src/cli/index.ts
-import { readFileSync as readFileSync14 } from "node:fs";
+var import_yaml4 = __toESM(require_dist(), 1);
+import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync15, unlinkSync as unlinkSync3, writeFileSync as writeFileSync8 } from "node:fs";
+
+// src/kb/auto-register.ts
+import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync6 } from "node:fs";
+import path15 from "node:path";
+function findConfig(cwd) {
+  let dir = path15.resolve(cwd), file = "";
+  for (let i = 0; i < 8; i++) {
+    const f = path15.join(dir, ".kb.json");
+    if (existsSync12(f)) {
+      file = f;
+      break;
+    }
+    const up = path15.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  if (!file) return null;
+  try {
+    return { file, cfg: JSON.parse(readFileSync13(file, "utf8")) };
+  } catch {
+    return null;
+  }
+}
+function fileHereUnder(cwd, domain) {
+  const found = findConfig(cwd);
+  if (!found) return null;
+  const { file, cfg } = found;
+  if (!cfg.auto || cfg.auto.confidence === "high") return null;
+  cfg.domain = domain;
+  cfg.auto = { ...cfg.auto, confidence: "high", reason: `domain ${domain} created here by kb domain new` };
+  writeFileSync6(file, JSON.stringify(cfg, null, 2) + "\n");
+  log("info", "domain settled by kb domain new", { file, domain });
+  return { file, project_id: String(cfg.project_id ?? "") };
+}
 
 // src/kb/import.ts
 var import_yaml3 = __toESM(require_dist(), 1);
 import { createHash as createHash4 } from "node:crypto";
-import { closeSync as closeSync2, existsSync as existsSync12, openSync as openSync2, readdirSync as readdirSync6, readFileSync as readFileSync13, readSync as readSync2, statSync as statSync6 } from "node:fs";
+import { closeSync as closeSync2, existsSync as existsSync13, openSync as openSync2, readdirSync as readdirSync7, readFileSync as readFileSync14, readSync as readSync2, statSync as statSync6 } from "node:fs";
 import os3 from "node:os";
-import path15 from "node:path";
+import path16 from "node:path";
 var sha2563 = (b) => createHash4("sha256").update(b).digest("hex");
 var projectOf = (dir) => {
   const c = loadProjectConfig(dir);
-  return { project: c?.project_id ?? path15.basename(dir), domain: c?.domain ?? null };
+  return { project: c?.project_id ?? path16.basename(dir), domain: c?.domain ?? null };
 };
-var mdFiles = (dir) => readdirSync6(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path15.join(dir, f)).isFile()).sort();
+var mdFiles = (dir) => readdirSync7(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort();
 function importSources(db, bankDir, sources, now) {
   let created = 0;
   for (const s of sources) {
-    const bytes = readFileSync13(s.file), sha = sha2563(bytes), id = evidenceId(sha);
+    const bytes = readFileSync14(s.file), sha = sha2563(bytes), id = evidenceId(sha);
     if (getNote(db, id)) continue;
     upsertNote(db, { id, kind: "evidence", domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString("utf8")).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
     setAttrs(db, id, { ...s.attrs, source_path: s.file, sha256: sha });
@@ -8924,15 +8979,15 @@ function importSources(db, bankDir, sources, now) {
 function serenaDirs(dir, skip, out = []) {
   let entries;
   try {
-    entries = readdirSync6(dir, { withFileTypes: true });
+    entries = readdirSync7(dir, { withFileTypes: true });
   } catch {
     return out;
   }
   for (const e of entries) {
-    const p = path15.join(dir, e.name);
+    const p = path16.join(dir, e.name);
     if (!e.isDirectory() || e.name === "node_modules" || e.name === ".git" || p === skip) continue;
     if (e.name === ".serena") {
-      if (existsSync12(path15.join(p, "memories"))) out.push(path15.join(p, "memories"));
+      if (existsSync13(path16.join(p, "memories"))) out.push(path16.join(p, "memories"));
     } else serenaDirs(p, skip, out);
   }
   return out;
@@ -8941,21 +8996,21 @@ function importSerena(db, bankDir, roots, home2 = os3.homedir(), now = (/* @__PU
   const sources = [], seen = /* @__PURE__ */ new Set();
   const add = (memDir, owner) => {
     for (const rel of mdFiles(memDir)) {
-      const file = path15.join(memDir, rel);
+      const file = path16.join(memDir, rel);
       if (seen.has(file)) continue;
       seen.add(file);
-      const name = rel.slice(0, -3).split(path15.sep).join("/");
+      const name = rel.slice(0, -3).split(path16.sep).join("/");
       sources.push({ file, title: name, ...owner, attrs: { origin: "serena", memory_name: name } });
     }
   };
-  const global = path15.join(home2, ".serena", "memories", "global");
-  if (existsSync12(global)) add(global, { project: null, domain: null });
-  for (const root of roots) for (const memDir of serenaDirs(path15.resolve(root), path15.join(home2, ".cache"))) add(memDir, projectOf(path15.dirname(path15.dirname(memDir))));
+  const global = path16.join(home2, ".serena", "memories", "global");
+  if (existsSync13(global)) add(global, { project: null, domain: null });
+  for (const root of roots) for (const memDir of serenaDirs(path16.resolve(root), path16.join(home2, ".cache"))) add(memDir, projectOf(path16.dirname(path16.dirname(memDir))));
   return importSources(db, bankDir, sources, now);
 }
 function transcriptCwd(projDir) {
-  for (const f of readdirSync6(projDir).filter((f2) => f2.endsWith(".jsonl")).sort()) {
-    const buf = Buffer.alloc(1 << 20), fd = openSync2(path15.join(projDir, f), "r");
+  for (const f of readdirSync7(projDir).filter((f2) => f2.endsWith(".jsonl")).sort()) {
+    const buf = Buffer.alloc(1 << 20), fd = openSync2(path16.join(projDir, f), "r");
     let n;
     try {
       n = readSync2(fd, buf, 0, buf.length, 0);
@@ -8978,28 +9033,28 @@ function resolveDashed(dashed) {
     if (!rest) return dir;
     let names;
     try {
-      names = readdirSync6(dir, { withFileTypes: true }).filter((e) => e.isDirectory() || e.isSymbolicLink()).map((e) => e.name);
+      names = readdirSync7(dir, { withFileTypes: true }).filter((e) => e.isDirectory() || e.isSymbolicLink()).map((e) => e.name);
     } catch {
       return null;
     }
     for (const name of names.filter((n) => rest === enc(n) || rest.startsWith(enc(n) + "-")).sort((a, b) => b.length - a.length)) {
-      const r = walk(path15.join(dir, name), rest.slice(enc(name).length + 1));
+      const r = walk(path16.join(dir, name), rest.slice(enc(name).length + 1));
       if (r) return r;
     }
     return null;
   };
-  return dashed.startsWith("-") ? walk(path15.sep, dashed.slice(1)) : null;
+  return dashed.startsWith("-") ? walk(path16.sep, dashed.slice(1)) : null;
 }
 function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {
-  const projects = path15.join(home2, ".claude", "projects"), sources = [];
-  for (const d of existsSync12(projects) ? readdirSync6(projects).sort() : []) {
-    const projDir = path15.join(projects, d), memDir = path15.join(projDir, "memory");
-    if (!existsSync12(memDir)) continue;
-    const files = readdirSync6(memDir).filter((f) => f.endsWith(".md") && f !== "MEMORY.md" && statSync6(path15.join(memDir, f)).isFile()).sort();
+  const projects = path16.join(home2, ".claude", "projects"), sources = [];
+  for (const d of existsSync13(projects) ? readdirSync7(projects).sort() : []) {
+    const projDir = path16.join(projects, d), memDir = path16.join(projDir, "memory");
+    if (!existsSync13(memDir)) continue;
+    const files = readdirSync7(memDir).filter((f) => f.endsWith(".md") && f !== "MEMORY.md" && statSync6(path16.join(memDir, f)).isFile()).sort();
     if (!files.length) continue;
     const cwd = transcriptCwd(projDir) ?? resolveDashed(d), owner = cwd ? projectOf(cwd) : { project: d, domain: null };
     for (const f of files) {
-      const file = path15.join(memDir, f), fm = frontmatter(readFileSync13(file, "utf8"));
+      const file = path16.join(memDir, f), fm = frontmatter(readFileSync14(file, "utf8"));
       const type = fm.metadata?.type ?? fm.type;
       sources.push({
         file,
@@ -9023,8 +9078,8 @@ function frontmatter(text) {
 }
 
 // src/kb/map.ts
-import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync6 } from "node:fs";
-import path16 from "node:path";
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync7 } from "node:fs";
+import path17 from "node:path";
 
 // src/kb/map-template.ts
 var TEMPLATE = `<!doctype html>
@@ -9742,7 +9797,7 @@ function items(db, g) {
   }
   return out;
 }
-function generateMap(db, outFile = path16.join(paths.stateDir(), "map.html"), today = /* @__PURE__ */ new Date()) {
+function generateMap(db, outFile = path17.join(paths.stateDir(), "map.html"), today = /* @__PURE__ */ new Date()) {
   const g = graphData(db, today);
   const parts = {
     META: esc(`Generated ${today.toISOString().slice(0, 10)} \xB7 ${plural(g.lanes.length, "domain")} \xB7 ${plural(g.concepts.length, "concept")} \xB7 ${plural(g.findings.length, "finding")} \xB7 ${plural(g.edges.length, "relation")}`),
@@ -9753,8 +9808,8 @@ function generateMap(db, outFile = path16.join(paths.stateDir(), "map.html"), to
     // `</script>` can never close the data block
   };
   const html = TEMPLATE.replace(/__(META|FILTERS|BOARD|EDGES|DATA)__/g, (_, k) => parts[k]);
-  mkdirSync8(path16.dirname(outFile), { recursive: true });
-  writeFileSync6(outFile, html);
+  mkdirSync8(path17.dirname(outFile), { recursive: true });
+  writeFileSync7(outFile, html);
   return outFile;
 }
 
@@ -9767,7 +9822,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|->\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
@@ -9888,7 +9943,7 @@ else if (cmd === "sync") {
     process.stderr.write("--root needs a directory\n");
     process.exitCode = 2;
   } else {
-    const db = openDb(), bank = paths.bankDir(), roots = [root ?? path17.join(home, "projects")];
+    const db = openDb(), bank = paths.bankDir(), roots = [root ?? path18.join(home, "projects")];
     const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
 `);
     try {
@@ -9905,11 +9960,11 @@ else if (cmd === "sync") {
 } else if (cmd === "write" && args[0]) {
   const db = openDb(), bank = paths.bankDir();
   try {
-    const spec = JSON.parse(readFileSync14(args[0] === "-" ? 0 : args[0], "utf8"));
+    const spec = JSON.parse(readFileSync15(args[0] === "-" ? 0 : args[0], "utf8"));
     const defaults = spec.defaults ?? {}, records = spec.records ?? spec;
     const ids2 = /* @__PURE__ */ new Map(), now = (/* @__PURE__ */ new Date()).toISOString();
     let written = 0, failed = 0, already = 0;
-    const draftFile = args[0] !== "-" && path17.basename(args[0]) === "draft-findings.json";
+    const draftFile = args[0] !== "-" && path18.basename(args[0]) === "draft-findings.json";
     for (const rec of records) {
       const { key, written: done, ...r } = rec;
       if (done) {
@@ -9942,6 +9997,51 @@ else if (cmd === "sync") {
     process.exitCode = 1;
   } finally {
     db.sql.close();
+  }
+} else if (cmd === "domain" && args[0] === "new" && args[1]) {
+  const name = args[1], words = (f, sep) => [...new Set((value(f) ?? "").split(",").map((s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, sep).replace(new RegExp(`^\\${sep}|\\${sep}$`, "g"), "")).filter(Boolean))];
+  const facets = words("--facets", "_"), gates = words("--gates", "-"), methods = words("--methods", "_"), keywords = normalizeKeywords(value("--keywords") ?? "");
+  try {
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(name)) throw new Error("name: lowercase letters, digits and dashes, 1\u201326 characters, no trailing dash");
+    if (facets.length < 2 || gates.length < 2) throw new Error("--facets and --gates each need at least two comma-separated entries");
+    const bank = paths.bankDir();
+    if (!existsSync14(path18.join(bank, ".git"))) throw new Error(`${bank} is not a knowledge bank yet; run kb init first`);
+    const file = path18.join(bank, "templates", `${name}.yaml`);
+    if (existsSync14(file)) throw new Error(`domain ${name} exists (${file}); edit that file and run kb rebuild`);
+    const db = openDb();
+    try {
+      const taken = getNote(db, templateNoteId(name));
+      if (taken || installedDomains(db).includes(name)) throw new Error(`the name ${name} collides with the installed domain ${taken?.domain ?? name}; pick another`);
+      const t = { domain: name, facets, methods, gates, environment: value("--environment") ?? "environment", subject: value("--subject") ?? "subject", keywords: [.../* @__PURE__ */ new Set([name, ...keywords])], seed_concepts: [] };
+      mkdirSync9(path18.dirname(file), { recursive: true });
+      writeFileSync8(file, (0, import_yaml4.stringify)(t));
+      try {
+        installTemplate(db, loadTemplate(file));
+      } catch (e) {
+        unlinkSync3(file);
+        throw e;
+      }
+      process.stdout.write(`created domain ${name}: ${file}
+  facets   ${facets.join(", ")}
+  gates    ${gates.join(" < ")}
+  keywords ${t.keywords.join(", ")}
+`);
+    } finally {
+      db.sql.close();
+    }
+    try {
+      const filed = fileHereUnder(process.cwd(), name);
+      process.stdout.write(filed ? `filed project ${filed.project_id} under ${name} (${filed.file})
+` : `this folder was not re-filed (no automatic .kb.json here); kb project init --domain ${name} files one by hand
+`);
+    } catch (e) {
+      process.stdout.write(`domain created, but this folder's .kb.json could not be updated (${e.message}); run kb project init --domain ${name}
+`);
+    }
+  } catch (e) {
+    process.stderr.write(`kb domain new: ${e.message}
+`);
+    process.exitCode = 1;
   }
 } else if (cmd === "map") {
   const db = openDb();

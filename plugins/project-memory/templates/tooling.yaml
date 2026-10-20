@@ -2,6 +2,7 @@ domain: tooling
 facets: [stack, runtime, interface, persistence, distribution]
 methods: [prototype, benchmark, dogfood, load-test, audit]
 gates: [local, dogfood, shared, published]
+keywords: [cli, tool, tools, plugin, plugins, agent, agents, mcp, script, scripts, memory, docs, site, website, server, api, pipeline, hook, hooks, extension, dashboard, scraper, skill, skills]
 environment: runtime
 subject: component
 seed_concepts:

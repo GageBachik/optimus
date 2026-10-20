@@ -29,7 +29,7 @@ export function lastSessionSection(projectKey: string): Section[] {
   const drafts = pendingDrafts(projectKey);
   return [{ title: 'Last session in this project', priority: 10, items: [
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`, `Goal: ${t.goalFirst}`, `Latest: ${t.goalLatest}`,
-    ...(drafts ? [`Draft findings waiting for review: ${drafts.count} — review ${drafts.file}, then record them with: kb write ${drafts.file}`] : []),
+    ...(drafts ? [`Draft findings waiting for review: ${drafts.count} — review ${drafts.file}, then record them with: ${paths.kbCli()} write ${drafts.file}`] : []),
     ...t.openItems.map((o) => `Open: ${o}`), ...t.decisions, ...t.files.map((f) => `${f.path} (${f.action})`), ...t.pointers,
   ] }];
 }
@@ -38,7 +38,7 @@ export function lastSessionSection(projectKey: string): Section[] {
 export function pendingQuestions(db: Db, max = 3): string[] {
   const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
     WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max) as { id: string; at: string; bt: string }[];
-  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
+  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? ${paths.kbCli()} concepts accept ${r.id} | ${paths.kbCli()} concepts reject ${r.id}`);
 }
 
 /** DESIGN §4.6 partial credit made visible: which target axis or facet of the asking project differs from the finding's, and (§4.8) the pending transfer into it. */
@@ -49,7 +49,7 @@ function fitNotes(f: Candidate, cfg: ProjectConfig): string[] {
     if (want && have.length && !have.some((x) => normalizeName(x) === normalizeName(want))) out.push(`your ${axis} differs: ${want} vs ${theirs(have)}`);
   }
   for (const [k, v] of Object.entries(cfg.facets ?? {})) { const have = f.facets[k]; if (have && !have.includes(v)) out.push(`your ${k} differs: ${v} vs ${theirs(have)}`); }
-  for (const p of f.proposals) if (p.project === cfg.project_id) out.push(`transfer ${p.state}: kb transfer ${p.id} confirm|refute`);
+  for (const p of f.proposals) if (p.project === cfg.project_id) out.push(`transfer ${p.state}: ${paths.kbCli()} transfer ${p.id} confirm|refute`);
   return out;
 }
 /** DESIGN §3.6: one line per finding, ending with its id and evidence pointer; given the asking project's config, the fit notes follow. */

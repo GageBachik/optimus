@@ -2,6 +2,7 @@ domain: trading
 facets: [why, entry, risk, exit, horizon, instrument_class]
 methods: [grid-search, random-search, walk-forward, bayesian, monte-carlo, bootstrap]
 gates: [in-sample, out-of-sample, paper, live-small, live]
+keywords: [trade, trading, trader, momentum, crypto, options, 0dte, backtest, backtests, backtesting, quant, strategy, strategies, perp, perps, futures, alpha, signal, signals, sniper, arb, arbitrage, orderbook, portfolio, sharpe, drawdown, broker, exchange, binance, bybit, hyperliquid, coinbase, spy, spx, btc, eth, ohlc, candles, pnl, leaps, iron, condor, straddle]
 environment: platform
 subject: instrument
 seed_concepts:

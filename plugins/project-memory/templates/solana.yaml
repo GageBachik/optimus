@@ -2,6 +2,7 @@ domain: solana
 facets: [framework, client, token_standard, custody, settlement]
 methods: [localnet-test, devnet-test, bench, simulation, audit]
 gates: [unit, localnet, devnet, mainnet-small, mainnet]
+keywords: [solana, sol, anchor, spl, nft, nfts, mint, minter, candy, token, tokens, pump, raydium, jupiter, dex, amm, stake, staking, airdrop, wallet, program, programs, pda, lamports, devnet, metaplex, pinocchio, surfpool]
 environment: cluster
 subject: program
 seed_concepts:

@@ -28840,6 +28840,7 @@ import path3 from "node:path";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 function ensure(p) {
   if (!existsSync(p)) mkdirSync(p, { recursive: true });
@@ -28898,6 +28899,13 @@ var paths = {
   },
   projectDir(key) {
     return ensure(path.join(this.stateDir(), "projects", safe(key)));
+  },
+  /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
+   *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
+  kbCli() {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+    return "kb";
   }
 };
 
@@ -29153,7 +29161,7 @@ function templateFor(db2, domain) {
   for (const r of db2.sql.prepare("SELECT key, value FROM attr WHERE note_id=? ORDER BY rowid").all(templateNoteId(domain))) (a[r.key] ??= []).push(r.value);
   if (!a.facet) return null;
   const gates = Object.entries(a).filter(([k]) => k.startsWith("gate:")).sort(([x], [y]) => Number(x.slice(5)) - Number(y.slice(5))).map(([, v]) => v[0]);
-  return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [] };
+  return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [], keywords: a.keyword ?? [] };
 }
 function validateApproachFacets(db2, domain, facets) {
   const t = templateFor(db2, domain);
@@ -29718,7 +29726,7 @@ function lastSessionSection(projectKey) {
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
     `Goal: ${t.goalFirst}`,
     `Latest: ${t.goalLatest}`,
-    ...drafts ? [`Draft findings waiting for review: ${drafts.count} \u2014 review ${drafts.file}, then record them with: kb write ${drafts.file}`] : [],
+    ...drafts ? [`Draft findings waiting for review: ${drafts.count} \u2014 review ${drafts.file}, then record them with: ${paths.kbCli()} write ${drafts.file}`] : [],
     ...t.openItems.map((o) => `Open: ${o}`),
     ...t.decisions,
     ...t.files.map((f) => `${f.path} (${f.action})`),
@@ -29735,7 +29743,7 @@ function fitNotes(f, cfg) {
     const have = f.facets[k];
     if (have && !have.includes(v)) out.push(`your ${k} differs: ${v} vs ${theirs(have)}`);
   }
-  for (const p of f.proposals) if (p.project === cfg.project_id) out.push(`transfer ${p.state}: kb transfer ${p.id} confirm|refute`);
+  for (const p of f.proposals) if (p.project === cfg.project_id) out.push(`transfer ${p.state}: ${paths.kbCli()} transfer ${p.id} confirm|refute`);
   return out;
 }
 function findingLine(f, cfg) {

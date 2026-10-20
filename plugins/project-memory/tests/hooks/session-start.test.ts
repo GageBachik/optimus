@@ -13,7 +13,7 @@ test('resume/fork/subagent → nothing; compact → restore brief from task-stat
   writeFileSync(path.join(dir, 'task-state.json'), JSON.stringify({ goalFirst: 'build it', goalLatest: 'test it', constraints: [], decisions: [], files: [], commands: [], tests: [], openItems: ['ship'], errors: [], exactValues: [], pointers: [] }));
   const c: any = await sessionStart({ session_id: 'x', source: 'compact', cwd: '/w/proj' });
   assert.equal(c.hookSpecificOutput.hookEventName, 'SessionStart'); assert.ok(c.hookSpecificOutput.additionalContext.includes('build it')); assert.ok(c.hookSpecificOutput.additionalContext.length <= 9000);
-  const s: any = await sessionStart({ session_id: 'y', source: 'startup', cwd: '/w/proj' }); assert.ok(s.hookSpecificOutput.additionalContext.includes('proj')); assert.ok(s.hookSpecificOutput.additionalContext.length < 400);
+  const s: any = await sessionStart({ session_id: 'y', source: 'startup', cwd: '/w/proj' }); assert.ok(s.hookSpecificOutput.additionalContext.includes('proj')); assert.ok(s.hookSpecificOutput.additionalContext.length < 500, 'short card (the runnable kb path is ~70 chars of it)');
 });
 test('startup in a project with a last-session record shows where it left off, with no command (DESIGN §3.11)', async () => {
   const { paths } = await import('../../src/lib/paths.js');

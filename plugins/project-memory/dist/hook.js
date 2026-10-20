@@ -14,6 +14,7 @@ var __export = (target, all) => {
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 function ensure(p) {
   if (!existsSync(p)) mkdirSync(p, { recursive: true });
@@ -76,6 +77,13 @@ var init_paths = __esm({
       },
       projectDir(key) {
         return ensure(path.join(this.stateDir(), "projects", safe(key)));
+      },
+      /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
+       *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
+      kbCli() {
+        const here = path.dirname(fileURLToPath(import.meta.url));
+        for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+        return "kb";
       }
     };
   }
@@ -625,13 +633,23 @@ var init_normalize = __esm({
 });
 
 // src/kb/templates.ts
-var conceptNoteId;
+function templateFor(db, domain) {
+  const a = {};
+  for (const r of db.sql.prepare("SELECT key, value FROM attr WHERE note_id=? ORDER BY rowid").all(templateNoteId(domain))) (a[r.key] ??= []).push(r.value);
+  if (!a.facet) return null;
+  const gates = Object.entries(a).filter(([k]) => k.startsWith("gate:")).sort(([x], [y]) => Number(x.slice(5)) - Number(y.slice(5))).map(([, v]) => v[0]);
+  return { domain, facets: a.facet, methods: a.method ?? [], gates, environment: a.env_axis?.[0] ?? "environment", subject: a.subject_axis?.[0] ?? "subject", seed_concepts: [], keywords: a.keyword ?? [] };
+}
+var slug, templateNoteId, conceptNoteId, installedDomains;
 var init_templates = __esm({
   "src/kb/templates.ts"() {
     "use strict";
     init_db();
     init_normalize();
+    slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    templateNoteId = (domain) => `m_${slug(domain).padEnd(26, "0").slice(0, 26)}`;
     conceptNoteId = (name) => `c_${normalizeName(name).replace(/-/g, "").padEnd(26, "0").slice(0, 26)}`;
+    installedDomains = (db) => db.sql.prepare("SELECT domain FROM note WHERE kind='template' AND deleted_at IS NULL AND domain IS NOT NULL ORDER BY domain").all().map((r) => r.domain);
   }
 });
 
@@ -889,7 +907,7 @@ function lastSessionSection(projectKey) {
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
     `Goal: ${t.goalFirst}`,
     `Latest: ${t.goalLatest}`,
-    ...drafts ? [`Draft findings waiting for review: ${drafts.count} \u2014 review ${drafts.file}, then record them with: kb write ${drafts.file}`] : [],
+    ...drafts ? [`Draft findings waiting for review: ${drafts.count} \u2014 review ${drafts.file}, then record them with: ${paths.kbCli()} write ${drafts.file}`] : [],
     ...t.openItems.map((o) => `Open: ${o}`),
     ...t.decisions,
     ...t.files.map((f) => `${f.path} (${f.action})`),
@@ -899,7 +917,7 @@ function lastSessionSection(projectKey) {
 function pendingQuestions(db, max = 3) {
   const rows = db.sql.prepare(`SELECT p.id, a.title AS at, b.title AS bt FROM pending_merge p JOIN note a ON a.id=p.a JOIN note b ON b.id=p.b
     WHERE p.resolved IS NULL ORDER BY p.score DESC, p.created_at, p.id LIMIT ?`).all(max);
-  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? kb concepts accept ${r.id} | reject ${r.id}`);
+  return rows.map((r) => `Merge "${r.at}" into "${r.bt}"? ${paths.kbCli()} concepts accept ${r.id} | ${paths.kbCli()} concepts reject ${r.id}`);
 }
 function fitNotes(f, cfg) {
   const out2 = [], theirs = (xs) => [...new Set(xs)].join("/");
@@ -911,7 +929,7 @@ function fitNotes(f, cfg) {
     const have = f.facets[k];
     if (have && !have.includes(v)) out2.push(`your ${k} differs: ${v} vs ${theirs(have)}`);
   }
-  for (const p of f.proposals) if (p.project === cfg.project_id) out2.push(`transfer ${p.state}: kb transfer ${p.id} confirm|refute`);
+  for (const p of f.proposals) if (p.project === cfg.project_id) out2.push(`transfer ${p.state}: ${paths.kbCli()} transfer ${p.id} confirm|refute`);
   return out2;
 }
 function findingLine(f, cfg) {
@@ -978,9 +996,19 @@ var init_brief = __esm({
 import { existsSync as existsSync6, readdirSync, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
 import os2 from "node:os";
 import path10 from "node:path";
-function scoreDomains(text) {
-  const tokens2 = text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean), score = {};
-  for (const [domain, words] of Object.entries(LEXICON)) {
+function loadLexicon(db) {
+  const domains = installedDomains(db);
+  if (!domains.length) return DEFAULT_LEXICON;
+  const lex = {};
+  for (const d of domains) {
+    const k = templateFor(db, d)?.keywords ?? [];
+    lex[d] = k.length ? k : DEFAULT_LEXICON[d] ?? [];
+  }
+  return lex;
+}
+function scoreDomains(text, lex = DEFAULT_LEXICON) {
+  const tokens2 = tokensOf(text), score = {};
+  for (const [domain, words] of Object.entries(lex)) {
     const set = new Set(words);
     let n = 0;
     const seen = {};
@@ -989,13 +1017,13 @@ function scoreDomains(text) {
   }
   return score;
 }
-function domainFromText(text, minScore, margin = 1) {
-  const ranked = Object.entries(scoreDomains(text)).sort((a, b) => b[1] - a[1]);
+function domainFromText(text, minScore, margin = 1, lex = DEFAULT_LEXICON) {
+  const ranked = Object.entries(scoreDomains(text, lex)).sort((a, b) => b[1] - a[1]);
   const [top, second] = ranked;
   if (!top) return null;
   const need = top[0] === "tooling" ? minScore + 1 : minScore;
   if (top[1] < need || top[1] - (second?.[1] ?? 0) < margin) return null;
-  const words = [...new Set(text.toLowerCase().split(/[^a-z0-9-]+/).filter((t) => LEXICON[top[0]].includes(t)))].slice(0, 4);
+  const words = [...new Set(tokensOf(text).filter((t) => lex[top[0]].includes(t)))].slice(0, 4);
   return { domain: top[0], score: top[1], reason: words.join(", ") };
 }
 function listing(dir) {
@@ -1017,18 +1045,18 @@ function listing(dir) {
   walk(dir, "", 1);
   return out2;
 }
-function inferDomain(cwd) {
+function inferDomain(cwd, lex = DEFAULT_LEXICON) {
   const files = listing(cwd), names = files.map((f) => f.toLowerCase()), has = (re) => names.some((n) => re.test(n));
   const pkg = read(path10.join(cwd, "package.json")), cargo = read(path10.join(cwd, "Cargo.toml")), py = read(path10.join(cwd, "pyproject.toml")) + read(path10.join(cwd, "requirements.txt"));
   if (has(/\.xcodeproj\/$|\.xcworkspace\/$|^package\.swift$|^pubspec\.yaml$|\.swift$/)) return { domain: "ios", confidence: "high", reason: "Swift, Xcode or Flutter files" };
   if (/"@gen\//.test(pkg) || /\bgenie\b|\bgen-sdk\b/.test(cargo) || has(/^gen\.toml$|^genie\.toml$/)) return { domain: "gen-l1", confidence: "high", reason: "Gen SDK or genie crate" };
   if (has(/^anchor\.toml$|^programs\/$|^surfpool\.yaml$|^txtx\.yml$/) || /@solana\/|@coral-xyz\/anchor|@metaplex|@raydium|@jup-ag|@pinocchio/.test(pkg) || /solana-program|anchor-lang|pinocchio|spl-token/.test(cargo)) return { domain: "solana", confidence: "high", reason: "Solana program or SDK dependencies" };
   if (has(/^backtests?\/$|^strategies\/$|^signals\/$|^backtest\.py$/) || /databento|ib_insync|ibapi|alpaca|thetadata|ccxt|backtrader|vectorbt|yfinance|polygon|quantstats|zipline|schwab|tastytrade|tradingview/.test(py + pkg)) return { domain: "trading", confidence: "high", reason: "market-data or broker dependencies" };
-  const byName = domainFromText(path10.basename(cwd).replace(/[-_.]+/g, " "), 1);
+  const byName = domainFromText(path10.basename(cwd).replace(/[-_.]+/g, " "), 1, 1, lex);
   if (byName) return { domain: byName.domain, confidence: "low", reason: `folder name suggests ${byName.domain} (${byName.reason})` };
   return { domain: "tooling", confidence: "low", reason: files.length ? "no chain, mobile or market signals" : "empty folder" };
 }
-function settleFromPrompt(cwd, prompt) {
+function findConfig(cwd) {
   let dir = path10.resolve(cwd), file = "";
   for (let i = 0; i < 8; i++) {
     const f = path10.join(dir, ".kb.json");
@@ -1041,14 +1069,18 @@ function settleFromPrompt(cwd, prompt) {
     dir = up;
   }
   if (!file) return null;
-  let cfg;
   try {
-    cfg = JSON.parse(readFileSync6(file, "utf8"));
+    return { file, cfg: JSON.parse(readFileSync6(file, "utf8")) };
   } catch {
     return null;
   }
+}
+function settleFromPrompt(cwd, prompt, lex = DEFAULT_LEXICON) {
+  const found = findConfig(cwd);
+  if (!found) return null;
+  const { file, cfg } = found;
   if (!cfg.auto || cfg.auto.confidence === "high" || !cfg.domain) return null;
-  const guess = domainFromText(prompt, 3, 2);
+  const guess = domainFromText(prompt, 3, 2, lex);
   if (!guess) return null;
   const previous = cfg.domain;
   if (guess.domain === previous) {
@@ -1064,6 +1096,17 @@ function settleFromPrompt(cwd, prompt) {
   log("info", "domain settled from prompt", { file, previous, domain: guess.domain, reason: guess.reason });
   return { file, project_id: String(cfg.project_id ?? ""), domain: guess.domain, previous, reason: guess.reason };
 }
+function needsDecision(cwd, prompt, lex = DEFAULT_LEXICON) {
+  const found = findConfig(cwd);
+  if (!found) return null;
+  const { file, cfg } = found;
+  if (!cfg.auto || cfg.auto.confidence !== "low" || !cfg.domain || cfg.auto.decided) return null;
+  if (tokensOf(prompt).length < MIN_DECISION_WORDS) return null;
+  cfg.auto = { ...cfg.auto, decided: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
+  writeFileSync3(file, JSON.stringify(cfg, null, 2) + "\n");
+  log("info", "domain decision asked", { file, domain: cfg.domain });
+  return { file, project_id: String(cfg.project_id ?? ""), domain: cfg.domain, known: knownDomains(lex) };
+}
 function looksLikeProject(cwd) {
   let entries = [];
   try {
@@ -1075,7 +1118,7 @@ function looksLikeProject(cwd) {
   if (repos >= 2) return false;
   return existsSync6(path10.join(cwd, ".git")) || MANIFESTS.some((m) => existsSync6(path10.join(cwd, m))) || entries.some((e) => e.endsWith(".xcodeproj")) || entries.length <= 8;
 }
-function autoRegister(cwd, home = os2.homedir()) {
+function autoRegister(cwd, home = os2.homedir(), lex = DEFAULT_LEXICON) {
   if (!cwd) return null;
   const dir = path10.resolve(cwd);
   if (!existsSync6(dir) || !dir.startsWith(home + path10.sep)) return null;
@@ -1084,26 +1127,30 @@ function autoRegister(cwd, home = os2.homedir()) {
   if (["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"].includes(rel)) return null;
   if (loadProjectConfig(dir)) return null;
   if (!looksLikeProject(dir)) return null;
-  const { domain, confidence, reason } = inferDomain(dir);
+  const { domain, confidence, reason } = inferDomain(dir, lex);
   const project_id = path10.basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
   const file = path10.join(dir, ".kb.json");
   writeFileSync3(file, JSON.stringify({ project_id, domain, auto: { registered: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), confidence, reason } }, null, 2) + "\n");
   log("info", "auto-registered project", { file, domain, confidence, reason });
   return { file, project_id, domain, confidence, reason };
 }
-var LEXICON, SKIP_DIRS, MANIFESTS, read, settledLine, autoLine;
+var DEFAULT_LEXICON, knownDomains, tokensOf, SKIP_DIRS, MANIFESTS, read, settledLine, MIN_DECISION_WORDS, decisionLine, autoLine;
 var init_auto_register = __esm({
   "src/kb/auto-register.ts"() {
     "use strict";
     init_project();
+    init_templates();
     init_log();
-    LEXICON = {
+    init_paths();
+    DEFAULT_LEXICON = {
       trading: ["trade", "trading", "trader", "momentum", "crypto", "options", "0dte", "backtest", "backtests", "backtesting", "quant", "strategy", "strategies", "perp", "perps", "futures", "alpha", "signal", "signals", "sniper", "arb", "arbitrage", "orderbook", "portfolio", "sharpe", "drawdown", "broker", "exchange", "binance", "bybit", "hyperliquid", "coinbase", "spy", "spx", "btc", "eth", "ohlc", "candles", "pnl", "leaps", "iron", "condor", "straddle"],
       solana: ["solana", "sol", "anchor", "spl", "nft", "nfts", "mint", "minter", "candy", "token", "tokens", "pump", "raydium", "jupiter", "dex", "amm", "stake", "staking", "airdrop", "wallet", "program", "programs", "pda", "lamports", "devnet", "metaplex", "pinocchio", "surfpool"],
       "gen-l1": ["gen", "genie", "gen-l1", "clob", "genibook", "geniswap", "activation", "activations", "gvm"],
       ios: ["ios", "swift", "swiftui", "iphone", "ipad", "macos", "xcode", "testflight", "watchos", "flutter", "appstore"],
       tooling: ["cli", "tool", "tools", "plugin", "plugins", "agent", "agents", "mcp", "script", "scripts", "memory", "docs", "site", "website", "server", "api", "pipeline", "hook", "hooks", "extension", "dashboard", "scraper", "skill", "skills"]
     };
+    knownDomains = (lex = DEFAULT_LEXICON) => Object.keys(lex).sort((a, b) => a === "tooling" ? 1 : b === "tooling" ? -1 : a.localeCompare(b));
+    tokensOf = (text) => text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean);
     SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "target", "dist", "build", ".next", "vendor", "Pods"]);
     MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "requirements.txt", "go.mod", "Package.swift", "pubspec.yaml", "Anchor.toml"];
     read = (p) => {
@@ -1114,7 +1161,9 @@ var init_auto_register = __esm({
       }
     };
     settledLine = (s) => `Project domain changed from \`${s.previous}\` to \`${s.domain}\` because this prompt mentions ${s.reason}; the brief below is for ${s.domain}. Say "this is a <domain> project" to override.`;
-    autoLine = (a) => `This folder was registered in the knowledge bank automatically: project \`${a.project_id}\`, domain \`${a.domain}\` (${a.confidence} confidence: ${a.reason}).${a.confidence === "low" ? " If the work turns out to be trading, solana, gen-l1 or ios, run `kb project init --domain <d>` here and say so." : ""} The file is \`.kb.json\`; commit it when you commit.`;
+    MIN_DECISION_WORDS = 12;
+    decisionLine = (d) => `This folder was filed under \`${d.domain}\` by a guess (low confidence) and this prompt did not settle it. Decide now from the prompt alone, and do not ask the user unless the work is plainly a new kind of project. (1) Ordinary software \u2014 scripts, sites, services, libraries, tools, docs \u2014 is \`tooling\`: leave it and say nothing. (2) If it is one of ${d.known.filter((k) => k !== "tooling").join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so. (3) Only if none of those describes the work (a console game, hardware, a research paper\u2026), propose a domain to the user with one AskUserQuestion \u2014 a short lowercase name, 4\u20136 facets (the axes an approach varies on; single snake_case words), 4\u20136 gates (the stages evidence passes through, weakest first) and 5\u201310 single-word keywords a prompt about such work contains \u2014 and on a yes run from this folder: ${paths.kbCli()} domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2,w3 --environment <where it runs> --subject <what it acts on>. It writes the template into the bank, installs it and files this folder under it.`;
+    autoLine = (a, known = knownDomains()) => `This folder was registered in the knowledge bank automatically: project \`${a.project_id}\`, domain \`${a.domain}\` (${a.confidence} confidence: ${a.reason}).${a.confidence === "low" ? ` If the work turns out to be ${known.filter((d) => d !== a.domain).join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so; the first prompt usually settles it on its own.` : ""} The file is \`.kb.json\`; commit it when you commit.`;
   }
 });
 
@@ -1126,10 +1175,23 @@ __export(session_start_exports, {
   sessionStart: () => sessionStart
 });
 import path11 from "node:path";
-function buildStartupBrief(cwd, sessionId = "unknown", auto = null) {
+function lexicon() {
+  try {
+    const db = openDb();
+    try {
+      return loadLexicon(db);
+    } finally {
+      db.sql.close();
+    }
+  } catch (e) {
+    log("warn", "bank unavailable; built-in domain lexicon", String(e));
+    return DEFAULT_LEXICON;
+  }
+}
+function buildStartupBrief(cwd, sessionId = "unknown", auto = null, lex = DEFAULT_LEXICON) {
   const cfg = loadProjectConfig(cwd);
   const text = startupText(cwd, sessionId, cfg);
-  return auto ? `${autoLine(auto)}
+  return auto ? `${autoLine(auto, knownDomains(lex))}
 
 ${text}` : text;
 }
@@ -1149,7 +1211,7 @@ function startupText(cwd, sessionId, cfg) {
       log("warn", "bank brief failed; phase-1 brief only", String(e));
     }
   }
-  const hint = cfg ? "The knowledge bank did not answer (see hooks.log)." : "No .kb.json here; kb project init --domain <d> adds this repo to the knowledge bank.";
+  const hint = cfg ? "The knowledge bank did not answer (see hooks.log)." : `No .kb.json here; ${paths.kbCli()} project init --domain <d> registers this repo.`;
   const card = `Project memory active for ${path11.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. ${hint}`;
   return fitBrief(PREAMBLE, [...lastSessionSection(paths.projectKey(cwd)), { title: "Project", priority: 9, items: [card] }]).text;
 }
@@ -1159,12 +1221,13 @@ async function sessionStart(input) {
   if (source === "startup" || source === "clear") {
     const cwd = String(input.cwd ?? "");
     let auto = null;
+    const lex = lexicon();
     try {
-      auto = autoRegister(cwd);
+      auto = autoRegister(cwd, void 0, lex);
     } catch (e) {
       log("warn", "auto-register failed", String(e));
     }
-    return out(buildStartupBrief(cwd, sessionId, auto));
+    return out(buildStartupBrief(cwd, sessionId, auto, lex));
   }
   if (source !== "compact") return void 0;
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
@@ -1243,9 +1306,9 @@ var init_blobs = __esm({
 import { existsSync as existsSync8 } from "node:fs";
 import { spawn } from "node:child_process";
 import path13 from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 function kbJs() {
-  const here = path13.dirname(fileURLToPath(import.meta.url));
+  const here = path13.dirname(fileURLToPath2(import.meta.url));
   return [path13.join(here, "kb.js"), path13.join(here, "..", "..", "dist", "kb.js")].find(existsSync8);
 }
 function spawnKbSync() {
@@ -1295,35 +1358,53 @@ __export(user_prompt_exports, {
 });
 async function userPrompt(input) {
   const prompt = String(input.prompt ?? ""), cwd = String(input.cwd ?? "");
-  let settled = null;
-  if (prompt.trim() && !input.agent_id) {
+  if (!prompt.trim() || !loadProjectConfig(cwd)) return void 0;
+  let db = null, lex = DEFAULT_LEXICON;
+  try {
+    db = openDb();
+    lex = loadLexicon(db);
+  } catch (e) {
+    log("warn", "bank unavailable; built-in domain lexicon", String(e));
+  }
+  let head = "";
+  if (!input.agent_id) {
     try {
-      settled = settleFromPrompt(cwd, prompt);
+      const s = settleFromPrompt(cwd, prompt, lex);
+      if (s) head = settledLine(s);
+      else {
+        const d = needsDecision(cwd, prompt, lex);
+        if (d) head = decisionLine(d);
+      }
     } catch (e) {
       log("warn", "settle from prompt failed", String(e));
     }
   }
-  const cfg = prompt.trim() ? loadProjectConfig(cwd) : null;
-  if (!cfg) return void 0;
+  const cfg = loadProjectConfig(cwd);
+  if (!cfg) {
+    db?.sql.close();
+    return void 0;
+  }
   const sessionId = String(input.session_id ?? "unknown"), agentId = input.agent_id ? String(input.agent_id) : "main";
   const state = loadState(sessionId, agentId);
   let text = null;
   try {
-    const db = openDb();
-    try {
-      text = buildRecallBrief(db, cfg, prompt, state);
-    } finally {
-      db.sql.close();
-    }
+    if (!db) throw new Error("bank unavailable");
+    text = buildRecallBrief(db, cfg, prompt, state);
     if (text) {
       state.lastBrief = text;
-      saveState(sessionId, state, agentId);
+      try {
+        saveState(sessionId, state, agentId);
+      } catch (e) {
+        log("warn", "session state not saved", String(e));
+      }
     }
   } catch (e) {
     log("warn", "recall brief failed; injecting the cached brief", String(e));
     text = state.lastBrief ?? null;
+  } finally {
+    db?.sql.close();
   }
-  if (settled) text = `${settledLine(settled)}
+  text = `${head}
 
 ${text ?? ""}`.trim();
   return text ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } } : void 0;

@@ -41,6 +41,7 @@ Check the installation:
 kb doctor           # one PASS/WARN/FAIL/INFO line per check, exit 1 on any FAIL
 kb doctor --live    # also runs two headless claude sessions (about two minutes) to prove offload, subagent brief and the 10K cap
 kb map --open       # writes the bank's note map as HTML and opens it in the browser
+kb domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2   # a new kind of project: writes templates/<name>.yaml, installs it, files this folder under it
 ```
 
 `node dist/kb.js` with no arguments prints the full command list.

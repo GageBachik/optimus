@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 function ensure(p: string): string { if (!existsSync(p)) mkdirSync(p, { recursive: true }); return p; }
 const safe = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -20,4 +21,11 @@ export const paths = {
     return createHash('sha256').update(path.resolve(cwd)).digest('hex').slice(0, 16);
   },
   projectDir(key: string): string { return ensure(path.join(this.stateDir(), 'projects', safe(key))); },
+  /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
+   *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
+  kbCli(): string {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    for (const c of [path.join(here, 'kb.js'), path.join(here, '..', '..', 'dist', 'kb.js')]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+    return 'kb';
+  },
 };

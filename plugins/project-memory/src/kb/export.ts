@@ -109,17 +109,25 @@ function inTransaction<T>(db: Db, fn: () => T): T {
   try { const r = fn(); db.sql.exec('COMMIT'); return r; } catch (e) { db.sql.exec('ROLLBACK'); throw e; }
 }
 
+/** Installs every `templates/*.yaml` of the bank (idempotent: upsert + attrs). v1.5: sync runs it too, so a domain created on one machine
+ *  (or a yaml dropped into the bank by hand) is a domain on every machine after the next pull, not only after `kb rebuild`. */
+export function installBankTemplates(db: Db, bankDir: string): number {
+  const dir = path.join(bankDir, 'templates'); if (!existsSync(dir)) return 0;
+  const files = readdirSync(dir).filter((f) => f.endsWith('.yaml')).sort();
+  for (const f of files) installTemplate(db, loadTemplate(path.join(dir, f)));
+  return files.length;
+}
+
 /** All-or-nothing: one bad file aborts the import and leaves the index as it was. */
 export function importAll(db: Db, bankDir: string): { imported: number; unchanged: number } {
-  return inTransaction(db, () => importNotes(db, bankDir));
+  return inTransaction(db, () => { installBankTemplates(db, bankDir); return importNotes(db, bankDir); });
 }
 
 /** Drops the rebuildable index (notes, attrs, rels, aliases, FTS, file hashes), reinstalls the bank's templates, then imports every note file, all in one transaction. */
 export function rebuild(db: Db, bankDir: string): { imported: number; unchanged: number } {
   return inTransaction(db, () => {
     db.sql.exec(`DELETE FROM note; DELETE FROM attr; DELETE FROM rel; DELETE FROM alias; DELETE FROM note_fts; DELETE FROM meta WHERE key LIKE 'file:%';`);
-    const templates = path.join(bankDir, 'templates');
-    if (existsSync(templates)) for (const f of readdirSync(templates).filter((f) => f.endsWith('.yaml')).sort()) installTemplate(db, loadTemplate(path.join(templates, f)));
+    installBankTemplates(db, bankDir);
     return importNotes(db, bankDir);
   });
 }

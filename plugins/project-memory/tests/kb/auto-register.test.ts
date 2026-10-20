@@ -75,3 +75,55 @@ test('the first prompt settles a guessed domain, confirms a right guess, and nev
     assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'ios');
   } finally { process.env.HOME = prev; }
 });
+
+test('v1.5: the lexicon comes from the templates in the index, so a new template is a domain the first prompt can settle to', async () => {
+  const { loadLexicon, knownDomains, DEFAULT_LEXICON, needsDecision, fileHereUnder } = await import('../../src/kb/auto-register.js');
+  const { openDb } = await import('../../src/kb/db.js');
+  const { installTemplate, templateFor } = await import('../../src/kb/templates.js');
+  const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
+  const db = openDb();
+  assert.deepEqual(loadLexicon(db), DEFAULT_LEXICON, 'no templates installed: the built-in words');
+  installTemplate(db, loadTemplate('templates/tooling.yaml'));
+  installTemplate(db, { domain: 'console', facets: ['engine', 'sdk', 'input', 'distribution'], methods: ['prototype'], gates: ['devkit', 'testkit', 'cert', 'store-live'], environment: 'platform', subject: 'title', seed_concepts: [], keywords: ['ps4', 'PS5', 'playstation', 'xbox', 'devkit', 'unreal engine', 'node.js'] });
+  const lex = loadLexicon(db);
+  assert.deepEqual(knownDomains(lex), ['console', 'tooling'], 'tooling sorts last');
+  assert.deepEqual(templateFor(db, 'console')!.keywords, ['ps4', 'ps5', 'playstation', 'xbox', 'devkit', 'unreal', 'engine'], 'keywords are single lowercase tokens; node.js can never match and is dropped');
+  assert.ok(lex.tooling.includes('plugin'), 'tooling.yaml carries its keywords');
+  assert.equal(domainFromText('a ps4 title built on unreal for the devkit', 3, 2, lex)!.domain, 'console');
+  // a registered empty folder; a substantive prompt about a kind of work no domain knows
+  const d = mk('projects/track-smack'); autoRegister(d, home, lex);
+  const prompt = 'Build me a PlayStation 4 game for the ps4 devkit where you smack a running track with a hammer and the crowd cheers every lap';
+  assert.equal(settleFromPrompt(d, prompt, { tooling: lex.tooling }), null, 'without the console template nothing settles');
+  assert.equal(needsDecision(d, 'fix the bug', { tooling: lex.tooling }), null, 'a short prompt asks nothing');
+  const dec = needsDecision(d, prompt + ' and ship it as a cli tool', { tooling: lex.tooling })!; // one generic lexicon word does not block the decision
+  assert.equal(dec.domain, 'tooling'); assert.deepEqual(dec.known, ['tooling']);
+  assert.equal(needsDecision(d, prompt, { tooling: lex.tooling }), null, 'asked once per folder, whatever the session');
+  assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).auto.decided.length, 10, 'the mark lives in .kb.json');
+  // with the template installed the same prompt settles the folder to console on its own; the decision mark does not stop a settle
+  const s = settleFromPrompt(d, prompt, lex)!; assert.equal(s.domain, 'console'); assert.equal(s.previous, 'tooling');
+  assert.equal(needsDecision(d, prompt, lex), null, 'settled to medium: nothing to decide');
+  // kb domain new files the folder by hand (confidence high), and a later prompt never moves it
+  const f = fileHereUnder(d, 'console')!; assert.equal(f.project_id, 'track-smack');
+  const cfg = JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')); assert.equal(cfg.domain, 'console'); assert.equal(cfg.auto.confidence, 'high');
+  assert.equal(settleFromPrompt(d, 'a swift ios iphone app in xcode', lex), null);
+  assert.equal(fileHereUnder(d, 'ios'), null, 'a hand-set folder is never re-filed');
+  const high = mk('projects/swifty', { 'App.swift': 'import SwiftUI' }); autoRegister(high, home, lex);
+  assert.equal(needsDecision(high, prompt, lex), null, 'a folder registered at high confidence is never asked');
+  db.sql.close();
+});
+
+test('v1.5: the prompt hook asks for the domain decision once per folder, in whatever session, and a settle still wins', async () => {
+  const { openDb } = await import('../../src/kb/db.js'); const { installTemplate } = await import('../../src/kb/templates.js'); const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
+  { const db = openDb(); installTemplate(db, loadTemplate('templates/ios.yaml')); db.sql.close(); } // the bank now knows tooling, console and ios
+  const d = mk('projects/smack-two'); autoRegister(d, home);
+  const prompt = 'Build me a board game night planner for my family where everyone votes on snacks and the winner picks the movie we watch';
+  const r1: any = await userPrompt({ session_id: 'dec1', cwd: d, prompt });
+  const t1 = r1.hookSpecificOutput.additionalContext; assert.match(t1, /^This folder was filed under `tooling` by a guess/); assert.match(t1, /node \S+\/dist\/kb\.js domain new <name> --facets/);
+  assert.match(t1, /If it is one of console, ios, run/, 'the known domains come from the bank, tooling excluded');
+  const r2: any = await userPrompt({ session_id: 'dec2', cwd: d, prompt: prompt + ' please' }); // a NEW session: still not asked again
+  assert.ok(!r2 || !/filed under `tooling` by a guess/.test(r2.hookSpecificOutput.additionalContext), 'once per folder');
+  const r3: any = await userPrompt({ session_id: 'dec2', cwd: d, prompt: 'make it a swift ios iphone app in xcode instead' });
+  assert.match(r3.hookSpecificOutput.additionalContext, /^Project domain changed from `tooling` to `ios`/);
+  const r4: any = await userPrompt({ session_id: 'dec3', cwd: path.join(d, 'nowhere-registered-' + Date.now()), prompt });
+  assert.equal(r4, undefined, 'no .kb.json at or above: nothing, and the bank is not opened');
+});

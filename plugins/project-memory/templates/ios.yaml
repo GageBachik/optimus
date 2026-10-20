@@ -2,6 +2,7 @@ domain: ios
 facets: [state_ownership, view_composition, navigation, persistence, concurrency]
 methods: [unit-test, ui-test, snapshot-test, instruments-profile, testflight-cohort, app-store-ab, review-submission]
 gates: [simulator, device, testflight, app-store-review, app-store-live]
+keywords: [ios, swift, swiftui, iphone, ipad, macos, xcode, testflight, watchos, flutter, appstore]
 environment: os-xcode
 subject: device-class
 seed_concepts:

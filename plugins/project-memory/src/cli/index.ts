@@ -11,8 +11,13 @@ import { acceptMerge, rejectMerge, splitAlias } from '../kb/concepts.js';
 import { pendingQuestions } from '../kb/brief.js';
 import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js';
 import { setTransfer, retractNote, setAttr, kbWrite, type WriteRecord } from '../kb/write.js';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { stringify as toYaml } from 'yaml';
 import { writeFileAtomic } from '../lib/atomic.js';
+import { getNote } from '../kb/db.js';
+import { installTemplate, installedDomains, normalizeKeywords, templateNoteId } from '../kb/templates.js';
+import { loadTemplate } from '../kb/templates-yaml.js';
+import { fileHereUnder } from '../kb/auto-register.js';
 import { sync } from '../kb/sync.js';
 import { importSerena, importClaudeMemory } from '../kb/import.js';
 import { generateMap } from '../kb/map.js';
@@ -21,7 +26,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|->\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${paths.logsDir()}/hooks.log)\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -104,6 +109,33 @@ else if (cmd === 'cleanup') {
     if (draftFile && written) writeFileAtomic(args[0], JSON.stringify({ ...spec, records }, null, 2) + '\n');
     process.stdout.write(`${written} written, ${failed} failed${already ? `, ${already} already recorded` : ''}\n`); if (failed) process.exitCode = 1;
   } catch (e) { process.stderr.write(`kb write: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+} else if (cmd === 'domain' && args[0] === 'new' && args[1]) {
+  // DESIGN §4.5 (v1.5): a new domain is one template file in the bank. Written, installed, and the folder this runs in is filed under it.
+  // Like the shipped templates: facets and methods are snake_case, gates are dash-case ("out-of-sample"); keywords are single prompt tokens, anything else is dropped.
+  const name = args[1], words = (f: string, sep: string) => [...new Set((value(f) ?? '').split(',').map((s) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, sep).replace(new RegExp(`^\\${sep}|\\${sep}$`, 'g'), '')).filter(Boolean))];
+  const facets = words('--facets', '_'), gates = words('--gates', '-'), methods = words('--methods', '_'), keywords = normalizeKeywords(value('--keywords') ?? '');
+  try {
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(name)) throw new Error('name: lowercase letters, digits and dashes, 1–26 characters, no trailing dash');
+    if (facets.length < 2 || gates.length < 2) throw new Error('--facets and --gates each need at least two comma-separated entries');
+    const bank = paths.bankDir();
+    if (!existsSync(path.join(bank, '.git'))) throw new Error(`${bank} is not a knowledge bank yet; run kb init first`);
+    const file = path.join(bank, 'templates', `${name}.yaml`);
+    if (existsSync(file)) throw new Error(`domain ${name} exists (${file}); edit that file and run kb rebuild`);
+    const db = openDb();
+    try {
+      // The index keys a template by its slug padded to 26 characters, so "gen-l10" would overwrite "gen-l1": a name whose note exists is taken.
+      const taken = getNote(db, templateNoteId(name));
+      if (taken || installedDomains(db).includes(name)) throw new Error(`the name ${name} collides with the installed domain ${taken?.domain ?? name}; pick another`);
+      const t = { domain: name, facets, methods, gates, environment: value('--environment') ?? 'environment', subject: value('--subject') ?? 'subject', keywords: [...new Set([name, ...keywords])], seed_concepts: [] };
+      mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, toYaml(t));
+      try { installTemplate(db, loadTemplate(file)); } catch (e) { unlinkSync(file); throw e; } // the file and the index agree, or neither has it
+      process.stdout.write(`created domain ${name}: ${file}\n  facets   ${facets.join(', ')}\n  gates    ${gates.join(' < ')}\n  keywords ${t.keywords.join(', ')}\n`);
+    } finally { db.sql.close(); }
+    try {
+      const filed = fileHereUnder(process.cwd(), name);
+      process.stdout.write(filed ? `filed project ${filed.project_id} under ${name} (${filed.file})\n` : `this folder was not re-filed (no automatic .kb.json here); kb project init --domain ${name} files one by hand\n`);
+    } catch (e) { process.stdout.write(`domain created, but this folder's .kb.json could not be updated (${(e as Error).message}); run kb project init --domain ${name}\n`); }
+  } catch (e) { process.stderr.write(`kb domain new: ${(e as Error).message}\n`); process.exitCode = 1; }
 } else if (cmd === 'map') {
   const db = openDb();
   try {
