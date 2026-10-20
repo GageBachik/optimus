@@ -42,6 +42,22 @@ test('startup in a .kb.json project appends the bank sections; synonym questions
   assert.ok(!again.hookSpecificOutput.additionalContext.includes('## Pending concept questions')); assert.ok(again.hookSpecificOutput.additionalContext.includes(title));
   assert.equal(await userPrompt({ session_id: 'u2', cwd, prompt }), undefined);
 });
+test('v1.5 recall is domain-first and ignores paths: a solana finding about the same concept stays out of a trading brief; a path naming a project is not a mention', async () => {
+  { const db = openDb(); installTemplate(db, loadTemplate('templates/solana.yaml'));
+    kbWrite(db, bank, { kind: 'finding', title: 'Risk sizing on Solana perps: 0.25% per trade survived 3 liquidation cascades', domain: 'solana', project: 'sol-perps', tags: ['risk sizing'], attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now);
+    db.sql.close(); }
+  const d2 = mkdtempSync(path.join(tmpdir(), 'spy2-')); writeFileSync(path.join(d2, '.kb.json'), JSON.stringify({ project_id: 'spy2', domain: 'trading' }));
+  const r: any = await userPrompt({ session_id: 'u9', cwd: d2, prompt: 'Should we revisit risk sizing for the SPY book?' });
+  const t = r.hookSpecificOutput.additionalContext; assert.ok(t.includes(title), t); assert.ok(!t.includes('Solana perps'), 'same concept, other domain: left out while the own domain has findings\n' + t);
+  const d3 = mkdtempSync(path.join(tmpdir(), 'tool-')); writeFileSync(path.join(d3, '.kb.json'), JSON.stringify({ project_id: 'toolx', domain: 'tooling' }));
+  const r3: any = await userPrompt({ session_id: 'u10', cwd: d3, prompt: 'Should we revisit risk sizing for the bot?' });
+  assert.ok(r3 && /Solana perps|Fixed-fractional/.test(r3.hookSpecificOutput.additionalContext), 'no tooling findings about it: every domain is offered');
+  const r4: any = await userPrompt({ session_id: 'u11', cwd: d2, prompt: 'open /Users/loser/projects/es/notes.md and summarise it for me' });
+  assert.equal(r4, undefined, 'a path containing the project name "es" is not a mention of that project');
+  const r5: any = await userPrompt({ session_id: 'u12', cwd: d2, prompt: 'what did the es project conclude about sizing' });
+  assert.ok(r5 && r5.hookSpecificOutput.additionalContext.includes('Knowledge bank on es'), 'a project named in prose still is');
+});
+
 test('when the bank query throws, the last successful brief cached in state.json is injected (DESIGN §3.1)', async () => {
   const first: any = await userPrompt({ session_id: 'u3', cwd, prompt });
   writeFileSync(path.join(process.env.PROJECT_MEMORY_HOME!, 'kb.sqlite'), 'not a database');

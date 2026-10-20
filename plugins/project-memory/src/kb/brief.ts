@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Db } from './db.js';
 import type { ProjectConfig } from './project.js';
 import { normalizeName, tokens } from './normalize.js';
-import { type Candidate, type Ranked, findingsAbout, findingsIn, loadCandidates, rankCandidates, rankFindings } from './rank.js';
+import { type Candidate, type Ranked, findingsAboutIn, findingsIn, loadCandidates, rankCandidates, rankFindings } from './rank.js';
 import { comparisonSections } from './compare.js';
 import { fitBrief, type Section } from '../lib/budget.js';
 import { readJson } from '../lib/atomic.js';
@@ -93,11 +93,14 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
   // ponytail: bag-of-tokens match (every stemmed token of the alias occurs somewhere in the prompt); add adjacency if briefs get noisy.
   const aliases = db.sql.prepare('SELECT a.name_norm, a.concept_id, n.title FROM alias a JOIN note n ON n.id=a.concept_id AND n.deleted_at IS NULL').all() as { name_norm: string; concept_id: string; title: string }[];
   const hits = aliases.filter((a) => a.name_norm && a.name_norm.split('-').every((t) => words.has(t)));
-  const projects = (db.sql.prepare('SELECT DISTINCT project FROM note WHERE project IS NOT NULL AND deleted_at IS NULL').all() as { project: string }[])
-    .map((r) => r.project).filter((p) => new RegExp(`\\b${escapeRe(p)}\\b`, 'i').test(prompt));
+  // v1.5: a path in the prompt names folders, not projects ("/Users/loser/projects/x" matched the bogus import projects "loser" and
+  // "projects" on every prompt); only projects with findings count, and never the asking project itself.
+  const prose = prompt.replace(/\S*\/\S+/g, ' ');
+  const projects = (db.sql.prepare("SELECT DISTINCT project FROM note WHERE kind='finding' AND project IS NOT NULL AND deleted_at IS NULL").all() as { project: string }[])
+    .map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, 'i').test(prose));
   const names = [...new Set([...hits.map((h) => h.title), ...projects])];
   if (!names.length) return null;
-  const fresh = [...new Set([...findingsAbout(db, [...new Set(hits.map((h) => h.concept_id))]), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
+  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
   const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));

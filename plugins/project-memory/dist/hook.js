@@ -662,6 +662,14 @@ function findingsAbout(db, concepts) {
   if (!concepts.length) return [];
   return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
 }
+function findingsAboutIn(db, concepts, domain) {
+  if (!concepts.length) return [];
+  if (domain) {
+    const own = ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain));
+    if (own.length) return own;
+  }
+  return findingsAbout(db, concepts);
+}
 function findingsIn(db, projects) {
   if (!projects.length) return [];
   return ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.project IN (${marks(projects)}) AND ${LIVE_FINDING}`).all(...projects));
@@ -963,10 +971,11 @@ function buildRecallBrief(db, cfg, prompt, state, today = /* @__PURE__ */ new Da
   if (!words.size) return null;
   const aliases = db.sql.prepare("SELECT a.name_norm, a.concept_id, n.title FROM alias a JOIN note n ON n.id=a.concept_id AND n.deleted_at IS NULL").all();
   const hits = aliases.filter((a) => a.name_norm && a.name_norm.split("-").every((t) => words.has(t)));
-  const projects = db.sql.prepare("SELECT DISTINCT project FROM note WHERE project IS NOT NULL AND deleted_at IS NULL").all().map((r) => r.project).filter((p) => new RegExp(`\\b${escapeRe(p)}\\b`, "i").test(prompt));
+  const prose = prompt.replace(/\S*\/\S+/g, " ");
+  const projects = db.sql.prepare("SELECT DISTINCT project FROM note WHERE kind='finding' AND project IS NOT NULL AND deleted_at IS NULL").all().map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, "i").test(prose));
   const names = [.../* @__PURE__ */ new Set([...hits.map((h) => h.title), ...projects])];
   if (!names.length) return null;
-  const fresh = [.../* @__PURE__ */ new Set([...findingsAbout(db, [...new Set(hits.map((h) => h.concept_id))]), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
+  const fresh = [.../* @__PURE__ */ new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
   const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));

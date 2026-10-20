@@ -35,6 +35,16 @@ export function findingsAbout(db: Db, concepts: string[]): string[] {
   if (!concepts.length) return [];
   return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
 }
+/** v1.5 domain-first: the findings about these concepts in the asking project's own domain; every domain only when its own has none.
+ *  "testing" has 46 findings across four domains: an iPhone session was shown Solana and poker ones, five per prompt, and cited none. */
+export function findingsAboutIn(db: Db, concepts: string[], domain: string | undefined): string[] {
+  if (!concepts.length) return [];
+  if (domain) {
+    const own = ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain));
+    if (own.length) return own;
+  }
+  return findingsAbout(db, concepts);
+}
 /** Live, non-superseded findings recorded in any of the projects. */
 export function findingsIn(db: Db, projects: string[]): string[] {
   if (!projects.length) return [];
