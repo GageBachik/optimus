@@ -82,7 +82,9 @@ function findConfig(cwd: string): { file: string; cfg: AutoConfig } | null {
 }
 export function settleFromPrompt(cwd: string, prompt: string, lex: Lexicon = DEFAULT_LEXICON): Settled | null {
   const found = findConfig(cwd); if (!found) return null; const { file, cfg } = found;
-  if (!cfg.auto || cfg.auto.confidence === 'high' || !cfg.domain) return null;
+  // Only a LOW guess moves. A domain a prompt settled or confirmed (medium) is final: on 2026-10-20 an iOS game project settled to ios on
+  // its first prompt and a later prompt about "agents, api, hook, memory" flipped it to tooling. Corrections are kb project init or kb domain new.
+  if (!cfg.auto || cfg.auto.confidence !== 'low' || !cfg.domain) return null;
   const guess = domainFromText(prompt, 3, 2, lex); if (!guess) return null;
   const previous = cfg.domain;
   if (guess.domain === previous) { if (cfg.auto.confidence === 'low') { cfg.auto = { ...cfg.auto, confidence: 'medium', reason: `confirmed by a prompt (${guess.reason})` }; writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n'); } return null; }

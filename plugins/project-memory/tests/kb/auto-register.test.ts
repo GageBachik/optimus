@@ -70,6 +70,8 @@ test('the first prompt settles a guessed domain, confirms a right guess, and nev
     assert.ok(r.hookSpecificOutput.additionalContext.startsWith('Project domain changed from `tooling` to `trading`'), r.hookSpecificOutput.additionalContext.slice(0, 120));
     assert.equal(settleFromPrompt(d, 'what time is it'), null, 'no signal, no change');
     assert.equal(settleFromPrompt(d, 'more momentum backtests on crypto perps with sharpe and drawdown'), null, 'same domain: confirmed, not changed');
+    assert.equal(settleFromPrompt(d, 'now wire the agents, hooks, api and memory plugin for it'), null, 'a settled (medium) domain never moves again, whatever a later prompt says');
+    assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'trading');
     writeFileSync(path.join(d, '.kb.json'), JSON.stringify({ project_id: 'mystery', domain: 'ios' }));
     assert.equal(settleFromPrompt(d, 'trade crypto momentum strategy backtest sharpe'), null, 'hand-set file is never touched');
     assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'ios');

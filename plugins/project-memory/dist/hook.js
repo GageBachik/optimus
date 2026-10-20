@@ -1079,7 +1079,7 @@ function settleFromPrompt(cwd, prompt, lex = DEFAULT_LEXICON) {
   const found = findConfig(cwd);
   if (!found) return null;
   const { file, cfg } = found;
-  if (!cfg.auto || cfg.auto.confidence === "high" || !cfg.domain) return null;
+  if (!cfg.auto || cfg.auto.confidence !== "low" || !cfg.domain) return null;
   const guess = domainFromText(prompt, 3, 2, lex);
   if (!guess) return null;
   const previous = cfg.domain;
