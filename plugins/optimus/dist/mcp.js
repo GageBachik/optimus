@@ -29589,14 +29589,22 @@ function scoreFinding(c, cfg, w, today) {
     if (want && c.target[axis].some((x) => normalizeName(x) === normalizeName(want))) s += w[axis];
   }
   s += w.gate_rank * Number(c.attrs.gate_rank?.[0] ?? 0);
-  s += w.recency * recency(c.attrs.valid_from?.[0], today);
+  s += w.recency * recency(c.attrs.valid_from?.[0] ?? c.updated_at, today);
   s += w.transfer_confirmed * c.transfers.confirmed + w.transfer_refuted * c.transfers.refuted;
   if (c.conflicts) s += w.conflict;
   return expired(c, today) ? s * w.expired_factor : s;
 }
 function rankCandidates(db2, cands, cfg, today = /* @__PURE__ */ new Date()) {
-  const w = loadWeights(db2);
-  return cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) })).sort((a, b) => b.score - a.score || cmp2(b.updated_at, a.updated_at) || cmp2(a.id, b.id));
+  const w = loadWeights(db2), bare = !Object.keys(cfg.facets ?? {}).length && !cfg.target?.environment && !cfg.target?.subject && !cfg.relies_on?.length;
+  const rec = (c) => recency(c.attrs.valid_from?.[0] ?? c.updated_at, today);
+  const ranked = cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) })).sort((a, b) => (bare ? rec(b) - rec(a) : 0) || b.score - a.score || cmp2(b.updated_at, a.updated_at) || cmp2(a.id, b.id));
+  const seen = /* @__PURE__ */ new Set();
+  return ranked.filter((c) => {
+    const k = c.title.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 var candidateFindings = (db2, cfg) => loadCandidates(db2, candidateIds(db2, cfg));
 var rankFindings = (db2, cfg, limit, today = /* @__PURE__ */ new Date()) => rankCandidates(db2, candidateFindings(db2, cfg), cfg, today).slice(0, limit);

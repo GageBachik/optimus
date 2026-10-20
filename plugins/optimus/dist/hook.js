@@ -748,14 +748,22 @@ function scoreFinding(c, cfg, w, today) {
     if (want && c.target[axis].some((x) => normalizeName(x) === normalizeName(want))) s += w[axis];
   }
   s += w.gate_rank * Number(c.attrs.gate_rank?.[0] ?? 0);
-  s += w.recency * recency(c.attrs.valid_from?.[0], today);
+  s += w.recency * recency(c.attrs.valid_from?.[0] ?? c.updated_at, today);
   s += w.transfer_confirmed * c.transfers.confirmed + w.transfer_refuted * c.transfers.refuted;
   if (c.conflicts) s += w.conflict;
   return expired(c, today) ? s * w.expired_factor : s;
 }
 function rankCandidates(db, cands, cfg, today = /* @__PURE__ */ new Date()) {
-  const w = loadWeights(db);
-  return cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) })).sort((a, b) => b.score - a.score || cmp(b.updated_at, a.updated_at) || cmp(a.id, b.id));
+  const w = loadWeights(db), bare = !Object.keys(cfg.facets ?? {}).length && !cfg.target?.environment && !cfg.target?.subject && !cfg.relies_on?.length;
+  const rec = (c) => recency(c.attrs.valid_from?.[0] ?? c.updated_at, today);
+  const ranked = cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) })).sort((a, b) => (bare ? rec(b) - rec(a) : 0) || b.score - a.score || cmp(b.updated_at, a.updated_at) || cmp(a.id, b.id));
+  const seen = /* @__PURE__ */ new Set();
+  return ranked.filter((c) => {
+    const k = c.title.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 var NOT_SUPERSEDED, LIVE_FINDING, marks, ids, cmp, expired, candidateFindings, rankFindings;
 var init_rank = __esm({
@@ -1660,18 +1668,21 @@ async function subagentStart(input) {
   const cwd = String(input.cwd ?? ""), cfg = loadProjectConfig(cwd), proj = cfg?.project_id ?? (path17.basename(cwd) || "this project");
   const lines = [`Project memory: project ${proj}${cfg ? `, domain ${cfg.domain}` : ""}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). kb_brief({ project: "${proj}" }) returns the full brief; kb_find searches the bank at ${paths.bankDir()}. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`];
   if (cfg) {
+    let gates = [];
     try {
       const db = openDb();
       try {
         const top = rankFindings(db, cfg, SUBAGENT_FINDINGS);
         if (top.length) lines.push("Findings that apply here:", ...top.map((f) => `- ${findingLine(f, cfg)}`));
+        gates = templateFor(db, cfg.domain)?.gates ?? [];
       } finally {
         db.sql.close();
       }
     } catch (e) {
       log("warn", "subagent brief: findings skipped", String(e));
     }
-    lines.push(`If you measure a number or learn why something failed, record it before you finish: kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${proj}", attrs: { state: "observed" }, metrics: [...], evidence: [{ kind: "path", ref: "<file>" }] }). One call per result; the orchestrator will not do it for you.`);
+    const gate = gates.length ? `, gate: "<one of ${gates.join(" | ")}>"` : "";
+    lines.push(`If you measure a number or learn why something failed, record it before you finish: kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${proj}", tags: ["<2-3 concept words a future prompt would use>"], attrs: { state: "observed"${gate} }, metrics: [...], evidence: [{ kind: "path", ref: "<file>" }] }). One call per result; the orchestrator will not do it for you.`);
   }
   return { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: charSafePrefix(lines.join("\n"), CAP) } };
 }
@@ -1686,6 +1697,7 @@ var init_subagent_start = __esm({
     init_db();
     init_rank();
     init_brief();
+    init_templates();
     SUBAGENT_FINDINGS = 5;
     CAP = 3e3;
     handler7 = subagentStart;

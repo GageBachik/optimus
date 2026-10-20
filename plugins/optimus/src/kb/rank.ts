@@ -112,16 +112,21 @@ export function scoreFinding(c: Candidate, cfg: ProjectConfig, w: Record<string,
   for (const [k, v] of Object.entries(cfg.facets ?? {})) { const have = c.facets[k]; if (have) s += have.includes(v) ? w.facet_value : w.facet_key; }
   for (const axis of ['environment', 'subject'] as const) { const want = cfg.target?.[axis]; if (want && c.target[axis].some((x) => normalizeName(x) === normalizeName(want))) s += w[axis]; }
   s += w.gate_rank * Number(c.attrs.gate_rank?.[0] ?? 0);
-  s += w.recency * recency(c.attrs.valid_from?.[0], today);
+  s += w.recency * recency(c.attrs.valid_from?.[0] ?? c.updated_at, today); // v1.5: a finding written without valid_from (every agent-recorded one) is as recent as its last write, not ageless
   s += w.transfer_confirmed * c.transfers.confirmed + w.transfer_refuted * c.transfers.refuted;
   if (c.conflicts) s += w.conflict;
   return expired(c, today) ? s * w.expired_factor : s;
 }
-/** Scores and sorts: score desc, then `updated_at` desc, then id. */
+/** Scores and sorts: score desc, then `updated_at` desc, then id. v1.5: a project that declares nothing yet (no facets, target or relies_on)
+ *  is served newest-first within its domain, then by score — gate rank alone let year-old TestFlight findings of a dead app outrank last
+ *  week's from a sibling app. Two notes with the same title (import artefacts) count once. */
 export function rankCandidates(db: Db, cands: Candidate[], cfg: ProjectConfig, today = new Date()): Ranked[] {
-  const w = loadWeights(db);
-  return cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) }))
-    .sort((a, b) => b.score - a.score || cmp(b.updated_at, a.updated_at) || cmp(a.id, b.id));
+  const w = loadWeights(db), bare = !Object.keys(cfg.facets ?? {}).length && !cfg.target?.environment && !cfg.target?.subject && !cfg.relies_on?.length;
+  const rec = (c: Candidate) => recency(c.attrs.valid_from?.[0] ?? c.updated_at, today);
+  const ranked = cands.map((c) => ({ ...c, score: scoreFinding(c, cfg, w, today), demoted: expired(c, today) }))
+    .sort((a, b) => (bare ? rec(b) - rec(a) : 0) || b.score - a.score || cmp(b.updated_at, a.updated_at) || cmp(a.id, b.id));
+  const seen = new Set<string>();
+  return ranked.filter((c) => { const k = c.title.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').trim(); if (seen.has(k)) return false; seen.add(k); return true; });
 }
 export const candidateFindings = (db: Db, cfg: ProjectConfig): Candidate[] => loadCandidates(db, candidateIds(db, cfg));
 export const rankFindings = (db: Db, cfg: ProjectConfig, limit: number, today = new Date()): Ranked[] => rankCandidates(db, candidateFindings(db, cfg), cfg, today).slice(0, limit);
