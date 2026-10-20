@@ -85,6 +85,15 @@ export function projectBrief(db: Db, cfg: ProjectConfig, questions: string[], li
 }
 export const buildProjectBrief = (db: Db, cfg: ProjectConfig, questions: string[], limit = 9000): string => projectBrief(db, cfg, questions, limit).text;
 
+/** v1.5: the domain's top findings, injected by the prompt hook the first time a prompt runs under a domain that is no longer a guess
+ *  (settled by the prompt, `kb project init`, or `kb domain new`): the start-up brief withholds them while the domain is only guessed. */
+export function domainFindingsBrief(db: Db, cfg: ProjectConfig, state: SessionState, withPreamble: boolean, today = new Date()): string | null {
+  const findings = rankFindings(db, cfg, TOP_FINDINGS, today).filter((f) => !state.briefed.includes(f.id));
+  if (!findings.length) return null;
+  state.briefed.push(...findings.map((f) => f.id));
+  return fitBrief(withPreamble ? PREAMBLE : '', [{ title: `Relevant findings for ${cfg.domain}`, priority: 7, items: findings.map((f) => findingLine(f, cfg)) }]).text;
+}
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** DESIGN §3.6 recall brief: findings about the concepts the prompt names (alias table, matched as stemmed tokens) or recorded in the projects it
  *  names, minus the ids this agent was already briefed on; null when nothing is new. Marks the shown ids on `state`; the caller saves it. */

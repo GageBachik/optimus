@@ -3,13 +3,14 @@ import { log } from '../lib/log.js';
 import { loadState, saveState } from '../lib/session-state.js';
 import { openDb, type Db } from '../kb/db.js';
 import { loadProjectConfig } from '../kb/project.js';
-import { buildRecallBrief } from '../kb/brief.js';
+import { buildRecallBrief, domainFindingsBrief } from '../kb/brief.js';
 import { DEFAULT_LEXICON, decisionLine, loadLexicon, needsDecision, settleFromPrompt, settledLine } from '../kb/auto-register.js';
 
 // DESIGN §3.1 UserPromptSubmit: recall brief for the concepts and projects the prompt names that this agent has not been briefed on;
 // if the bank query throws, the last successful brief cached in state.json is injected instead. Nothing without a .kb.json.
 // v1.5: the domain lexicon comes from the bank's templates (built-in words when the bank is unreachable); a low-confidence folder whose
-// first substantive prompt did not settle it gets the domain decision line, once per folder (the mark is in .kb.json).
+// first substantive prompt did not settle it gets the domain decision line, once per folder (the mark is in .kb.json); the first prompt
+// under a domain that is no longer a guess carries that domain's top findings, which the start-up brief withheld.
 // Claude Code fires UserPromptSubmit for text the harness itself injects as a user turn: background-task notices, slash-command records,
 // local command output, system reminders. None is a prompt: on 2026-10-20 a Workflow completion notice settled a trading folder to
 // "tooling" because its text said "scripts" and "agents", and such notices briefed, settled and spent the once-per-folder decision for hours.
@@ -32,7 +33,13 @@ export async function userPrompt(input: HookInput) {
   try {
     if (!db) throw new Error('bank unavailable');
     text = buildRecallBrief(db, cfg, prompt, state);
-    if (text) { state.lastBrief = text; try { saveState(sessionId, state, agentId); } catch (e) { log('warn', 'session state not saved', String(e)); } }
+    // Only in a session that had a start-up brief (domainBriefed set there): a resumed session's transcript already carries its context.
+    if (!input.agent_id && cfg.auto?.confidence !== 'low' && state.domainBriefed !== undefined && state.domainBriefed !== cfg.domain) {
+      const extra = domainFindingsBrief(db, cfg, state, !text); state.domainBriefed = cfg.domain;
+      if (extra) { text = text ? `${text}\n\n${extra}` : extra; log('info', 'domain findings briefed', { project: cfg.project_id, domain: cfg.domain }); }
+    }
+    if (text) state.lastBrief = text;
+    try { saveState(sessionId, state, agentId); } catch (e) { log('warn', 'session state not saved', String(e)); }
   } catch (e) { log('warn', 'recall brief failed; injecting the cached brief', String(e)); text = state.lastBrief ?? null; } finally { db?.sql.close(); }
   text = `${head}\n\n${text ?? ''}`.trim();
   return text ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit' as const, additionalContext: text } } : undefined;

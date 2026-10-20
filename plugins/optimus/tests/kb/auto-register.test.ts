@@ -129,3 +129,23 @@ test('v1.5: the prompt hook asks for the domain decision once per folder, in wha
   const r4: any = await userPrompt({ session_id: 'dec3', cwd: path.join(d, 'nowhere-registered-' + Date.now()), prompt });
   assert.equal(r4, undefined, 'no .kb.json at or above: nothing, and the bank is not opened');
 });
+
+test('v1.5: a guessed domain brings no findings at start-up; the first prompt under a settled domain brings that domain\'s findings once', async () => {
+  const { openDb } = await import('../../src/kb/db.js'); const { installTemplate } = await import('../../src/kb/templates.js'); const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
+  const { kbWrite } = await import('../../src/kb/write.js'); const { paths } = await import('../../src/lib/paths.js');
+  { const db = openDb(); installTemplate(db, loadTemplate('templates/ios.yaml')); installTemplate(db, loadTemplate('templates/tooling.yaml'));
+    kbWrite(db, paths.bankDir(), { kind: 'finding', title: 'Cover screen reports an 84pt trailing-only safe-area inset on the Duo simulator', domain: 'ios', project: 'duo-game', attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, '2026-10-20T00:00:00Z');
+    kbWrite(db, paths.bankDir(), { kind: 'finding', title: 'A CLI that prints 20,000 lines hangs the sandbox at 0% CPU', domain: 'tooling', project: 'some-cli', attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, '2026-10-20T00:00:00Z');
+    db.sql.close(); }
+  const d = mk('projects/two-trees'); autoRegister(d, home);
+  const s: any = await sessionStart({ session_id: 'g1', source: 'startup', cwd: d });
+  const startup = s.hookSpecificOutput.additionalContext; assert.ok(!/Relevant findings/.test(startup) && !/hangs the sandbox/.test(startup), 'a guess brings no domain findings:\n' + startup);
+  const r1: any = await userPrompt({ session_id: 'g1', cwd: d, prompt: 'A note taking app for the iphone in swift with xcode and swiftui please' });
+  const t1 = r1.hookSpecificOutput.additionalContext;
+  assert.match(t1, /^Project domain changed from `tooling` to `ios`/); assert.ok(/Relevant findings for ios/.test(t1) && /84pt trailing-only/.test(t1), 'the settled domain\'s findings arrive with the settle:\n' + t1);
+  const r2: any = await userPrompt({ session_id: 'g1', cwd: d, prompt: 'now add a settings screen with a dark mode toggle for the notes' });
+  assert.ok(!r2 || !/Relevant findings for ios/.test(r2.hookSpecificOutput.additionalContext), 'once per session');
+  // a hand-set domain gets them at start-up as before
+  const h = mk('projects/handset'); writeFileSync(path.join(h, '.kb.json'), JSON.stringify({ project_id: 'handset', domain: 'ios' }));
+  const s2: any = await sessionStart({ session_id: 'g2', source: 'startup', cwd: h }); assert.ok(/84pt trailing-only/.test(s2.hookSpecificOutput.additionalContext));
+});

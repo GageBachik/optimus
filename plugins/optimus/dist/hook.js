@@ -696,7 +696,7 @@ function candidateIds(db, cfg) {
     }).map((r) => r.id))];
     if (targets.length) for (const id of ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='validated_in' AND r.deleted_at IS NULL AND r.dst IN (${marks(targets)}) AND ${LIVE_FINDING}`).all(...targets))) out2.add(id);
   }
-  if (!out2.size && cfg.domain) for (const id of ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.domain=? AND ${LIVE_FINDING}`).all(cfg.domain))) out2.add(id);
+  if (!out2.size && cfg.domain && cfg.auto?.confidence !== "low") for (const id of ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.domain=? AND ${LIVE_FINDING}`).all(cfg.domain))) out2.add(id);
   return [...out2];
 }
 function loadCandidates(db, findingIds) {
@@ -974,6 +974,12 @@ function projectBrief(db, cfg, questions, limit = 9e3, today = /* @__PURE__ */ n
   ];
   return { text: fitBrief(PREAMBLE, sections, limit).text, findings };
 }
+function domainFindingsBrief(db, cfg, state, withPreamble, today = /* @__PURE__ */ new Date()) {
+  const findings = rankFindings(db, cfg, TOP_FINDINGS, today).filter((f) => !state.briefed.includes(f.id));
+  if (!findings.length) return null;
+  state.briefed.push(...findings.map((f) => f.id));
+  return fitBrief(withPreamble ? PREAMBLE : "", [{ title: `Relevant findings for ${cfg.domain}`, priority: 7, items: findings.map((f) => findingLine(f, cfg)) }]).text;
+}
 function buildRecallBrief(db, cfg, prompt, state, today = /* @__PURE__ */ new Date()) {
   const words = new Set(tokens(prompt));
   if (!words.size) return null;
@@ -1180,7 +1186,7 @@ var init_auto_register = __esm({
     };
     settledLine = (s) => `Project domain changed from \`${s.previous}\` to \`${s.domain}\` because this prompt mentions ${s.reason}; the brief below is for ${s.domain}. Say "this is a <domain> project" to override.`;
     MIN_DECISION_WORDS = 12;
-    decisionLine = (d) => `This folder was filed under \`${d.domain}\` by a guess (low confidence) and this prompt did not settle it. Decide now from the prompt alone, and do not ask the user unless the work is plainly a new kind of project. (1) Ordinary software \u2014 scripts, sites, services, libraries, tools, docs \u2014 is \`tooling\`: leave it and say nothing. (2) If it is one of ${d.known.filter((k) => k !== "tooling").join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so. (3) Only if none of those describes the work (a console game, hardware, a research paper\u2026), propose a domain to the user with one AskUserQuestion \u2014 a short lowercase name, 4\u20136 facets (the axes an approach varies on; single snake_case words), 4\u20136 gates (the stages evidence passes through, weakest first) and 5\u201310 single-word keywords a prompt about such work contains \u2014 and on a yes run from this folder: ${paths.kbCli()} domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2,w3 --environment <where it runs> --subject <what it acts on>. It writes the template into the bank, installs it and files this folder under it.`;
+    decisionLine = (d) => `This folder was filed under \`${d.domain}\` by a guess (low confidence) and this prompt did not settle it. Decide now from the prompt alone, and do not ask the user unless the work is plainly a new kind of project. (1) Ordinary software \u2014 scripts, sites, services, libraries, tools, docs \u2014 is \`tooling\`: leave it and say nothing. (2) If it is one of ${d.known.filter((k) => k !== "tooling").join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so; your next prompt's brief then carries that domain's findings, or call kb_brief({ project: "${d.project_id}" }) for them now. (3) Only if none of those describes the work (a console game, hardware, a research paper\u2026), propose a domain to the user with one AskUserQuestion \u2014 a short lowercase name, 4\u20136 facets (the axes an approach varies on; single snake_case words), 4\u20136 gates (the stages evidence passes through, weakest first) and 5\u201310 single-word keywords a prompt about such work contains \u2014 and on a yes run from this folder: ${paths.kbCli()} domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2,w3 --environment <where it runs> --subject <what it acts on>. It writes the template into the bank, installs it and files this folder under it.`;
     autoLine = (a, known = knownDomains()) => `This folder was registered in the knowledge bank automatically: project \`${a.project_id}\`, domain \`${a.domain}\` (${a.confidence} confidence: ${a.reason}).${a.confidence === "low" ? ` If the work turns out to be ${known.filter((d) => d !== a.domain).join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so; the first prompt usually settles it on its own.` : ""} The file is \`.kb.json\`; commit it when you commit.`;
   }
 });
@@ -1220,6 +1226,7 @@ function startupText(cwd, sessionId, cfg) {
       try {
         const { text, findings } = projectBrief(db, cfg, state.briefed.includes(QUESTIONS_SHOWN) ? [] : pendingQuestions(db, 3));
         state.briefed = [.../* @__PURE__ */ new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.filter((f) => text.includes(`[${f.id}]`)).map((f) => f.id)])];
+        state.domainBriefed = cfg.auto?.confidence !== "low" ? cfg.domain : "";
         saveState(sessionId, state);
         return text;
       } finally {
@@ -1408,13 +1415,21 @@ async function userPrompt(input) {
   try {
     if (!db) throw new Error("bank unavailable");
     text = buildRecallBrief(db, cfg, prompt, state);
-    if (text) {
-      state.lastBrief = text;
-      try {
-        saveState(sessionId, state, agentId);
-      } catch (e) {
-        log("warn", "session state not saved", String(e));
+    if (!input.agent_id && cfg.auto?.confidence !== "low" && state.domainBriefed !== void 0 && state.domainBriefed !== cfg.domain) {
+      const extra = domainFindingsBrief(db, cfg, state, !text);
+      state.domainBriefed = cfg.domain;
+      if (extra) {
+        text = text ? `${text}
+
+${extra}` : extra;
+        log("info", "domain findings briefed", { project: cfg.project_id, domain: cfg.domain });
       }
+    }
+    if (text) state.lastBrief = text;
+    try {
+      saveState(sessionId, state, agentId);
+    } catch (e) {
+      log("warn", "session state not saved", String(e));
     }
   } catch (e) {
     log("warn", "recall brief failed; injecting the cached brief", String(e));

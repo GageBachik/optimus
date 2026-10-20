@@ -65,7 +65,9 @@ export function candidateIds(db: Db, cfg: ProjectConfig): string[] {
   }
   // v1.4: a project that declares nothing yet (just registered: no facets, no target, no relies_on) still gets its domain's findings,
   // ranked by gate and recency; otherwise a new project's startup brief is empty until the first prompt names a concept.
-  if (!out.size && cfg.domain) for (const id of ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.domain=? AND ${LIVE_FINDING}`).all(cfg.domain))) out.add(id);
+  // v1.5: not while the domain is still a low-confidence guess — an empty folder guessed as tooling was shown six tooling findings from
+  // unrelated projects. The first prompt that settles the domain brings that domain's findings instead (user-prompt hook).
+  if (!out.size && cfg.domain && cfg.auto?.confidence !== 'low') for (const id of ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.domain=? AND ${LIVE_FINDING}`).all(cfg.domain))) out.add(id);
   return [...out];
 }
 

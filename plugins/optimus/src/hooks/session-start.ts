@@ -33,7 +33,9 @@ function startupText(cwd: string, sessionId: string, cfg: ReturnType<typeof load
       const state = loadState(sessionId), db = openDb();
       try {
         const { text, findings } = projectBrief(db, cfg, state.briefed.includes(QUESTIONS_SHOWN) ? [] : pendingQuestions(db, 3));
-        state.briefed = [...new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.filter((f) => text.includes(`[${f.id}]`)).map((f) => f.id)])]; saveState(sessionId, state);
+        state.briefed = [...new Set([...state.briefed, QUESTIONS_SHOWN, ...findings.filter((f) => text.includes(`[${f.id}]`)).map((f) => f.id)])];
+        state.domainBriefed = cfg.auto?.confidence !== 'low' ? cfg.domain : ''; // '' = a guessed domain brought no findings; the prompt hook adds them once it is settled
+        saveState(sessionId, state);
         return text;
       } finally { db.sql.close(); }
     } catch (e) { log('warn', 'bank brief failed; phase-1 brief only', String(e)); }
