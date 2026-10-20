@@ -102,3 +102,16 @@ test('drafts v1.5: a recorded draft stays in the file as written, is never draft
   assert.equal(pendingDrafts(key), undefined); assert.ok(!lastSessionSection(key)[0].items.some((i) => i.startsWith('Draft findings')), 'no line once everything is recorded');
   assert.equal(writeDrafts(key, spec), undefined, 'nothing pending: the Stop hook carries no drafts line');
 });
+
+test('drafts v1.5: a record written with the old mid-word title still counts as recorded for the same sentence cut at a word', async () => {
+  const { pendingDrafts, draftsFile } = await import('../../src/compaction/drafts.js');
+  const cwd = mkdtempSync(path.join(tmpdir(), 'proj-')); writeFileSync(path.join(cwd, '.kb.json'), JSON.stringify({ project_id: 'spx', domain: 'trading' }));
+  const key = paths.projectKey(cwd);
+  const long = 'On the S&P 500 index it earned about 11% a year after costs, in both 1991–2009 and 2010–2026, and under all 16 ways I tried of defining high VIX.';
+  const legacy = { kind: 'finding', title: long.slice(0, 120), body: 'x', attrs: { state: 'observed' }, evidence: [], written: 'f_legacy' };
+  writeFileSync(draftsFile(key), JSON.stringify({ defaults: { domain: 'trading', project: 'spx' }, records: [legacy] }));
+  const ts = extractTaskState([u('go'), a(long)] as any, []);
+  const spec = buildDrafts({ project_id: 'spx', domain: 'trading' }, ts, '', new Date('2026-10-20T00:00:00Z'));
+  assert.equal(spec.records.length, 1); assert.notEqual(spec.records[0].title, legacy.title, 'the new title is cut at a word, the legacy one mid-word');
+  assert.equal(writeDrafts(key, spec), undefined, 'recognised as the recorded sentence'); assert.equal(pendingDrafts(key), undefined);
+});

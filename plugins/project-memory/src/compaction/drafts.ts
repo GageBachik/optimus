@@ -9,7 +9,9 @@ import { writeFileAtomic } from '../lib/atomic.js';
  *  the files the session touched. Nothing is written to the bank until a person runs `kb write <file>`, so a draft is a review step, not a habit. */
 export type DraftSpec = { defaults: { domain: string; project: string }; records: { kind: 'finding'; title: string; body: string; attrs: Record<string, string>; evidence: { kind: 'transcript' | 'path'; ref: string }[]; written?: string }[] };
 const MAX_DRAFTS = 8;
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').trim();
+// The first 100 normalised characters: a title cut at a word (v1.5) and the same sentence cut at 120 characters (earlier records) must
+// match, or a recorded draft comes back as pending the turn after it was written (seen on quant-research, 2026-10-20).
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').trim().slice(0, 100);
 // A draft is an impersonal claim with a measurement in it. Narration ("I'll raise the window from 200K to 300K") has numbers too; the
 // first run on a working session drafted eight lines of it. Measurement: a %, a $ figure, a unit, or a metric word. Narration: a person.
 // v1.5 (first real session, quant-research): a signed decimal ("correlation is +0.35"), "5 times", "a year" and the word correlation are
