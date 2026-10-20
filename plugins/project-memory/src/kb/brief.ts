@@ -100,7 +100,8 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
     .map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, 'i').test(prose));
   const names = [...new Set([...hits.map((h) => h.title), ...projects])];
   if (!names.length) return null;
-  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
+  const unsure = cfg.auto?.confidence === 'low'; // an unconfirmed guess: the own domain may be wrong, so other domains may answer
+  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
   const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));

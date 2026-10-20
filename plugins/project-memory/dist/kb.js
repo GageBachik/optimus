@@ -8509,7 +8509,7 @@ function initBank(opts = {}) {
 }
 function projectInit(cwd, opts) {
   const file = path13.join(cwd, ".kb.json");
-  const prev = existsSync11(file) ? JSON.parse(readFileSync12(file, "utf8")) : {};
+  const { auto: _auto, ...prev } = existsSync11(file) ? JSON.parse(readFileSync12(file, "utf8")) : {};
   const c = { ...prev, project_id: opts.id ?? prev.project_id ?? path13.basename(path13.resolve(cwd)).toLowerCase(), domain: opts.domain };
   writeFileSync5(file, JSON.stringify(c, null, 2) + "\n");
   return c;

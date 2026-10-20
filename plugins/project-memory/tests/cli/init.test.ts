@@ -53,3 +53,13 @@ test('kb init writes its initial commit on a machine with no git identity', asyn
   withoutGitIdentity(() => initBank({ bank, print: () => {} }));
   assert.equal(git(bank, 'rev-list', '--count', 'HEAD'), '1');
 });
+
+test('v1.5: kb project init on an auto-registered folder drops the guess record, so the hand-set domain is final', async () => {
+  const { projectInit } = await import('../../src/cli/init.js');
+  const { settleFromPrompt } = await import('../../src/kb/auto-register.js');
+  const d = mkdtempSync(path.join(tmpdir(), 'init-auto-'));
+  writeFileSync(path.join(d, '.kb.json'), JSON.stringify({ project_id: 'gap-fad', domain: 'tooling', auto: { registered: '2026-10-20', confidence: 'low', reason: 'empty folder', decided: '2026-10-20' } }));
+  projectInit(d, { domain: 'trading' });
+  const cfg = JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')); assert.equal(cfg.domain, 'trading'); assert.equal(cfg.project_id, 'gap-fad'); assert.equal('auto' in cfg, false);
+  assert.equal(settleFromPrompt(d, 'a swift ios iphone app in xcode please'), null, 'never moved again');
+});

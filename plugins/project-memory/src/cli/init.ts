@@ -60,10 +60,11 @@ export function initBank(opts: { bank?: string; clone?: string; print?: (line: s
     git(bank, 'add', '--', ...written); git(bank, ...gitIdentity(bank), 'commit', '-q', '-m', 'kb init', '--only', '--', ...written); print('initial commit written');
   }
 }
-/** DESIGN §4.5 `kb project init --domain <d> [--id <id>]`: writes (or updates) `.kb.json` in cwd, keeping other fields. */
+/** DESIGN §4.5 `kb project init --domain <d> [--id <id>]`: writes (or updates) `.kb.json` in cwd, keeping other fields. v1.5: the automatic
+ *  guess record (`auto`) is dropped — a domain set by hand is final, and the first-prompt settle only moves a low automatic guess. */
 export function projectInit(cwd: string, opts: { domain: string; id?: string }): ProjectConfig {
   const file = path.join(cwd, '.kb.json');
-  const prev = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+  const { auto: _auto, ...prev } = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
   const c: ProjectConfig = { ...prev, project_id: opts.id ?? prev.project_id ?? path.basename(path.resolve(cwd)).toLowerCase(), domain: opts.domain };
   writeFileSync(file, JSON.stringify(c, null, 2) + '\n'); return c;
 }

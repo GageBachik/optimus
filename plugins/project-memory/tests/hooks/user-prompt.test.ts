@@ -51,7 +51,10 @@ test('v1.5 recall is domain-first and ignores paths: a solana finding about the 
   const t = r.hookSpecificOutput.additionalContext; assert.ok(t.includes(title), t); assert.ok(!t.includes('Solana perps'), 'same concept, other domain: left out while the own domain has findings\n' + t);
   const d3 = mkdtempSync(path.join(tmpdir(), 'tool-')); writeFileSync(path.join(d3, '.kb.json'), JSON.stringify({ project_id: 'toolx', domain: 'tooling' }));
   const r3: any = await userPrompt({ session_id: 'u10', cwd: d3, prompt: 'Should we revisit risk sizing for the bot?' });
-  assert.ok(r3 && /Solana perps|Fixed-fractional/.test(r3.hookSpecificOutput.additionalContext), 'no tooling findings about it: every domain is offered');
+  assert.equal(r3, undefined, 'a known domain with nothing about the concept: nothing is injected, never other domains');
+  const d4 = mkdtempSync(path.join(tmpdir(), 'guess-')); writeFileSync(path.join(d4, '.kb.json'), JSON.stringify({ project_id: 'guessy', domain: 'tooling', auto: { registered: '2026-10-20', confidence: 'low', reason: 'empty folder', decided: '2026-10-20' } }));
+  const r3b: any = await userPrompt({ session_id: 'u10b', cwd: d4, prompt: 'Should we revisit risk sizing for the bot?' });
+  assert.ok(r3b && /Solana perps|Fixed-fractional/.test(r3b.hookSpecificOutput.additionalContext), 'an unconfirmed guess may be wrong: other domains are offered');
   const r4: any = await userPrompt({ session_id: 'u11', cwd: d2, prompt: 'open /Users/loser/projects/es/notes.md and summarise it for me' });
   assert.equal(r4, undefined, 'a path containing the project name "es" is not a mention of that project');
   const r5: any = await userPrompt({ session_id: 'u12', cwd: d2, prompt: 'what did the es project conclude about sizing' });

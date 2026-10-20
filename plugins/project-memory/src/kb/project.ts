@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { log } from '../lib/log.js';
-export type ProjectConfig = { project_id: string; domain: string; facets?: Record<string, string>; target?: { environment?: string; subject?: string }; relies_on?: string[] };
+export type ProjectConfig = { project_id: string; domain: string; facets?: Record<string, string>; target?: { environment?: string; subject?: string }; relies_on?: string[]; auto?: { confidence?: string; reason?: string; registered?: string; decided?: string } };
 export function loadProjectConfig(cwd: string): ProjectConfig | null {
   let dir = path.resolve(cwd);
   for (let i = 0; i < 8; i++) {
