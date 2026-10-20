@@ -678,6 +678,21 @@ function findingsAboutIn(db, concepts, domain, unsure = false) {
   const own = ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain));
   return own.length || !unsure ? own : findingsAbout(db, concepts);
 }
+function findingsByTitlePhrase(db, prompt, domain, limit = 3) {
+  const toks = prompt.toLowerCase().replace(/\S*\/\S+/g, " ").split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP2.has(t));
+  const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
+  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING}${domain ? " AND n.domain=?" : ""} LIMIT ?`);
+  const ids2 = [], hit = [];
+  for (const p of phrases) {
+    const rows = q.all(`title:"${p}"`, ...domain ? [domain] : [], limit);
+    if (rows.length) {
+      hit.push(p);
+      for (const r of rows) if (!ids2.includes(r.id)) ids2.push(r.id);
+    }
+    if (ids2.length >= limit) break;
+  }
+  return { ids: ids2.slice(0, limit), phrases: hit };
+}
 function findingsIn(db, projects) {
   if (!projects.length) return [];
   return ids(db.sql.prepare(`SELECT n.id FROM note n WHERE n.project IN (${marks(projects)}) AND ${LIVE_FINDING}`).all(...projects));
@@ -775,7 +790,7 @@ function rankFindings(db, cfg, limit, today = /* @__PURE__ */ new Date()) {
   }
   return out2;
 }
-var NOT_SUPERSEDED, LIVE_FINDING, marks, ids, cmp, expired, candidateFindings;
+var NOT_SUPERSEDED, LIVE_FINDING, marks, ids, cmp, STOP2, expired, candidateFindings;
 var init_rank = __esm({
   "src/kb/rank.ts"() {
     "use strict";
@@ -787,6 +802,7 @@ var init_rank = __esm({
     marks = (xs) => xs.map(() => "?").join(",");
     ids = (rows) => rows.map((r) => r.id);
     cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+    STOP2 = /* @__PURE__ */ new Set(["the", "and", "for", "with", "that", "this", "from", "into", "your", "have", "will", "make", "like", "want", "just", "then", "also", "about", "what", "when", "where", "which", "there", "their", "them", "they", "been", "were", "some", "more", "very", "over", "under", "after", "before", "each", "every", "should", "would", "could", "please", "need", "only", "does", "did", "can", "not", "but", "you", "our", "its", "are", "was", "use", "using", "add", "now", "let", "get"]);
     expired = (c, today) => {
       const to = c.attrs.valid_to?.[0];
       return !!to && Date.parse(to) < today.getTime();
@@ -1004,10 +1020,11 @@ function buildRecallBrief(db, cfg, prompt, state, today = /* @__PURE__ */ new Da
   const hits = aliases.filter((a) => a.name_norm && a.name_norm.split("-").every((t) => words.has(t)));
   const prose = prompt.replace(/\S*\/\S+/g, " ");
   const projects = db.sql.prepare("SELECT DISTINCT project FROM note WHERE kind='finding' AND project IS NOT NULL AND deleted_at IS NULL").all().map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, "i").test(prose));
-  const names = [.../* @__PURE__ */ new Set([...hits.map((h) => h.title), ...projects])];
+  const byTitle = findingsByTitlePhrase(db, prompt, cfg.domain);
+  const names = [.../* @__PURE__ */ new Set([...hits.map((h) => h.title), ...projects, ...byTitle.phrases.map((p) => `"${p}"`)])];
   if (!names.length) return null;
   const unsure = cfg.auto?.confidence === "low";
-  const fresh = [.../* @__PURE__ */ new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
+  const fresh = [.../* @__PURE__ */ new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects), ...byTitle.ids])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
   const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));

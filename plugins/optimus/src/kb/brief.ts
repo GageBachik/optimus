@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Db } from './db.js';
 import type { ProjectConfig } from './project.js';
 import { normalizeName, tokens } from './normalize.js';
-import { type Candidate, type Ranked, findingsAboutIn, findingsIn, loadCandidates, rankCandidates, rankFindings } from './rank.js';
+import { type Candidate, type Ranked, findingsAboutIn, findingsByTitlePhrase, findingsIn, loadCandidates, rankCandidates, rankFindings } from './rank.js';
 import { comparisonSections } from './compare.js';
 import { fitBrief, type Section } from '../lib/budget.js';
 import { readJson } from '../lib/atomic.js';
@@ -107,10 +107,11 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
   const prose = prompt.replace(/\S*\/\S+/g, ' ');
   const projects = (db.sql.prepare("SELECT DISTINCT project FROM note WHERE kind='finding' AND project IS NOT NULL AND deleted_at IS NULL").all() as { project: string }[])
     .map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, 'i').test(prose));
-  const names = [...new Set([...hits.map((h) => h.title), ...projects])];
+  const byTitle = findingsByTitlePhrase(db, prompt, cfg.domain); // v1.5: untagged findings, by a two-word phrase of the prompt in their title
+  const names = [...new Set([...hits.map((h) => h.title), ...projects, ...byTitle.phrases.map((p) => `"${p}"`)])];
   if (!names.length) return null;
   const unsure = cfg.auto?.confidence === 'low'; // an unconfirmed guess: the own domain may be wrong, so other domains may answer
-  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects)])].filter((id) => !state.briefed.includes(id));
+  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects), ...byTitle.ids])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
   const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));

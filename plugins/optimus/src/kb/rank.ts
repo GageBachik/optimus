@@ -44,6 +44,22 @@ export function findingsAboutIn(db: Db, concepts: string[], domain: string | und
   const own = ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain));
   return own.length || !unsure ? own : findingsAbout(db, concepts);
 }
+const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'have', 'will', 'make', 'like', 'want', 'just', 'then', 'also', 'about', 'what', 'when', 'where', 'which', 'there', 'their', 'them', 'they', 'been', 'were', 'some', 'more', 'very', 'over', 'under', 'after', 'before', 'each', 'every', 'should', 'would', 'could', 'please', 'need', 'only', 'does', 'did', 'can', 'not', 'but', 'you', 'our', 'its', 'are', 'was', 'use', 'using', 'add', 'now', 'let', 'get']);
+/** v1.5: two-word phrases of the prompt matched against finding titles in the project's domain (porter-stemmed FTS), so a finding
+ *  recorded without tags — "Cover screen reports an 84pt trailing-only safe-area inset" — is still recalled by a prompt that says
+ *  "cover screen". Phrases, not single words: "screen" alone would match half the domain. */
+export function findingsByTitlePhrase(db: Db, prompt: string, domain: string | undefined, limit = 3): { ids: string[]; phrases: string[] } {
+  const toks = prompt.toLowerCase().replace(/\S*\/\S+/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));
+  const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
+  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING}${domain ? ' AND n.domain=?' : ''} LIMIT ?`);
+  const ids: string[] = [], hit: string[] = [];
+  for (const p of phrases) {
+    const rows = q.all(`title:"${p}"`, ...(domain ? [domain] : []), limit) as { id: string }[];
+    if (rows.length) { hit.push(p); for (const r of rows) if (!ids.includes(r.id)) ids.push(r.id); }
+    if (ids.length >= limit) break;
+  }
+  return { ids: ids.slice(0, limit), phrases: hit };
+}
 /** Live, non-superseded findings recorded in any of the projects. */
 export function findingsIn(db: Db, projects: string[]): string[] {
   if (!projects.length) return [];

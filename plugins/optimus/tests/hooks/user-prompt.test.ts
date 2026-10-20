@@ -73,6 +73,14 @@ test('v1.5: harness-injected user turns (task notifications, slash-command recor
   assert.ok(r && r.hookSpecificOutput.additionalContext.includes('Knowledge bank on risk sizing'), 'a typed prompt still briefs');
 });
 
+test('v1.5: a two-word phrase of the prompt that appears in a finding title recalls that finding even when it carries no tags', async () => {
+  { const db = openDb(); kbWrite(db, bank, { kind: 'finding', title: 'Cover screen reports an 84pt trailing-only safe-area inset on the Duo simulator', domain: 'trading', project: 'duo-desk', attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now); db.sql.close(); }
+  const r: any = await userPrompt({ session_id: 'tp1', cwd, prompt: 'Lay out the cover screen of the notes app so the toolbar clears the camera' });
+  const t = r.hookSpecificOutput.additionalContext; assert.ok(/Knowledge bank on .*"cover screen"/.test(t) && /84pt trailing-only/.test(t), t);
+  const r2: any = await userPrompt({ session_id: 'tp2', cwd, prompt: 'Lay out the home screen so the toolbar clears the camera' });
+  assert.ok(!r2 || !/84pt trailing-only/.test(r2.hookSpecificOutput.additionalContext), 'a single shared word ("screen") is not a match');
+});
+
 test('when the bank query throws, the last successful brief cached in state.json is injected (DESIGN §3.1)', async () => {
   const first: any = await userPrompt({ session_id: 'u3', cwd, prompt });
   writeFileSync(path.join(process.env.OPTIMUS_HOME!, 'kb.sqlite'), 'not a database');
