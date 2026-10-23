@@ -124,3 +124,13 @@ test('drafts v1.5: progress reports with a number in them are narration, not cla
   assert.equal(isClaim('Building AVAudioEngine on the main thread stalled frames up to 524 ms; a serial queue brought the worst step to 33 ms'), true);
   assert.equal(isClaim('Beatmap generator builds a 3-minute 150 BPM Expert map in about 2.7 ms'), true);
 });
+
+test('drafts v1.5: dated market moves, second-person advice and questions are not findings', async () => {
+  const { isClaim } = await import('../../src/compaction/drafts.js');
+  assert.equal(isClaim('How low is "low"? QQQ closed around $704 on Thursday after falling about 2.9% on worries about AI spending'), false);
+  assert.equal(isClaim('If that money goes into QQQ and the Nasdaq falls another 20% by April, you\'d have to sell at a loss to pay the IRS'), false);
+  assert.equal(isClaim('QQQ is down 2.9% today, its biggest drop this week'), false);
+  assert.equal(isClaim('Your 2026 tax bill is about $101k'), false);
+  assert.equal(isClaim('The Nasdaq-100 drops 10% from a high about once a year on average since 1985'), true);
+  assert.equal(isClaim('A 0.50 kill line terminates the satellite on 10.6% of paths, 9.6x the 0.35 line'), true);
+});

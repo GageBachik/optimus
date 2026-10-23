@@ -927,7 +927,7 @@ var init_drafts = __esm({
     MAX_DRAFTS = 8;
     norm = (s) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim().slice(0, 100);
     MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|years|bars)\b|\b(?:a year|per year|sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|correlation|compute units|cu)\b/i;
-    NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|you'll|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue))\b|^(?:I|we|you|your|say|still|then|next)\b|`|\?\s*$/i;
+    NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|^(?:I|we|say|still|then|next)\b|`|\?/i;
     isClaim = (line) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
     shortTitle = (s) => s.length <= 120 ? s : s.slice(0, 120).replace(/\s+\S*$/, "") + "\u2026";
     draftsFile = (projectKey) => path8.join(paths.projectDir(projectKey), "draft-findings.json");
