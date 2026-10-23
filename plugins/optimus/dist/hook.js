@@ -878,87 +878,16 @@ var init_compare = __esm({
   }
 });
 
-// src/compaction/drafts.ts
-import path8 from "node:path";
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
-function buildDrafts(cfg, ts, transcriptPath, today = /* @__PURE__ */ new Date()) {
-  const day = today.toISOString().slice(0, 10);
-  const files = ts.files.map((f) => f.path).filter((p) => existsSync5(p)).slice(-3);
-  const evidence = [...transcriptPath && existsSync5(transcriptPath) ? [{ kind: "transcript", ref: transcriptPath }] : [], ...files.map((ref) => ({ kind: "path", ref }))];
-  const seen = /* @__PURE__ */ new Set();
-  const records = [];
-  for (const line of ts.exactValues) {
-    const title = line.replace(/\*\*/g, "").replace(/[.;:,]+$/, "").trim();
-    if (title.length < 24 || !isClaim(title)) continue;
-    const k = norm(title);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    records.push({ kind: "finding", title: shortTitle(title), body: `## Claim
-${title}
-
-## Evidence
-Drafted by optimus from the session transcript on ${day}; the numbers are as the session stated them, not re-measured. Edit the title into a claim, add a gate, or delete this record before running kb write.`, attrs: { state: "observed", valid_from: day }, evidence });
-    if (records.length >= MAX_DRAFTS) break;
-  }
-  return { defaults: { domain: cfg.domain, project: cfg.project_id }, records };
-}
-function writeDrafts(projectKey, spec) {
-  const file = draftsFile(projectKey), prev = readDrafts(file);
-  const seen = /* @__PURE__ */ new Set();
-  const pending = [], written = [];
-  for (const r of [...prev.filter((p) => p.written), ...spec.records, ...prev.filter((p) => !p.written)]) {
-    const k = norm(r.title);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    if (r.written) {
-      if (written.length < MAX_WRITTEN) written.push(r);
-    } else if (pending.length < MAX_FILE) pending.push(r);
-  }
-  if (!pending.length && !written.length) return void 0;
-  writeFileAtomic(file, JSON.stringify({ ...spec, records: [...pending, ...written] }, null, 2) + "\n");
-  return pending.length ? { file, count: pending.length } : void 0;
-}
-var MAX_DRAFTS, norm, MEASURE_RE, NARRATION_RE, isClaim, shortTitle, draftsFile, MAX_FILE, MAX_WRITTEN, readDrafts, pendingDrafts;
-var init_drafts = __esm({
-  "src/compaction/drafts.ts"() {
-    "use strict";
-    init_paths();
-    init_atomic();
-    MAX_DRAFTS = 8;
-    norm = (s) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim().slice(0, 100);
-    MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|years|bars)\b|\b(?:a year|per year|sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|correlation|compute units|cu)\b/i;
-    NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day|meanwhile|loading|waiting|in the background|(?:is|are|still) running)\b|^(?:I|we|say|still|then|next)\b|`|\?/i;
-    isClaim = (line) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
-    shortTitle = (s) => s.length <= 120 ? s : s.slice(0, 120).replace(/\s+\S*$/, "") + "\u2026";
-    draftsFile = (projectKey) => path8.join(paths.projectDir(projectKey), "draft-findings.json");
-    MAX_FILE = 20;
-    MAX_WRITTEN = 40;
-    readDrafts = (file) => {
-      try {
-        return existsSync5(file) ? JSON.parse(readFileSync5(file, "utf8")).records ?? [] : [];
-      } catch {
-        return [];
-      }
-    };
-    pendingDrafts = (projectKey) => {
-      const file = draftsFile(projectKey), count = readDrafts(file).filter((r) => !r.written).length;
-      return count ? { file, count } : void 0;
-    };
-  }
-});
-
 // src/kb/brief.ts
-import path9 from "node:path";
+import path8 from "node:path";
 function lastSessionSection(projectKey) {
-  const last = readJson(path9.join(paths.projectDir(projectKey), "last-session.json"));
+  const last = readJson(path8.join(paths.projectDir(projectKey), "last-session.json"));
   if (!last) return [];
   const t = last.taskState;
-  const drafts = pendingDrafts(projectKey);
   return [{ title: "Last session in this project", priority: 10, items: [
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`,
     `Goal: ${t.goalFirst}`,
     `Latest: ${t.goalLatest}`,
-    ...drafts ? [`Draft findings waiting for review: ${drafts.count} \u2014 review ${drafts.file}, then record them with: ${paths.kbCli()} write ${drafts.file}`] : [],
     ...t.openItems.map((o) => `Open: ${o}`),
     ...t.decisions,
     ...t.files.map((f) => `${f.path} (${f.action})`),
@@ -992,7 +921,7 @@ function findingLine(f, cfg) {
 function projectCard(cfg) {
   const t = cfg.target, facets = Object.entries(cfg.facets ?? {}).map(([k, v]) => `${k}=${v}`);
   const parts = [`Domain ${cfg.domain}`, t?.environment || t?.subject ? `target ${t.environment ?? "?"} \xD7 ${t.subject ?? "?"}` : "", facets.length ? `facets ${facets.join(", ")}` : "", cfg.relies_on?.length ? `relies on ${cfg.relies_on.join(", ")}` : ""];
-  return { title: `Project ${cfg.project_id}`, priority: 9, items: [`${parts.filter(Boolean).join("; ")}. Large tool outputs are offloaded; recall(id) reopens them exactly. kb_brief({ project: "${cfg.project_id}" }) re-reads this brief; kb_find searches the bank.`] };
+  return { title: `Project ${cfg.project_id}`, priority: 9, items: [`${parts.filter(Boolean).join("; ")}. Large tool outputs are offloaded; recall(id) reopens them exactly. kb_brief({ project: "${cfg.project_id}" }) re-reads this brief; kb_find searches the bank. When you measure a number or learn why something failed, record it as you go: kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${cfg.project_id}", tags: ["<2-3 concept words>"], attrs: { state: "observed" }, evidence: [{ kind: "path", ref: "<file>" }] }).`] };
 }
 function projectBrief(db, cfg, questions, limit = 9e3, today = /* @__PURE__ */ new Date()) {
   const findings = rankFindings(db, cfg, TOP_FINDINGS, today);
@@ -1049,7 +978,6 @@ var init_brief = __esm({
     init_budget();
     init_atomic();
     init_paths();
-    init_drafts();
     init_restore_brief();
     TOP_FINDINGS = 6;
     RECALL_FINDINGS = 5;
@@ -1060,9 +988,9 @@ var init_brief = __esm({
 });
 
 // src/kb/auto-register.ts
-import { existsSync as existsSync6, readdirSync, readFileSync as readFileSync6, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync5, readdirSync, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
 import os2 from "node:os";
-import path10 from "node:path";
+import path9 from "node:path";
 function loadLexicon(db) {
   const domains = installedDomains(db);
   if (!domains.length) return DEFAULT_LEXICON;
@@ -1106,7 +1034,7 @@ function listing(dir) {
       if (out2.length >= 400) return;
       const r = rel ? `${rel}/${e.name}` : e.name;
       out2.push(e.isDirectory() ? `${r}/` : r);
-      if (e.isDirectory() && depth < 2 && !SKIP_DIRS.has(e.name) && !e.name.startsWith(".")) walk(path10.join(d, e.name), r, depth + 1);
+      if (e.isDirectory() && depth < 2 && !SKIP_DIRS.has(e.name) && !e.name.startsWith(".")) walk(path9.join(d, e.name), r, depth + 1);
     }
   };
   walk(dir, "", 1);
@@ -1114,30 +1042,30 @@ function listing(dir) {
 }
 function inferDomain(cwd, lex = DEFAULT_LEXICON) {
   const files = listing(cwd), names = files.map((f) => f.toLowerCase()), has = (re) => names.some((n) => re.test(n));
-  const pkg = read(path10.join(cwd, "package.json")), cargo = read(path10.join(cwd, "Cargo.toml")), py = read(path10.join(cwd, "pyproject.toml")) + read(path10.join(cwd, "requirements.txt"));
+  const pkg = read(path9.join(cwd, "package.json")), cargo = read(path9.join(cwd, "Cargo.toml")), py = read(path9.join(cwd, "pyproject.toml")) + read(path9.join(cwd, "requirements.txt"));
   if (has(/\.xcodeproj\/$|\.xcworkspace\/$|^package\.swift$|^pubspec\.yaml$|\.swift$/)) return { domain: "ios", confidence: "high", reason: "Swift, Xcode or Flutter files" };
   if (/"@gen\//.test(pkg) || /\bgenie\b|\bgen-sdk\b/.test(cargo) || has(/^gen\.toml$|^genie\.toml$/)) return { domain: "gen-l1", confidence: "high", reason: "Gen SDK or genie crate" };
   if (has(/^anchor\.toml$|^programs\/$|^surfpool\.yaml$|^txtx\.yml$/) || /@solana\/|@coral-xyz\/anchor|@metaplex|@raydium|@jup-ag|@pinocchio/.test(pkg) || /solana-program|anchor-lang|pinocchio|spl-token/.test(cargo)) return { domain: "solana", confidence: "high", reason: "Solana program or SDK dependencies" };
   if (has(/^backtests?\/$|^strategies\/$|^signals\/$|^backtest\.py$/) || /databento|ib_insync|ibapi|alpaca|thetadata|ccxt|backtrader|vectorbt|yfinance|polygon|quantstats|zipline|schwab|tastytrade|tradingview/.test(py + pkg)) return { domain: "trading", confidence: "high", reason: "market-data or broker dependencies" };
-  const byName = domainFromText(path10.basename(cwd).replace(/[-_.]+/g, " "), 1, 1, lex);
+  const byName = domainFromText(path9.basename(cwd).replace(/[-_.]+/g, " "), 1, 1, lex);
   if (byName) return { domain: byName.domain, confidence: "low", reason: `folder name suggests ${byName.domain} (${byName.reason})` };
   return { domain: "tooling", confidence: "low", reason: files.length ? "no chain, mobile or market signals" : "empty folder" };
 }
 function findConfig(cwd) {
-  let dir = path10.resolve(cwd), file = "";
+  let dir = path9.resolve(cwd), file = "";
   for (let i = 0; i < 8; i++) {
-    const f = path10.join(dir, ".kb.json");
-    if (existsSync6(f)) {
+    const f = path9.join(dir, ".kb.json");
+    if (existsSync5(f)) {
       file = f;
       break;
     }
-    const up = path10.dirname(dir);
+    const up = path9.dirname(dir);
     if (up === dir) break;
     dir = up;
   }
   if (!file) return null;
   try {
-    return { file, cfg: JSON.parse(readFileSync6(file, "utf8")) };
+    return { file, cfg: JSON.parse(readFileSync5(file, "utf8")) };
   } catch {
     return null;
   }
@@ -1181,22 +1109,22 @@ function looksLikeProject(cwd) {
   } catch {
     return false;
   }
-  const repos = entries.filter((e) => existsSync6(path10.join(cwd, e, ".git"))).length;
+  const repos = entries.filter((e) => existsSync5(path9.join(cwd, e, ".git"))).length;
   if (repos >= 2) return false;
-  return existsSync6(path10.join(cwd, ".git")) || MANIFESTS.some((m) => existsSync6(path10.join(cwd, m))) || entries.some((e) => e.endsWith(".xcodeproj")) || entries.length <= 8;
+  return existsSync5(path9.join(cwd, ".git")) || MANIFESTS.some((m) => existsSync5(path9.join(cwd, m))) || entries.some((e) => e.endsWith(".xcodeproj")) || entries.length <= 8;
 }
 function autoRegister(cwd, home = os2.homedir(), lex = DEFAULT_LEXICON) {
   if (!cwd) return null;
-  const dir = path10.resolve(cwd);
-  if (!existsSync6(dir) || !dir.startsWith(home + path10.sep)) return null;
-  const rel = path10.relative(home, dir);
-  if (rel.split(path10.sep).some((s) => s.startsWith(".") || SKIP_DIRS.has(s))) return null;
+  const dir = path9.resolve(cwd);
+  if (!existsSync5(dir) || !dir.startsWith(home + path9.sep)) return null;
+  const rel = path9.relative(home, dir);
+  if (rel.split(path9.sep).some((s) => s.startsWith(".") || SKIP_DIRS.has(s))) return null;
   if (["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"].includes(rel)) return null;
   if (loadProjectConfig(dir)) return null;
   if (!looksLikeProject(dir)) return null;
   const { domain, confidence, reason } = inferDomain(dir, lex);
-  const project_id = path10.basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
-  const file = path10.join(dir, ".kb.json");
+  const project_id = path9.basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  const file = path9.join(dir, ".kb.json");
   writeFileSync3(file, JSON.stringify({ project_id, domain, auto: { registered: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), confidence, reason } }, null, 2) + "\n");
   log("info", "auto-registered project", { file, domain, confidence, reason });
   return { file, project_id, domain, confidence, reason };
@@ -1222,7 +1150,7 @@ var init_auto_register = __esm({
     MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "requirements.txt", "go.mod", "Package.swift", "pubspec.yaml", "Anchor.toml"];
     read = (p) => {
       try {
-        return readFileSync6(p, "utf8");
+        return readFileSync5(p, "utf8");
       } catch {
         return "";
       }
@@ -1241,7 +1169,7 @@ __export(session_start_exports, {
   handler: () => handler,
   sessionStart: () => sessionStart
 });
-import path11 from "node:path";
+import path10 from "node:path";
 function lexicon() {
   try {
     const db = openDb();
@@ -1280,7 +1208,7 @@ function startupText(cwd, sessionId, cfg) {
     }
   }
   const hint = cfg ? "The knowledge bank did not answer (see hooks.log)." : `No .kb.json here; ${paths.kbCli()} project init --domain <d> registers this repo.`;
-  const card = `Project memory active for ${path11.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. ${hint}`;
+  const card = `Project memory active for ${path10.basename(cwd) || "this project"}. Large tool outputs are offloaded; recall(id) reopens them exactly. ${hint}`;
   return fitBrief(PREAMBLE, [...lastSessionSection(paths.projectKey(cwd)), { title: "Project", priority: 9, items: [card] }]).text;
 }
 async function sessionStart(input) {
@@ -1299,7 +1227,7 @@ async function sessionStart(input) {
   }
   if (source !== "compact") return void 0;
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
-  if (ts) return out(buildRestoreBrief(ts, readJson(path11.join(paths.sessionDir(sessionId), "audit.json"))));
+  if (ts) return out(buildRestoreBrief(ts, readJson(path10.join(paths.sessionDir(sessionId), "audit.json"))));
   return out(fitBrief("Context was compacted. No task-state record was found for this session.", [{ title: "Pointers", priority: 1, items: recallPointers(loadState(sessionId)) }]).text);
 }
 var out, QUESTIONS_SHOWN, handler;
@@ -1325,17 +1253,17 @@ var init_session_start = __esm({
 
 // src/offload/blobs.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync7, readFileSync as readFileSync7, appendFileSync as appendFileSync2, readdirSync as readdirSync2, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
-import path12 from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync6, appendFileSync as appendFileSync2, readdirSync as readdirSync2, statSync as statSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import path11 from "node:path";
 function storeBlob(text, meta) {
   const id = createHash2("sha256").update(text, "utf8").digest("hex");
-  const file = path12.join(paths.blobsDir(), id);
-  const created = !existsSync7(file);
+  const file = path11.join(paths.blobsDir(), id);
+  const created = !existsSync6(file);
   const lines = text.split("\n").length;
   if (created) {
     writeFileAtomic(file, text);
     const m = { id, tool: meta.tool, chars: text.length, lines, head: text.slice(0, 96).replace(/\s+/g, " "), sessionId: meta.sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), command: meta.command === void 0 ? void 0 : redactSensitive(meta.command).text.slice(0, 120) };
-    appendFileSync2(path12.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
+    appendFileSync2(path11.join(paths.blobsDir(), "index.jsonl"), JSON.stringify(m) + "\n", "utf8");
   }
   return { id, id16: id.slice(0, 16), created, chars: text.length, lines };
 }
@@ -1343,22 +1271,22 @@ function gcBlobs(maxAgeDays = 14, maxBytes = 500 * 1024 * 1024) {
   const dir = paths.blobsDir();
   const now = Date.now();
   const gone = /* @__PURE__ */ new Set();
-  const files = readdirSync2(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path12.join(dir, f)) }));
+  const files = readdirSync2(dir).filter((f) => f.length === 64).map((f) => ({ f, st: statSync2(path11.join(dir, f)) }));
   const kept = files.filter(({ f, st }) => {
     if (now - st.mtimeMs <= maxAgeDays * 864e5) return true;
-    unlinkSync2(path12.join(dir, f));
+    unlinkSync2(path11.join(dir, f));
     gone.add(f);
     return false;
   });
   let total = kept.reduce((n, x) => n + x.st.size, 0);
   for (const { f, st } of kept.sort((a, b) => a.st.mtimeMs - b.st.mtimeMs)) {
     if (total <= maxBytes) break;
-    unlinkSync2(path12.join(dir, f));
+    unlinkSync2(path11.join(dir, f));
     total -= st.size;
     gone.add(f);
   }
-  const index = path12.join(dir, "index.jsonl");
-  if (gone.size && existsSync7(index)) writeFileAtomic(index, readFileSync7(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
+  const index = path11.join(dir, "index.jsonl");
+  if (gone.size && existsSync6(index)) writeFileAtomic(index, readFileSync6(index, "utf8").split("\n").filter((l) => l && !gone.has(/"id":"([0-9a-f]{64})"/.exec(l)?.[1] ?? "")).map((l) => l + "\n").join(""));
   return { removed: gone.size };
 }
 var init_blobs = __esm({
@@ -1371,16 +1299,16 @@ var init_blobs = __esm({
 });
 
 // src/lib/kb-sync.ts
-import { existsSync as existsSync8 } from "node:fs";
+import { existsSync as existsSync7 } from "node:fs";
 import { spawn } from "node:child_process";
-import path13 from "node:path";
+import path12 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function kbJs() {
-  const here = path13.dirname(fileURLToPath2(import.meta.url));
-  return [path13.join(here, "kb.js"), path13.join(here, "..", "..", "dist", "kb.js")].find(existsSync8);
+  const here = path12.dirname(fileURLToPath2(import.meta.url));
+  return [path12.join(here, "kb.js"), path12.join(here, "..", "..", "dist", "kb.js")].find(existsSync7);
 }
 function spawnKbSync() {
-  if (!existsSync8(path13.join(paths.bankDir(), ".git"))) return;
+  if (!existsSync7(path12.join(paths.bankDir(), ".git"))) return;
   const kb = kbJs();
   if (!kb) {
     log("warn", "kb sync not spawned: dist/kb.js not found");
@@ -1600,7 +1528,7 @@ __export(pre_compact_exports, {
   preCompact: () => preCompact
 });
 import { rmSync as rmSync2 } from "node:fs";
-import path14 from "node:path";
+import path13 from "node:path";
 async function preCompact(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
@@ -1616,9 +1544,9 @@ async function preCompact(input) {
   }
   const ts = JSON.parse(JSON.stringify(extractTaskState(readTranscript(tp, 0).entries, recallPointers(state)), redactJson));
   const dir = paths.sessionDir(sessionId);
-  rmSync2(path14.join(dir, "audit.json"), { force: true });
-  writeFileAtomic(path14.join(dir, "task-state.md"), renderTaskState(ts));
-  writeFileAtomic(path14.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
+  rmSync2(path13.join(dir, "audit.json"), { force: true });
+  writeFileAtomic(path13.join(dir, "task-state.md"), renderTaskState(ts));
+  writeFileAtomic(path13.join(dir, "task-state.json"), JSON.stringify(ts) + "\n");
   saveState(sessionId, state);
   log("info", "pre-compact snapshot written", { sessionId, trigger: input.trigger, snapshots: state.snapshots.length });
   return void 0;
@@ -1640,14 +1568,14 @@ var init_pre_compact = __esm({
 });
 
 // src/compaction/audit.ts
-import path15 from "node:path";
+import path14 from "node:path";
 function auditSummary(summary, ts) {
   const s = summary.toLowerCase();
   const present = [], missing = [];
   const check = (label, key) => {
     (key && s.includes(key.toLowerCase()) ? present : missing).push(label);
   };
-  for (const f of ts.files) check(path15.basename(f.path), path15.basename(f.path));
+  for (const f of ts.files) check(path14.basename(f.path), path14.basename(f.path));
   for (const c of ts.commands) check(c.cmd, c.cmd.split(/\s+/).slice(0, 2).join(" "));
   for (const o of ts.openItems) check(o, o.split(/\s+/).slice(0, 6).join(" "));
   for (const e of ts.errors) check(e, e.split(/\s+/).slice(0, 8).join(" "));
@@ -1666,7 +1594,7 @@ __export(post_compact_exports, {
   handler: () => handler6,
   postCompact: () => postCompact
 });
-import path16 from "node:path";
+import path15 from "node:path";
 async function postCompact(input) {
   if (input.agent_id) return void 0;
   const summary = String(input.compact_summary ?? "");
@@ -1675,7 +1603,7 @@ async function postCompact(input) {
   const ts = loadTaskState(sessionId, String(input.transcript_path ?? ""));
   if (!ts) return void 0;
   const audit = auditSummary(summary, ts);
-  writeFileAtomic(path16.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
+  writeFileAtomic(path15.join(paths.sessionDir(sessionId), "audit.json"), JSON.stringify({ ...audit, summary_chars: summary.length, at: (/* @__PURE__ */ new Date()).toISOString() }, null, 2) + "\n");
   log("info", "post-compact audit written", { sessionId, present: audit.present.length, missing: audit.missing.length });
   return void 0;
 }
@@ -1698,9 +1626,9 @@ __export(subagent_start_exports, {
   handler: () => handler7,
   subagentStart: () => subagentStart
 });
-import path17 from "node:path";
+import path16 from "node:path";
 async function subagentStart(input) {
-  const cwd = String(input.cwd ?? ""), cfg = loadProjectConfig(cwd), proj = cfg?.project_id ?? (path17.basename(cwd) || "this project");
+  const cwd = String(input.cwd ?? ""), cfg = loadProjectConfig(cwd), proj = cfg?.project_id ?? (path16.basename(cwd) || "this project");
   const lines = [`Project memory: project ${proj}${cfg ? `, domain ${cfg.domain}` : ""}. Offloaded tool outputs and pre-compaction snapshots reopen with recall(id). kb_brief({ project: "${proj}" }) returns the full brief; kb_find searches the bank at ${paths.bankDir()}. Keep your own context small: summarize what you read, do not paste large outputs back. (agent_type: ${String(input.agent_type ?? "unknown")})`];
   if (cfg) {
     let gates = [];
@@ -1736,6 +1664,73 @@ var init_subagent_start = __esm({
     SUBAGENT_FINDINGS = 5;
     CAP = 3e3;
     handler7 = subagentStart;
+  }
+});
+
+// src/compaction/drafts.ts
+import path17 from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync7 } from "node:fs";
+function buildDrafts(cfg, ts, transcriptPath, today = /* @__PURE__ */ new Date()) {
+  const day = today.toISOString().slice(0, 10);
+  const files = ts.files.map((f) => f.path).filter((p) => existsSync8(p)).slice(-3);
+  const evidence = [...transcriptPath && existsSync8(transcriptPath) ? [{ kind: "transcript", ref: transcriptPath }] : [], ...files.map((ref) => ({ kind: "path", ref }))];
+  const seen = /* @__PURE__ */ new Set();
+  const records = [];
+  for (const line of ts.exactValues) {
+    const title = line.replace(/\*\*/g, "").replace(/[.;:,]+$/, "").trim();
+    if (title.length < 24 || !isClaim(title)) continue;
+    const k = norm(title);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    records.push({ kind: "finding", title: shortTitle(title), body: `## Claim
+${title}
+
+## Evidence
+Drafted by optimus from the session transcript on ${day}; the numbers are as the session stated them, not re-measured. Edit the title into a claim, add a gate, or delete this record before running kb write.`, attrs: { state: "observed", valid_from: day }, evidence });
+    if (records.length >= MAX_DRAFTS) break;
+  }
+  return { defaults: { domain: cfg.domain, project: cfg.project_id }, records };
+}
+function writeDrafts(projectKey, spec) {
+  const file = draftsFile(projectKey), prev = readDrafts(file);
+  const seen = /* @__PURE__ */ new Set();
+  const pending = [], written = [];
+  for (const r of [...prev.filter((p) => p.written), ...spec.records, ...prev.filter((p) => !p.written)]) {
+    const k = norm(r.title);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (r.written) {
+      if (written.length < MAX_WRITTEN) written.push(r);
+    } else if (pending.length < MAX_FILE) pending.push(r);
+  }
+  if (!pending.length && !written.length) return void 0;
+  writeFileAtomic(file, JSON.stringify({ ...spec, records: [...pending, ...written] }, null, 2) + "\n");
+  return pending.length ? { file, count: pending.length } : void 0;
+}
+var MAX_DRAFTS, norm, MEASURE_RE, NARRATION_RE, isClaim, shortTitle, draftsFile, MAX_FILE, MAX_WRITTEN, readDrafts, draftKey, existingDraftKeys;
+var init_drafts = __esm({
+  "src/compaction/drafts.ts"() {
+    "use strict";
+    init_paths();
+    init_atomic();
+    MAX_DRAFTS = 8;
+    norm = (s) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim().slice(0, 100);
+    MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|years|bars)\b|\b(?:a year|per year|sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|correlation|compute units|cu)\b/i;
+    NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day|meanwhile|loading|waiting|in the background|(?:is|are|still) running)\b|^(?:I|we|say|still|then|next)\b|`|\?/i;
+    isClaim = (line) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
+    shortTitle = (s) => s.length <= 120 ? s : s.slice(0, 120).replace(/\s+\S*$/, "") + "\u2026";
+    draftsFile = (projectKey) => path17.join(paths.projectDir(projectKey), "draft-findings.json");
+    MAX_FILE = 20;
+    MAX_WRITTEN = 40;
+    readDrafts = (file) => {
+      try {
+        return existsSync8(file) ? JSON.parse(readFileSync7(file, "utf8")).records ?? [] : [];
+      } catch {
+        return [];
+      }
+    };
+    draftKey = norm;
+    existingDraftKeys = (projectKey) => new Set(readDrafts(draftsFile(projectKey)).map((r) => norm(r.title)));
   }
 });
 
@@ -1781,6 +1776,16 @@ __export(stop_exports, {
 });
 import path18 from "node:path";
 import { appendFileSync as appendFileSync3, existsSync as existsSync10 } from "node:fs";
+function lastPromptIndex(entries) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e.type !== "user" || e.isMeta) continue;
+    const c = e.message?.content;
+    const text = typeof c === "string" ? c : Array.isArray(c) ? c.filter((x) => x?.type === "text").map((x) => String(x.text ?? "")).join("\n") : "";
+    if (text.trim() && !/^\s*[<[]/.test(text)) return i;
+  }
+  return 0;
+}
 async function stop(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
@@ -1788,19 +1793,32 @@ async function stop(input) {
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
   const entries = tp && existsSync10(tp) ? readTranscript(tp, 0).entries : [];
+  let cfg = null, ask = [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
-    const cfg = loadProjectConfig(cwd);
-    const drafts = cfg ? writeDrafts(paths.projectKey(cwd), buildDrafts(cfg, taskState, tp)) : void 0;
+    cfg = loadProjectConfig(cwd);
+    let drafts;
+    if (cfg) {
+      const key = paths.projectKey(cwd), turn = entries.slice(lastPromptIndex(entries));
+      const turnState = JSON.parse(JSON.stringify(extractTaskState(turn, []), redactJson));
+      const spec = buildDrafts(cfg, turnState, tp), known = existingDraftKeys(key);
+      const fresh = spec.records.filter((r) => !known.has(draftKey(r.title)));
+      drafts = writeDrafts(key, spec);
+      if (fresh.length && !input.stop_hook_active && !wroteFindings(turn)) ask = fresh.slice(0, MAX_ASK);
+    }
     const last = { at, sessionId, cwd, taskState, ...drafts ? { drafts } : {} };
     writeFileAtomic(path18.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
   }
   const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
   appendFileSync3(path18.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
   if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
+  if (cfg && ask.length) {
+    log("info", "stop: asked the session to record", { project: cfg.project_id, candidates: ask.length });
+    return { decision: "block", reason: askText(cfg, ask) };
+  }
   return void 0;
 }
-var handler9;
+var MAX_ASK, wroteFindings, askText, handler9;
 var init_stop = __esm({
   "src/hooks/stop.ts"() {
     "use strict";
@@ -1810,9 +1828,16 @@ var init_stop = __esm({
     init_transcript();
     init_session_state();
     init_kb_sync();
+    init_log();
     init_task_state();
     init_drafts();
     init_project();
+    MAX_ASK = 8;
+    wroteFindings = (turn) => turn.some((e) => e.type === "assistant" && Array.isArray(e.message?.content) && e.message.content.some((b) => b?.type === "tool_use" && /kb_write$/.test(String(b.name ?? ""))));
+    askText = (cfg, ask) => [
+      `Optimus: before finishing, record what this turn established. For each candidate below that is a durable, reusable result (a measurement, the cause of a failure, a limit that was hit), call kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${cfg.project_id}", tags: ["<2-3 concept words a future prompt would use>"], attrs: { state: "observed" }, evidence: [{ kind: "path", ref: "<file>" }] }). Skip narration, definitions, dated prices and advice. Then finish; this request is not repeated for these statements.`,
+      ...ask.map((r) => `- ${r.title}`)
+    ].join("\n");
     handler9 = stop;
   }
 });

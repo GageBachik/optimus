@@ -53,11 +53,7 @@ Restart Claude Code, or run `/reload-plugins` in an open session, so the hooks a
 - **On your first prompt** the folder is registered in the bank. Optimus writes a small `.kb.json` (project id and domain) at the folder root; commit it or git-ignore it, your call, the folder takes part as long as the file exists. The folder's files and name give a first guess of its domain (trading, solana, gen-l1, ios, tooling), and your first real prompt settles it. If nothing fits, Optimus asks once whether this is a new kind of project and creates the domain on your yes.
 - **On prompts that name something the bank knows** (a concept, another project) a few related findings, from this project's domain only.
 - **After compaction** the restore brief, with the items Claude Code's summary left out.
-- **At the end of a session** a draft file of the measurements the session stated, for you to review and record:
-
-```sh
-kb write ~/.optimus/projects/<project>/draft-findings.json
-```
+- **At the end of a turn**, if the session stated measurements it did not record, Optimus asks it once to judge them and record the durable ones itself. Nothing is left for you to run; the drafts stay in `~/.optimus/projects/<project>/draft-findings.json` as a log.
 
 Agents your session spawns get the same project card and record what they measure on their own.
 

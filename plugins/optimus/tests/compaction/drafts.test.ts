@@ -98,7 +98,7 @@ test('drafts v1.5: a recorded draft stays in the file as written, is never draft
   assert.equal(d2.records.length, 2); assert.equal(d2.records.filter((r) => r.written).length, 1);
   // the brief line reads the file, not the last-session record
   writeFileSync(path.join(paths.projectDir(key), 'last-session.json'), JSON.stringify({ at: 'now', sessionId: 's', cwd, taskState: { goalFirst: 'g', goalLatest: 'l', openItems: [], decisions: [], files: [], pointers: [] }, drafts: { file, count: 2 } }));
-  const items = lastSessionSection(key)[0].items; assert.ok(items.some((i) => i.startsWith('Draft findings waiting for review: 1 ')), items.join('\n'));
+  assert.ok(!lastSessionSection(key)[0].items.some((i) => i.startsWith('Draft findings')), 'v1.6: no review line — the session records its own findings');
   d2.records.forEach((r) => (r.written = r.written ?? 'f_test2')); writeFileSync(file, JSON.stringify(d2));
   assert.equal(pendingDrafts(key), undefined); assert.ok(!lastSessionSection(key)[0].items.some((i) => i.startsWith('Draft findings')), 'no line once everything is recorded');
   assert.equal(writeDrafts(key, spec), undefined, 'nothing pending: the Stop hook carries no drafts line');

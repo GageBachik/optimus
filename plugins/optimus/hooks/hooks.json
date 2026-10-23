@@ -153,8 +153,7 @@
               "--disable-warning=ExperimentalWarning",
               "${CLAUDE_PLUGIN_ROOT}/dist/hook.js",
               "stop"
-            ],
-            "async": true
+            ]
           }
         ]
       }

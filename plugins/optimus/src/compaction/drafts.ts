@@ -56,7 +56,11 @@ export function writeDrafts(projectKey: string, spec: DraftSpec): { file: string
   writeFileAtomic(file, JSON.stringify({ ...spec, records: [...pending, ...written] }, null, 2) + '\n');
   return pending.length ? { file, count: pending.length } : undefined;
 }
-/** The drafts still waiting for review in the project's file, for the brief's one line; undefined when there are none. */
+/** The dedupe key of a draft title (the Stop hook uses it to tell which of a turn's statements are new to the project's log). */
+export const draftKey = norm;
+/** The keys of every record already in the project's log, pending or recorded. */
+export const existingDraftKeys = (projectKey: string): Set<string> => new Set(readDrafts(draftsFile(projectKey)).map((r) => norm(r.title)));
+/** The drafts still waiting in the project's log; undefined when there are none. (v1.6: a log for the session, not a to-do list for a person.) */
 export const pendingDrafts = (projectKey: string): { file: string; count: number } | undefined => {
   const file = draftsFile(projectKey), count = readDrafts(file).filter((r) => !r.written).length;
   return count ? { file, count } : undefined;

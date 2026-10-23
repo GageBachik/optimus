@@ -10,7 +10,6 @@ import { readJson } from '../lib/atomic.js';
 import { paths } from '../lib/paths.js';
 import type { SessionState } from '../lib/session-state.js';
 import type { LastSession } from '../compaction/task-state.js';
-import { pendingDrafts } from '../compaction/drafts.js';
 import { PREAMBLE } from '../compaction/restore-brief.js';
 
 /** Findings per brief before fitBrief trims; ~200 chars a line. */
@@ -25,11 +24,9 @@ export function lastSessionSection(projectKey: string): Section[] {
   const last = readJson<LastSession>(path.join(paths.projectDir(projectKey), 'last-session.json'));
   if (!last) return [];
   const t = last.taskState;
-  // v1.5: the count comes from the draft file itself, not the last-session record, so a `kb write` run between turns stops the line.
-  const drafts = pendingDrafts(projectKey);
+  // v1.6: no draft-review line — the session records its own findings (the Stop hook asks once per turn when it did not); the draft file is a log.
   return [{ title: 'Last session in this project', priority: 10, items: [
     `When: ${last.at} (session ${last.sessionId}, in ${last.cwd})`, `Goal: ${t.goalFirst}`, `Latest: ${t.goalLatest}`,
-    ...(drafts ? [`Draft findings waiting for review: ${drafts.count} — review ${drafts.file}, then record them with: ${paths.kbCli()} write ${drafts.file}`] : []),
     ...t.openItems.map((o) => `Open: ${o}`), ...t.decisions, ...t.files.map((f) => `${f.path} (${f.action})`), ...t.pointers,
   ] }];
 }
@@ -63,7 +60,8 @@ export function findingLine(f: Candidate & { demoted?: boolean }, cfg?: ProjectC
 function projectCard(cfg: ProjectConfig): Section {
   const t = cfg.target, facets = Object.entries(cfg.facets ?? {}).map(([k, v]) => `${k}=${v}`);
   const parts = [`Domain ${cfg.domain}`, t?.environment || t?.subject ? `target ${t.environment ?? '?'} × ${t.subject ?? '?'}` : '', facets.length ? `facets ${facets.join(', ')}` : '', cfg.relies_on?.length ? `relies on ${cfg.relies_on.join(', ')}` : ''];
-  return { title: `Project ${cfg.project_id}`, priority: 9, items: [`${parts.filter(Boolean).join('; ')}. Large tool outputs are offloaded; recall(id) reopens them exactly. kb_brief({ project: "${cfg.project_id}" }) re-reads this brief; kb_find searches the bank.`] };
+  // v1.6: the main session records its own findings as it goes, like its agents do; the Stop hook asks once about anything it stated but did not record.
+  return { title: `Project ${cfg.project_id}`, priority: 9, items: [`${parts.filter(Boolean).join('; ')}. Large tool outputs are offloaded; recall(id) reopens them exactly. kb_brief({ project: "${cfg.project_id}" }) re-reads this brief; kb_find searches the bank. When you measure a number or learn why something failed, record it as you go: kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${cfg.project_id}", tags: ["<2-3 concept words>"], attrs: { state: "observed" }, evidence: [{ kind: "path", ref: "<file>" }] }).`] };
 }
 
 export type ProjectBrief = { text: string; findings: Ranked[] };

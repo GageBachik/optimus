@@ -23,7 +23,7 @@ Three real sessions (a trading research session of about three hours, an iOS bui
 ## Open items
 
 1. Reuse test 2: a second project in the same domain as a recent build session, to check that the start-up brief surfaces that session's findings and the new session applies them without rediscovering. Caveat: a finding recorded without tags is reachable only through the start-up brief (domain ranking), not through prompt recall (concept matching).
-2. Pending drafts in `~/.optimus/projects/*/draft-findings.json`: record with `kb write <file>` after review.
+2. Drafts in `~/.optimus/projects/*/draft-findings.json` are a log: the session records its own findings (project card instruction, plus a once-per-turn Stop-hook ask). Watch that the ask fires only when a turn stated measurements and recorded nothing, and never twice.
 3. Open concept-merge questions: `kb concepts review`.
 4. Transfer-proposal lines in briefs ("your environment differs: …") are long and rarely used; a candidate for trimming after more evidence.
 
