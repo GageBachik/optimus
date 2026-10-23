@@ -150,6 +150,10 @@ export const candidateFindings = (db: Db, cfg: ProjectConfig): Candidate[] => lo
  *  saw only what their sibling agents had recorded in the last hour, and not the Duo inset recorded the day before. */
 export function rankFindings(db: Db, cfg: ProjectConfig, limit: number, today = new Date()): Ranked[] {
   const ranked = rankCandidates(db, candidateFindings(db, cfg), cfg, today);
+  // Only a project that declares nothing needs forced cross-project slots. One with facets and a target has a real relevance score, and
+  // forcing slots there handed an investment-strategy brief three findings about a Solana market-maker bot that merely shared a facet key.
+  const bare = !Object.keys(cfg.facets ?? {}).length && !cfg.target?.environment && !cfg.target?.subject && !cfg.relies_on?.length;
+  if (!bare) return ranked.slice(0, limit);
   const own = ranked.filter((f) => f.project === cfg.project_id), other = ranked.filter((f) => f.project !== cfg.project_id);
   const out: Ranked[] = [];
   for (let i = 0; out.length < limit && (i < own.length || i < other.length); i++) {

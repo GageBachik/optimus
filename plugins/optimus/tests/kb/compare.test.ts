@@ -8,7 +8,7 @@ const { openDb } = await import('../../src/kb/db.js');
 const { installTemplate, conceptNoteId } = await import('../../src/kb/templates.js');
 const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
 const { kbWrite } = await import('../../src/kb/write.js');
-const { compareConcept, resolveConceptRef } = await import('../../src/kb/compare.js');
+const { compareConcept, comparisonSections, resolveConceptRef } = await import('../../src/kb/compare.js');
 const { buildProjectBrief } = await import('../../src/kb/brief.js');
 const bank = process.env.OPTIMUS_BANK!, now = '2026-10-16T00:00:00Z';
 test('kb_compare: gate rank first even over a better metric (paper −0.5% above in-sample −4%/−1%), then the metric in its better direction (−4% above −1%, Review Focus 5); brief shows the block', () => {
@@ -30,8 +30,9 @@ test('kb_compare: gate rank first even over a better metric (paper −0.5% above
   assert.equal(resolveConceptRef(db, 'position sizing'), conceptNoteId('risk sizing')); // alias and id both resolve
   assert.equal(resolveConceptRef(db, conceptNoteId('risk sizing')), conceptNoteId('risk sizing'));
   const brief = buildProjectBrief(db, { project_id: 'spy', domain: 'trading', facets: { risk: 'vol-target' } }, []);
-  assert.ok(brief.includes('## Comparison: risk sizing by risk'), brief);
-  const lines = brief.split('\n'), at = (id: string) => lines.findIndex((l) => l.includes(`[${id}]`) && l.startsWith('- risk='));
-  assert.ok(at(gated) >= 0 && at(gated) < at(deep) && at(deep) < at(shallow), brief);
-  assert.ok(!buildProjectBrief(db, { project_id: 'x', domain: 'trading', facets: { entry: 'breakout' } }, []).includes('## Comparison'));
+  assert.ok(brief.includes('## Comparisons available') && /kb_compare\(\{ concept: "<name>" \}\) compares approaches by facet \(risk\) for: risk sizing/.test(brief) && !brief.includes('## Comparison: risk sizing by risk'), 'v1.5: the start-up brief points at kb_compare instead of carrying the table:\n' + brief);
+  const sec = comparisonSections(db, { project_id: 'spy', domain: 'trading', facets: { risk: 'vol-target' } }).find((s) => s.title === 'Comparison: risk sizing by risk')!;
+  const at = (id: string) => sec.items.findIndex((l) => l.includes(`[${id}]`) && l.startsWith('risk='));
+  assert.ok(at(gated) >= 0 && at(gated) < at(deep) && at(deep) < at(shallow), sec.items.join('\n'));
+  assert.ok(!buildProjectBrief(db, { project_id: 'x', domain: 'trading', facets: { entry: 'breakout' } }, []).includes('Comparisons available'));
 });

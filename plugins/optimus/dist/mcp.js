@@ -29609,6 +29609,8 @@ function rankCandidates(db2, cands, cfg, today = /* @__PURE__ */ new Date()) {
 var candidateFindings = (db2, cfg) => loadCandidates(db2, candidateIds(db2, cfg));
 function rankFindings(db2, cfg, limit, today = /* @__PURE__ */ new Date()) {
   const ranked = rankCandidates(db2, candidateFindings(db2, cfg), cfg, today);
+  const bare = !Object.keys(cfg.facets ?? {}).length && !cfg.target?.environment && !cfg.target?.subject && !cfg.relies_on?.length;
+  if (!bare) return ranked.slice(0, limit);
   const own = ranked.filter((f) => f.project === cfg.project_id), other = ranked.filter((f) => f.project !== cfg.project_id);
   const out = [];
   for (let i = 0; out.length < limit && (i < own.length || i < other.length); i++) {
@@ -29794,10 +29796,17 @@ function projectBrief(db2, cfg, questions, limit = 9e3, today = /* @__PURE__ */ 
     projectCard(cfg),
     { title: "Pending concept questions", priority: 8, items: questions.slice(0, 3) },
     { title: "Relevant findings", priority: 7, items: findings.map((f) => findingLine(f, cfg)) },
-    ...comparisonSections(db2, cfg),
+    // v1.5: the comparison tables themselves stay out of the start-up brief — five of them, all 0DTE and LEAPS metrics from another
+    // project, filled an investment-strategy brief to its 9,000-character cap for a question about buying an index fund. One line says
+    // which comparisons exist; kb_compare returns a table on demand.
+    { title: "Comparisons available", priority: 6, items: comparisonPointer(db2, cfg) },
     { title: "Imported memories for this project", priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "\u2026" }) opens any of them`, ...memories] : [] }
   ];
   return { text: fitBrief(PREAMBLE, sections, limit).text, findings };
+}
+function comparisonPointer(db2, cfg) {
+  const names = [...new Set(comparisonSections(db2, cfg).map((s) => s.title.replace(/^Comparison: /, "").replace(/ by [^ ]+$/, "")))];
+  return names.length ? [`kb_compare({ concept: "<name>" }) compares approaches by facet (${Object.keys(cfg.facets ?? {}).join(", ")}) for: ${names.join(", ")}`] : [];
 }
 
 // src/kb/project.ts

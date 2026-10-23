@@ -78,12 +78,21 @@ export function projectBrief(db: Db, cfg: ProjectConfig, questions: string[], li
     ...lastSessionSection(cfg.project_id), projectCard(cfg),
     { title: 'Pending concept questions', priority: 8, items: questions.slice(0, 3) },
     { title: 'Relevant findings', priority: 7, items: findings.map((f) => findingLine(f, cfg)) },
-    ...comparisonSections(db, cfg),
+    // v1.5: the comparison tables themselves stay out of the start-up brief — five of them, all 0DTE and LEAPS metrics from another
+    // project, filled an investment-strategy brief to its 9,000-character cap for a question about buying an index fund. One line says
+    // which comparisons exist; kb_compare returns a table on demand.
+    { title: 'Comparisons available', priority: 6, items: comparisonPointer(db, cfg) },
     { title: 'Imported memories for this project', priority: 1, items: memories.length ? [`kb_find({ project: "${cfg.project_id}", kind: "evidence", text: "…" }) opens any of them`, ...memories] : [] },
   ];
   return { text: fitBrief(PREAMBLE, sections, limit).text, findings };
 }
 export const buildProjectBrief = (db: Db, cfg: ProjectConfig, questions: string[], limit = 9000): string => projectBrief(db, cfg, questions, limit).text;
+
+/** The concepts that have a facet comparison for this project's facet keys, as one line naming the call that returns the table. */
+function comparisonPointer(db: Db, cfg: ProjectConfig): string[] {
+  const names = [...new Set(comparisonSections(db, cfg).map((s) => s.title.replace(/^Comparison: /, '').replace(/ by [^ ]+$/, '')))];
+  return names.length ? [`kb_compare({ concept: "<name>" }) compares approaches by facet (${Object.keys(cfg.facets ?? {}).join(', ')}) for: ${names.join(', ')}`] : [];
+}
 
 /** v1.5: the domain's top findings, injected by the prompt hook the first time a prompt runs under a domain that is no longer a guess
  *  (settled by the prompt, `kb project init`, or `kb domain new`): the start-up brief withholds them while the domain is only guessed. */
