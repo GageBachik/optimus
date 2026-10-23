@@ -134,3 +134,10 @@ test('drafts v1.5: dated market moves, second-person advice and questions are no
   assert.equal(isClaim('The Nasdaq-100 drops 10% from a high about once a year on average since 1985'), true);
   assert.equal(isClaim('A 0.50 kill line terminates the satellite on 10.6% of paths, 9.6x the 0.35 line'), true);
 });
+
+test('drafts v1.5: progress reports about work in flight are narration', async () => {
+  const { isClaim } = await import('../../src/compaction/drafts.js');
+  assert.equal(isClaim('Backtest is running in the background (~500 days × full tick replay). Meanwhile, loading the option chains'), false);
+  assert.equal(isClaim('Still running after 20 minutes; waiting for the last 3 processes'), false);
+  assert.equal(isClaim('Full tick replay of 500 days took 41 minutes on 8 processes'), true);
+});

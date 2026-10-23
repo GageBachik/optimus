@@ -22,7 +22,7 @@ const MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|
 // "Live rendering in both modes looks right. Now verifying…" — so "now", "verifying/checking", "looks right/good" and "one problem" are narration.
 // v1.5 (investment-strategy): a dated market move ("closed around $704 on Thursday", "down 2.9% today"), advice in the second person
 // ("you'd have to sell", "your tax bill") and a question anywhere in the line are not durable findings either.
-const NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day)\b|^(?:I|we|say|still|then|next)\b|`|\?/i;
+const NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day|meanwhile|loading|waiting|in the background|(?:is|are|still) running)\b|^(?:I|we|say|still|then|next)\b|`|\?/i;
 export const isClaim = (line: string) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
 export function buildDrafts(cfg: ProjectConfig, ts: TaskState, transcriptPath: string, today = new Date()): DraftSpec {
   const day = today.toISOString().slice(0, 10);
