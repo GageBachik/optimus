@@ -18,3 +18,9 @@ test('projectKey ignores a trailing slash; a null config.json reads as {}', asyn
   assert.equal(paths.projectKey('/a/b'), paths.projectKey('/a/b/'));
   writeFileSync(paths.configPath(), 'null'); assert.deepEqual(paths.config(), {});
 });
+
+test('kbCli: the command briefs tell a session to run quotes the plugin path and uses forward slashes (Git Bash on Windows strips unquoted backslashes; a home with a space splits an unquoted path)', async () => {
+  const { paths } = await import('../../src/lib/paths.js');
+  const cmd = paths.kbCli();
+  assert.match(cmd, /^node "[^"\\]+\/kb\.js"$/, cmd);
+});

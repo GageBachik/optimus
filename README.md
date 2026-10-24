@@ -26,13 +26,21 @@ claude plugin marketplace add GageBachik/optimus
 claude plugin install optimus@optimus
 ```
 
-Optimus ships no binary, so give your shell a `kb` command. This function finds the plugin wherever Claude Code keeps it, so it survives plugin updates:
+Optimus ships no binary, so give your shell a `kb` command. This function finds the plugin wherever Claude Code keeps it, so it survives plugin updates. zsh or bash (use `~/.bashrc` instead of `~/.zshrc` for bash):
 
 ```sh
 cat >> ~/.zshrc <<'EOF'
 kb() { node "$(claude plugin list --json | node -pe '(p=>p.readFromFolder||p.installPath)(JSON.parse(require("fs").readFileSync(0,"utf8")).find(p=>p.id=="optimus@optimus"))')/dist/kb.js" "$@"; }
 EOF
 source ~/.zshrc
+```
+
+Windows, PowerShell 5.1 or 7 (if `. $PROFILE` says running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once first):
+
+```powershell
+New-Item -Force $PROFILE | Out-Null
+Add-Content $PROFILE 'function kb { $p = claude plugin list --json | ConvertFrom-Json | Where-Object id -eq "optimus@optimus"; $r = if ($p.readFromFolder) { $p.readFromFolder } else { $p.installPath }; node "$r/dist/kb.js" @args }'
+. $PROFILE
 ```
 
 Then set it up once:
@@ -73,23 +81,25 @@ Agents your session spawns get the same project card and record what they measur
 
 ## A second device
 
-Push your bank once from the first machine, then install Optimus and clone the bank on the next one:
+Create an empty private repository (no README) for the bank, push the bank to it once from the first machine, then install Optimus and clone the bank on the next one:
 
 ```sh
 # first machine
 cd ~/knowledge-bank && git remote add origin <your private git remote> && git push -u origin main
 
-# second machine: install the plugin and the kb function exactly as in Install, then
-kb setup && kb init --clone <your private git remote> && kb doctor
+# second machine: install the plugin and the kb function exactly as in Install, then, before opening any project session,
+kb setup
+kb init --clone <your private git remote>
+kb doctor
 ```
 
-Keep the bank repository private: it holds what your projects learned.
+If `~/knowledge-bank` already exists on the second machine (an earlier `kb init`, or a session already recorded a note there), remove it first or pass `--bank <empty dir>` to the init. Keep the bank repository private: it holds what your projects learned.
 
 ## Setting it up with Claude Code
 
 Paste this into a Claude Code session and it will do the steps above for you:
 
-> Install the Optimus plugin from https://github.com/GageBachik/optimus. Run `claude plugin marketplace add GageBachik/optimus` and `claude plugin install optimus@optimus`. Find the plugin folder with `claude plugin list --json`: the entry with id `optimus@optimus`, field `readFromFolder` if present, else `installPath`; call it PLUGIN. Append the `kb` shell function from the README's Install section to my `~/.zshrc`. Then run `node PLUGIN/dist/kb.js setup`, `node PLUGIN/dist/kb.js init` and `node PLUGIN/dist/kb.js doctor` directly (your shell has no aliases), show me the doctor output, and remind me to restart Claude Code or run `/reload-plugins` so the hooks load.
+> Install the Optimus plugin from https://github.com/GageBachik/optimus. Run `claude plugin marketplace add GageBachik/optimus` and `claude plugin install optimus@optimus`. Find the plugin folder with `claude plugin list --json`: the entry with id `optimus@optimus`, field `readFromFolder` if present, else `installPath`; call it PLUGIN. Append the `kb` function from the README's Install section to my shell profile (`~/.zshrc` for zsh, `~/.bashrc` for bash, `$PROFILE` for PowerShell). Then run `node PLUGIN/dist/kb.js setup`, `node PLUGIN/dist/kb.js init` and `node PLUGIN/dist/kb.js doctor` directly (your shell has no aliases), show me the doctor output, and remind me to restart Claude Code or run `/reload-plugins` so the hooks load.
 
 Notes for agents: state lives in `~/.optimus/` (sessions, drafts, blobs, `logs/hooks.log`, `metrics.jsonl`; override with `OPTIMUS_HOME`); the bank is `~/knowledge-bank/` (`notes/<kind>/*.md`; `templates/*.yaml` are the domains; override with `OPTIMUS_BANK` or `kb init --bank <dir>`); a project takes part when it has a `.kb.json` with `project_id` and `domain`; the MCP tools are `kb_brief`, `kb_find`, `kb_write`, `kb_compare`, `kb_link` and `recall`; the full design is in `docs/DESIGN.md`.
 

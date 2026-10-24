@@ -7449,7 +7449,7 @@ var paths = {
    *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
   kbCli() {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+    for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node "${path.normalize(c).split(path.sep).join("/")}"`;
     return "kb";
   }
 };

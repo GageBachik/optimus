@@ -29,7 +29,9 @@ export const paths = {
    *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
   kbCli(): string {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    for (const c of [path.join(here, 'kb.js'), path.join(here, '..', '..', 'dist', 'kb.js')]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+    // Quoted, forward slashes: Claude Code's Bash tool on Windows is Git Bash, which strips unquoted backslashes from `node C:\Users\…\kb.js`,
+    // and a home folder with a space splits an unquoted path in every shell. Node accepts forward slashes on Windows; on POSIX path.sep is '/'.
+    for (const c of [path.join(here, 'kb.js'), path.join(here, '..', '..', 'dist', 'kb.js')]) if (existsSync(c)) return `node "${path.normalize(c).split(path.sep).join('/')}"`;
     return 'kb';
   },
 };

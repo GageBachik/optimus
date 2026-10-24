@@ -135,8 +135,11 @@ export function looksLikeProject(cwd: string): boolean {
 export function autoRegister(cwd: string, home = os.homedir(), lex: Lexicon = DEFAULT_LEXICON): AutoRegistered | null {
   if (!cwd) return null;
   const dir = path.resolve(cwd);
-  if (!existsSync(dir) || !dir.startsWith(home + path.sep)) return null;
+  if (!existsSync(dir)) return null;
+  // path.relative, not a startsWith on the home string: on Windows a VS Code-hosted launch hands Claude Code `c:\Users\…` while the home is
+  // `C:\Users\…`, and path.relative compares them case-insensitively. Home itself gives '', a folder outside it '..', another drive an absolute path.
   const rel = path.relative(home, dir);
+  if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
   if (rel.split(path.sep).some((s) => s.startsWith('.') || SKIP_DIRS.has(s))) return null;
   if (['projects', 'Desktop', 'Documents', 'Downloads', 'src', 'code', 'work', 'github'].includes(rel)) return null; // workspace roots hold projects; they are not one
   if (loadProjectConfig(dir)) return null;

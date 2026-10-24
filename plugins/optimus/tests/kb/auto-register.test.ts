@@ -120,7 +120,7 @@ test('v1.5: the prompt hook asks for the domain decision once per folder, in wha
   const d = mk('projects/smack-two'); autoRegister(d, home);
   const prompt = 'Build me a board game night planner for my family where everyone votes on snacks and the winner picks the movie we watch';
   const r1: any = await userPrompt({ session_id: 'dec1', cwd: d, prompt });
-  const t1 = r1.hookSpecificOutput.additionalContext; assert.match(t1, /^This folder was filed under `tooling` by a guess/); assert.match(t1, /node \S+\/dist\/kb\.js domain new <name> --facets/);
+  const t1 = r1.hookSpecificOutput.additionalContext; assert.match(t1, /^This folder was filed under `tooling` by a guess/); assert.match(t1, /node "\S+\/dist\/kb\.js" domain new <name> --facets/);
   assert.match(t1, /If it is one of console, ios, run/, 'the known domains come from the bank, tooling excluded');
   const r2: any = await userPrompt({ session_id: 'dec2', cwd: d, prompt: prompt + ' please' }); // a NEW session: still not asked again
   assert.ok(!r2 || !/filed under `tooling` by a guess/.test(r2.hookSpecificOutput.additionalContext), 'once per folder');
@@ -148,4 +148,12 @@ test('v1.5: a guessed domain brings no findings at start-up; the first prompt un
   // a hand-set domain gets them at start-up as before
   const h = mk('projects/handset'); writeFileSync(path.join(h, '.kb.json'), JSON.stringify({ project_id: 'handset', domain: 'ios' }));
   const s2: any = await sessionStart({ session_id: 'g2', source: 'startup', cwd: h }); assert.ok(/84pt trailing-only/.test(s2.hookSpecificOutput.additionalContext));
+});
+
+test('auto-register: the home folder itself, a folder outside home and a sibling whose name starts with the home name are not projects (path.relative, not a string prefix)', () => {
+  assert.equal(autoRegister(home, home), null, 'home itself');
+  assert.equal(autoRegister(mkdtempSync(path.join(tmpdir(), 'elsewhere-')), home), null, 'outside home');
+  const sibling = home + '-two'; mkdirSync(sibling, { recursive: true }); writeFileSync(path.join(sibling, 'package.json'), '{}');
+  assert.equal(autoRegister(sibling, home), null, 'a sibling folder that merely starts with the home path');
+  assert.ok(autoRegister(mk('projects/inside', { 'package.json': '{}' }), home), 'a project under home still registers');
 });

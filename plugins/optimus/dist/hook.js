@@ -92,7 +92,7 @@ var init_paths = __esm({
        *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
       kbCli() {
         const here = path.dirname(fileURLToPath(import.meta.url));
-        for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node ${path.normalize(c)}`;
+        for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node "${path.normalize(c).split(path.sep).join("/")}"`;
         return "kb";
       }
     };
@@ -1116,8 +1116,9 @@ function looksLikeProject(cwd) {
 function autoRegister(cwd, home = os2.homedir(), lex = DEFAULT_LEXICON) {
   if (!cwd) return null;
   const dir = path9.resolve(cwd);
-  if (!existsSync5(dir) || !dir.startsWith(home + path9.sep)) return null;
+  if (!existsSync5(dir)) return null;
   const rel = path9.relative(home, dir);
+  if (!rel || rel === ".." || rel.startsWith(".." + path9.sep) || path9.isAbsolute(rel)) return null;
   if (rel.split(path9.sep).some((s) => s.startsWith(".") || SKIP_DIRS.has(s))) return null;
   if (["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"].includes(rel)) return null;
   if (loadProjectConfig(dir)) return null;
