@@ -4,7 +4,7 @@ import type { HookInput } from '../lib/run-hook.js';
 import { paths } from '../lib/paths.js';
 import { writeFileAtomic } from '../lib/atomic.js';
 import { redactJson } from '../lib/redaction.js';
-import { readTranscript, type TranscriptEntry } from '../lib/transcript.js';
+import { readTranscript, textOf, type TranscriptEntry } from '../lib/transcript.js';
 import { loadState } from '../lib/session-state.js';
 import { spawnKbSync } from '../lib/kb-sync.js';
 import { log } from '../lib/log.js';
@@ -23,6 +23,16 @@ function lastPromptIndex(entries: TranscriptEntry[]): number {
   }
   return 0;
 }
+/** Claude Code starts the Stop hook before the turn's final assistant message has always reached the transcript file (2026-10-24, a
+ *  headless session: its one measured sentence was not in the file at hook time, so nothing was asked and the metrics line carried the
+ *  previous message's usage). The hook input carries that message; when the file's last assistant text is not it yet, it is appended as one
+ *  more entry so the turn is judged whole. */
+function withLastMessage(entries: TranscriptEntry[], last: unknown): TranscriptEntry[] {
+  if (typeof last !== 'string' || !last.trim()) return entries;
+  const prev = [...entries].reverse().find((e) => e.type === 'assistant' && textOf(e));
+  if (prev && textOf(prev) === last.trim()) return entries;
+  return [...entries, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: last }] } }];
+}
 const wroteFindings = (turn: TranscriptEntry[]) => turn.some((e) => e.type === 'assistant' && Array.isArray(e.message?.content) && (e.message!.content as any[]).some((b) => b?.type === 'tool_use' && /kb_write$/.test(String(b.name ?? ''))));
 const askText = (cfg: ProjectConfig, ask: DraftSpec['records']) => [
   `Optimus: before finishing, record what this turn established. For each candidate below that is a durable, reusable result (a measurement, the cause of a failure, a limit that was hit), call kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${cfg.project_id}", tags: ["<2-3 concept words a future prompt would use>"], attrs: { state: "observed" }, evidence: [{ kind: "path", ref: "<file>" }] }). Skip narration, definitions, dated prices and advice. Then finish; this request is not repeated for these statements.`,
@@ -37,7 +47,7 @@ export async function stop(input: HookInput) {
   if (input.agent_id) return undefined;
   const sessionId = String(input.session_id ?? 'unknown'); const cwd = String(input.cwd ?? ''); const tp = String(input.transcript_path ?? '');
   const at = new Date().toISOString();
-  const entries = tp && existsSync(tp) ? readTranscript(tp, 0).entries : [];
+  const entries = tp && existsSync(tp) ? withLastMessage(readTranscript(tp, 0).entries, input.last_assistant_message) : [];
   let cfg: ProjectConfig | null = null, ask: DraftSpec['records'] = [];
   // No transcript: keep the previous last-session record rather than overwrite it with an empty one.
   if (entries.length) {

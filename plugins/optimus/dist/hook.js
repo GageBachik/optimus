@@ -1786,13 +1786,19 @@ function lastPromptIndex(entries) {
   }
   return 0;
 }
+function withLastMessage(entries, last) {
+  if (typeof last !== "string" || !last.trim()) return entries;
+  const prev = [...entries].reverse().find((e) => e.type === "assistant" && textOf(e));
+  if (prev && textOf(prev) === last.trim()) return entries;
+  return [...entries, { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: last }] } }];
+}
 async function stop(input) {
   if (input.agent_id) return void 0;
   const sessionId = String(input.session_id ?? "unknown");
   const cwd = String(input.cwd ?? "");
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
-  const entries = tp && existsSync10(tp) ? readTranscript(tp, 0).entries : [];
+  const entries = tp && existsSync10(tp) ? withLastMessage(readTranscript(tp, 0).entries, input.last_assistant_message) : [];
   let cfg = null, ask = [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));

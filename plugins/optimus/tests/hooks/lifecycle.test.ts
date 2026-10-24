@@ -45,3 +45,21 @@ test('v1.6: a turn that stated a measurement and recorded nothing is asked once 
   const r5: any = await stop({ session_id: 'rec1', cwd, transcript_path: tp });
   assert.equal(r5?.decision, 'block'); assert.match(r5.reason, /Slippage model at 2 bps/); assert.ok(!/17% win rate/.test(r5.reason), 'only this turn\'s new statements are listed');
 });
+
+test('v1.6: the final message of a turn is judged even when the transcript file does not hold it yet (Claude Code starts Stop before the flush); a flushed message is not listed twice', async () => {
+  const { mkdtempSync: mk, writeFileSync: wf } = await import('node:fs');
+  const cwd = mk(path.join(tmpdir(), 'late-')); wf(path.join(cwd, '.kb.json'), JSON.stringify({ project_id: 'late', domain: 'tooling' }));
+  const u = (t: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: t } });
+  const a = (t: string) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: t }], usage: { input_tokens: 2, cache_read_input_tokens: 1000 } } });
+  const tool = (name: string) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name, input: {} }] } });
+  const tp = path.join(cwd, 'transcript.jsonl');
+  const first = 'A 3e8-iteration empty loop in Node takes 1878 ms wall-clock on this machine.';
+  wf(tp, [u('time the loop'), tool('Bash')].join('\n') + '\n'); // the final text is not in the file yet
+  const r1: any = await stop({ session_id: 'late1', cwd, transcript_path: tp, last_assistant_message: first });
+  assert.equal(r1?.decision, 'block'); assert.match(r1.reason, /1878 ms wall-clock/);
+  const second = 'The same loop sorted takes 2,410 ms wall-clock on this machine.';
+  wf(tp, [a(first), u('and the sorted one?'), a(second)].join('\n') + '\n', { flag: 'a' }); // this time the file holds the final message
+  const r2: any = await stop({ session_id: 'late1', cwd, transcript_path: tp, last_assistant_message: second });
+  assert.equal(r2?.decision, 'block'); assert.match(r2.reason, /2,410 ms/);
+  assert.equal((r2.reason.match(/^- /gm) ?? []).length, 1, 'one candidate: the flushed message is not counted twice, the first turn\'s statement is in the log');
+});
