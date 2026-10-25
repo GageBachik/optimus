@@ -57,3 +57,28 @@ test('a secret inside a tag is redacted before it is stored as a concept', () =>
   const r = resolveConcept(db, bank3, 'api_key=ABCDEFGHIJKLMNOPQRSTUV', now);
   assert.doesNotMatch(getNote(db, r.conceptId)!.title, /ABCDEFGHIJKLMNOPQRSTUV/);
 });
+
+test('kb concepts merge: a named concept becomes an alias of another outside the question queue; open questions follow the survivor', async () => {
+  const bank4 = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  const { mergeConcepts, conceptByRef } = await import('../../src/kb/concepts.js');
+  const { relId } = await import('../../src/kb/export.js');
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'f.sqlite'));
+  const kalshi = resolveConcept(db, bank4, 'kalshi', now).conceptId;
+  const api = resolveConcept(db, bank4, 'kalshi api', now); assert.equal(api.how, 'pending', 'the review would ask to merge "kalshi api" into "kalshi"');
+  const fees = resolveConcept(db, bank4, 'kalshi fees', now); assert.equal(fees.how, 'pending');
+  upsertNote(db, { id: 'f_02', kind: 'finding', domain: 'trading', project: 'odds', title: 'F', body: '', created_at: now, updated_at: now, deleted_at: null, device_id: 'd' });
+  addRel(db, { id: 'l_y', src: 'f_02', type: 'about', dst: kalshi, props: {}, created_at: now, deleted_at: null });
+  // the wrong-direction case: the hub "kalshi" merged into the sub-topic "kalshi api"
+  const r = mergeConcepts(db, bank4, 'kalshi', 'kalshi api', now);
+  assert.deepEqual(r, { a: 'kalshi', b: 'kalshi api' });
+  assert.ok(getNote(db, kalshi)!.deleted_at); assert.ok(getAttrs(db, api.conceptId).alias.includes('kalshi'));
+  assert.equal(getRels(db, 'f_02')[0].dst, api.conceptId); assert.equal(getRels(db, 'f_02')[0].id, relId('f_02', 'about', api.conceptId, {}));
+  assert.equal(conceptByRef(db, 'kalshi'), api.conceptId, 'the old name now resolves as an alias');
+  const rows = db.sql.prepare('SELECT a, b, resolved FROM pending_merge ORDER BY created_at').all() as { a: string; b: string; resolved: string | null }[];
+  assert.deepEqual(rows.map((x) => x.resolved), ['merged', null], 'the question that proposed the merged concept is closed; the other stays open');
+  assert.equal(rows[1].b, api.conceptId, 'an open question that named the merged concept as its target now names the survivor');
+  assert.match(pendingQuestions(db)[0], /Merge "kalshi fees" into "kalshi api"\?/);
+  assert.match(readFileSync(path.join(bank4, 'concept-merges.md'), 'utf8'), /merged "kalshi" into kalshi api \(kb concepts merge\) · undo: kb concepts split "kalshi"/);
+  assert.throws(() => mergeConcepts(db, bank4, 'kalshi api', 'kalshi api', now), /cannot merge into itself/);
+  assert.throws(() => mergeConcepts(db, bank4, 'no such concept', 'kalshi api', now), /no concept "no such concept"/);
+});

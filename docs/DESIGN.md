@@ -280,7 +280,7 @@ Finding fields are attrs: `state`, `gate`, `gate_rank`, `valid_from`, `valid_to`
 | `kb_brief` | `{project?, limit?}` | the ranked brief text + items |
 | `kb_compare` | `{concept}` | comparison rows (§4.9) |
 
-CLI `kb` (same bundle): `init [--bank <dir>] [--clone <url>]`, `project init --domain <d> [--id <id>]`, `setup [--device <name>]`, `doctor [--baseline] [--live]`, `cleanup [--apply]`, `import serena|claude-memory|all [--root <dir>]`, `export`, `sync`, `rebuild`, `map [--open]`, `concepts review|accept <id>|reject <id>|split <name>`, `transfer <id> confirm|refute`, `retract <id>`, `set <id> <attr> <value>`, `compare <concept>`.
+CLI `kb` (same bundle): `init [--bank <dir>] [--clone <url>]`, `project init --domain <d> [--id <id>]`, `setup [--device <name>]`, `doctor [--baseline] [--live]`, `cleanup [--apply]`, `import serena|claude-memory|all [--root <dir>]`, `export`, `sync`, `rebuild`, `map [--open]`, `concepts review|accept <id>|reject <id>|split <name>|merge <a> <b>` (merge, 2026-10-24: a becomes an alias of b outside the question queue, for the merges the review proposed the wrong way round), `transfer <id> confirm|refute`, `retract <id>`, `set <id> <attr> <value>`, `compare <concept>`.
 
 A repo takes part only if it contains a `.kb.json` with `project_id` and `domain` (`kb project init` writes it; commit it). Nothing derives a project id from a git remote or a directory name: the demo repos have no remotes and exist under several directory names.
 

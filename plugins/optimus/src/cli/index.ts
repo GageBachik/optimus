@@ -7,7 +7,7 @@ import { initBank, projectInit } from './init.js';
 import { paths } from '../lib/paths.js';
 import { openDb } from '../kb/db.js';
 import { exportAll, rebuild } from '../kb/export.js';
-import { acceptMerge, rejectMerge, splitAlias } from '../kb/concepts.js';
+import { acceptMerge, rejectMerge, splitAlias, mergeConcepts } from '../kb/concepts.js';
 import { pendingQuestions } from '../kb/brief.js';
 import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js';
 import { setTransfer, retractNote, setAttr, kbWrite, type WriteRecord } from '../kb/write.js';
@@ -26,7 +26,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${path.join(paths.logsDir(), 'hooks.log')})\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -60,12 +60,13 @@ else if (cmd === 'cleanup') {
     if (cmd === 'export') process.stdout.write(`exported ${exportAll(db, bank)} notes to ${bank}\n`);
     else { const r = rebuild(db, bank); process.stdout.write(`rebuilt index from ${bank}: ${r.imported} notes imported\n`); }
   } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
-} else if (cmd === 'concepts' && ['review', 'accept', 'reject', 'split'].includes(args[0]) && (args[0] === 'review' || args[1])) {
-  const db = openDb(), bank = paths.bankDir(), [sub, arg] = args;
+} else if (cmd === 'concepts' && ['review', 'accept', 'reject', 'split', 'merge'].includes(args[0]) && (args[0] === 'review' || (args[0] === 'merge' ? args[2] : args[1]))) {
+  const db = openDb(), bank = paths.bankDir(), [sub, arg, arg2] = args;
   try {
     if (sub === 'review') { const q = pendingQuestions(db, Number.MAX_SAFE_INTEGER); process.stdout.write(q.length ? q.join('\n') + '\n' : 'no pending concept merges\n'); }
     else if (sub === 'accept') { acceptMerge(db, bank, arg); process.stdout.write(`accepted ${arg}\n`); }
     else if (sub === 'reject') { rejectMerge(db, arg); process.stdout.write(`rejected ${arg}\n`); }
+    else if (sub === 'merge') { const r = mergeConcepts(db, bank, arg, arg2); process.stdout.write(`merged "${r.a}" into "${r.b}"; undo: kb concepts split "${arg}"\n`); }
     else process.stdout.write(`split "${arg}" into ${splitAlias(db, bank, arg)}\n`);
   } catch (e) { process.stderr.write(`kb concepts ${sub}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else if ((cmd === 'transfer' && args[0] && ['confirm', 'refute'].includes(args[1])) || (cmd === 'retract' && args[0]) || (cmd === 'set' && args.length >= 3)) {

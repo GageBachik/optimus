@@ -8677,19 +8677,43 @@ function openPending(db, id) {
   if (p.resolved) throw new Error(`pending merge ${id} is already ${p.resolved}`);
   return p;
 }
-function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
-  const p = openPending(db, id), a = getNote(db, p.a), b = getNote(db, p.b);
+function mergeInto(db, bankDir, aId, bId, now) {
+  const a = getNote(db, aId), b = getNote(db, bId);
+  for (const [n, id] of [[a, aId], [b, bId]]) if (!n || n.kind !== "concept" || n.deleted_at) throw new Error(`no live concept ${id}`);
+  if (a.id === b.id) throw new Error(`${a.title} cannot merge into itself`);
   addAlias(db, b.id, [a.title, ...getAttrs(db, a.id).alias ?? []], now);
   const moved = db.sql.prepare(`SELECT id, src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id);
   for (const r of moved) rekeyRel(db, r.id, { dst: b.id });
   const srcs = [...new Set(moved.map((r) => r.src))];
   softDeleteNote(db, a.id, now);
-  db.sql.prepare("UPDATE pending_merge SET resolved=? WHERE id=?").run("accepted", id);
+  db.sql.prepare("UPDATE pending_merge SET b=? WHERE b=? AND resolved IS NULL").run(b.id, a.id);
+  db.sql.prepare(`UPDATE pending_merge SET resolved='merged' WHERE (a=? OR a=b) AND resolved IS NULL`).run(a.id);
   for (const n of [a.id, b.id, ...srcs]) {
     touch(db, n, now);
     exportNote(db, bankDir, n);
   }
-  log2(bankDir, `- ${now.slice(0, 10)} merged "${a.title}" into ${b.title} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(a.title)}"`);
+  return [a.title, b.title];
+}
+function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const p = openPending(db, id);
+  const [aTitle, bTitle] = mergeInto(db, bankDir, p.a, p.b, now);
+  db.sql.prepare("UPDATE pending_merge SET resolved=? WHERE id=?").run("accepted", id);
+  log2(bankDir, `- ${now.slice(0, 10)} merged "${aTitle}" into ${bTitle} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(aTitle)}"`);
+}
+function conceptByRef(db, ref) {
+  const norm = normalizeName(ref);
+  const byId = /^c_/.test(ref) ? getNote(db, ref) : null;
+  if (byId && byId.kind === "concept" && !byId.deleted_at) return byId.id;
+  const exact = concepts(db).find((c) => normalizeName(c.title) === norm);
+  if (exact) return exact.id;
+  const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm);
+  if (hit) return hit.id;
+  throw new Error(`no concept "${ref}"`);
+}
+function mergeConcepts(db, bankDir, aRef, bRef, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const [a, b] = mergeInto(db, bankDir, conceptByRef(db, aRef), conceptByRef(db, bRef), now);
+  log2(bankDir, `- ${now.slice(0, 10)} merged "${a}" into ${b} (kb concepts merge) \xB7 undo: kb concepts split "${normalizeName(a)}"`);
+  return { a, b };
 }
 function rejectMerge(db, id) {
   openPending(db, id);
@@ -9937,7 +9961,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
@@ -10005,8 +10029,8 @@ else if (cmd === "sync") {
   } finally {
     db.sql.close();
   }
-} else if (cmd === "concepts" && ["review", "accept", "reject", "split"].includes(args[0]) && (args[0] === "review" || args[1])) {
-  const db = openDb(), bank = paths.bankDir(), [sub, arg] = args;
+} else if (cmd === "concepts" && ["review", "accept", "reject", "split", "merge"].includes(args[0]) && (args[0] === "review" || (args[0] === "merge" ? args[2] : args[1]))) {
+  const db = openDb(), bank = paths.bankDir(), [sub, arg, arg2] = args;
   try {
     if (sub === "review") {
       const q = pendingQuestions(db, Number.MAX_SAFE_INTEGER);
@@ -10018,6 +10042,10 @@ else if (cmd === "sync") {
     } else if (sub === "reject") {
       rejectMerge(db, arg);
       process.stdout.write(`rejected ${arg}
+`);
+    } else if (sub === "merge") {
+      const r = mergeConcepts(db, bank, arg, arg2);
+      process.stdout.write(`merged "${r.a}" into "${r.b}"; undo: kb concepts split "${arg}"
 `);
     } else process.stdout.write(`split "${arg}" into ${splitAlias(db, bank, arg)}
 `);
