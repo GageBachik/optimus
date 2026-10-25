@@ -162,3 +162,38 @@ test('two repositories holding the same memory text: the first in walk order own
   assert.deepEqual(importSerena(db, bank, [root], home), { files: 2, created: 1, unchanged: 1, moved: 0 }); assert.equal(owner(), 'a');
   assert.deepEqual(importSerena(db, bank, [root], home), { files: 2, created: 0, unchanged: 2, moved: 0 }); assert.equal(owner(), 'a');
 });
+
+test('only the recorded source re-attributes a note: a copy of the old text in a snapshot folder, after the original changed, moves nothing', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'root-')), home = mkdtempSync(path.join(tmpdir(), 'home-')), repo = path.join(root, 'a');
+  mkdirSync(path.join(repo, '.git'), { recursive: true }); put(path.join(repo, '.serena', 'memories', 'm.md'), 'the memory, first version\n');
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'k.sqlite'));
+  assert.deepEqual(importSerena(db, bank, [root], home), { files: 1, created: 1, unchanged: 0, moved: 0 });
+  const id = (db.sql.prepare('SELECT id FROM note').get() as { id: string }).id;
+  put(path.join(repo, '.serena', 'memories', 'm.md'), 'the memory, revised\n'); // the original moves on …
+  put(path.join(root, 'snap', 'src', '.serena', 'memories', 'm.md'), 'the memory, first version\n'); // … and a snapshot (no .git) keeps the old text
+  assert.deepEqual(importSerena(db, bank, [root], home), { files: 2, created: 1, unchanged: 1, moved: 0 });
+  assert.equal(getNote(db, id)!.project, 'a', 'the old revision stays with the repository, not the snapshot folder "src"');
+  assert.deepEqual((db.sql.prepare('SELECT project FROM note ORDER BY id').all() as any[]).map((r) => r.project), ['a', 'a']);
+});
+
+test('the same text as a Serena memory of one repository and an auto-memory of a session in another: whichever importer runs second leaves the note where the first filed it', () => {
+  const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'root-'))), home = mkdtempSync(path.join(tmpdir(), 'home-')), text = 'carry rule: hold to settlement\n';
+  for (const r of ['odds', 'backtester']) mkdirSync(path.join(root, r, '.git'), { recursive: true });
+  put(path.join(root, 'odds', '.serena', 'memories', 'carry.md'), text);
+  const projDir = path.join(home, '.claude', 'projects', path.join(root, 'backtester').replace(/[^A-Za-z0-9]/g, '-'));
+  put(path.join(projDir, 'memory', 'carry.md'), text); put(path.join(projDir, 't.jsonl'), JSON.stringify({ type: 'user', cwd: path.join(root, 'backtester') }) + '\n');
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'l.sqlite')), owner = () => (db.sql.prepare('SELECT project FROM note').get() as any).project;
+  assert.deepEqual(importSerena(db, bank, [root], home), { files: 1, created: 1, unchanged: 0, moved: 0 }); assert.equal(owner(), 'odds');
+  assert.deepEqual(importClaudeMemory(db, bank, home), { files: 1, created: 0, unchanged: 1, moved: 0 }); assert.equal(owner(), 'odds');
+  assert.deepEqual(importSerena(db, bank, [root], home), { files: 1, created: 0, unchanged: 1, moved: 0 }); assert.equal(owner(), 'odds');
+});
+
+test('a walk from the home skips its application-data folders (AppData, Library) and still reaches a project at the top level of the home', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'home-'));
+  put(path.join(home, 'AppData', 'Local', 'Temp', 'root-x', 'repo', '.serena', 'memories', 'fixture.md'), 'a test fixture\n');
+  put(path.join(home, 'Library', 'Caches', 'tool', '.serena', 'memories', 'cache.md'), 'a cached copy\n');
+  mkdirSync(path.join(home, 'odds', '.git'), { recursive: true }); put(path.join(home, 'odds', '.serena', 'memories', 'o.md'), 'an odds memory\n');
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'm.sqlite'));
+  assert.deepEqual(importSerena(db, bank, [home], home), { files: 1, created: 1, unchanged: 0, moved: 0 });
+  assert.deepEqual((db.sql.prepare('SELECT project, title FROM note').all() as any[]).map((r) => [r.project, r.title]), [['odds', 'o']]);
+});

@@ -9134,6 +9134,7 @@ function projectOf(dir, home2) {
   return { project: path16.basename(d), domain: null };
 }
 var mdFiles = (dir) => readdirSync7(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort();
+var samePath = (a, b) => a !== void 0 && (process.platform === "win32" ? path16.resolve(a).toLowerCase() === path16.resolve(b).toLowerCase() : path16.resolve(a) === path16.resolve(b));
 function importSources(db, bankDir, sources, now) {
   let created = 0, moved = 0;
   const owned = /* @__PURE__ */ new Set();
@@ -9144,8 +9145,9 @@ function importSources(db, bankDir, sources, now) {
     owned.add(id);
     const n = getNote(db, id);
     if (n) {
+      if (n.deleted_at || !samePath(getAttrs(db, id).source_path?.[0], s.file)) continue;
       const domain = n.project === s.project ? s.domain ?? n.domain : s.domain;
-      if (n.deleted_at || n.project === s.project && n.domain === domain) continue;
+      if (n.project === s.project && n.domain === domain) continue;
       move.run(s.project, domain, now, id);
       exportNote(db, bankDir, id);
       moved++;
@@ -9167,7 +9169,7 @@ function serenaDirs(dir, skip, out = []) {
   }
   for (const e of entries) {
     const p = path16.join(dir, e.name);
-    if (!e.isDirectory() || e.name === "node_modules" || e.name === ".git" || p === skip) continue;
+    if (!e.isDirectory() || e.name === "node_modules" || e.name === ".git" || skip.some((s) => samePath(s, p))) continue;
     if (e.name === ".serena") {
       if (existsSync13(path16.join(p, "memories"))) out.push(path16.join(p, "memories"));
     } else serenaDirs(p, skip, out);
@@ -9188,7 +9190,8 @@ function importSerena(db, bankDir, roots, home2 = os3.homedir(), now = (/* @__PU
   const global = path16.join(home2, ".serena", "memories", "global");
   if (existsSync13(global)) add(global, none);
   const depth = (p) => p.split(path16.sep).length, byDepth = (a, b) => depth(a) - depth(b) || (a < b ? -1 : a > b ? 1 : 0);
-  for (const root of roots) for (const memDir of serenaDirs(path16.resolve(root), path16.join(home2, ".cache")).sort(byDepth)) add(memDir, projectOf(path16.dirname(path16.dirname(memDir)), home2));
+  const skip = [".cache", "AppData", "Library"].map((d) => path16.join(home2, d));
+  for (const root of roots) for (const memDir of serenaDirs(path16.resolve(root), skip).sort(byDepth)) add(memDir, projectOf(path16.dirname(path16.dirname(memDir)), home2));
   return importSources(db, bankDir, sources, now);
 }
 function transcriptCwd(projDir) {

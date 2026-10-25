@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, s
 import os from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { type Db, upsertNote, setAttrs, getNote, deviceId } from './db.js';
+import { type Db, upsertNote, setAttrs, getNote, getAttrs, deviceId } from './db.js';
 import { exportNote } from './export.js';
 import { evidenceId } from './ids.js';
 import { loadProjectConfig } from './project.js';
@@ -38,13 +38,18 @@ function projectOf(dir: string, home: string): { project: string | null; domain:
 }
 /** Every `*.md` under `dir`, as paths relative to it, sorted. */
 const mdFiles = (dir: string) => (readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith('.md') && statSync(path.join(dir, f)).isFile()).sort();
+/** The same file: resolved paths, compared without case on Windows (a launcher's `c:\` and the on-disk `C:\` name one file). */
+const samePath = (a: string | undefined, b: string) => a !== undefined && (process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b));
 
 /** DESIGN §4.10: one evidence note per file, id `e_<sha256 first 16 hex>` of the file's bytes. The body is the file's text, redacted (DESIGN §1
  *  rule 10; a file with no secret is stored exactly). A note that exists keeps its text and attrs, but its `project`/`domain` follow the attribution
- *  computed now (2026-10-24: a corrected rule had no way to reach the 48 notes the old one misfiled): a different project, or a set domain that
- *  differs, is written, `updated_at` touched and the note re-exported, counted as `moved`; a null computed domain never undoes one set by `kb project
- *  move`; a retracted note stays as it is; and the first source in walk order owns a note that two folders hold, so a later copy never moves it and
- *  a rerun is stable. No git call, no edges, originals only read. */
+ *  computed now (2026-10-24: a corrected rule had no way to reach the 48 notes the old one misfiled) when, and only when, the file walked is the
+ *  note's recorded `source_path`: a different project, or a set domain that differs, is written, `updated_at` touched and the note re-exported,
+ *  counted as `moved`; a null computed domain never undoes one set by `kb project move`; a retracted note stays as it is. Any other copy of the
+ *  same text leaves the note alone: the first run of the rule without this test moved eight notes wrongly, an auto-memory to the repository whose
+ *  `.serena` held the same text (and the other importer would have moved it back), and a memory whose original had since changed to the snapshot
+ *  folder still holding the old text. A note without a `source_path` (the other machine's older imports) never moves here. No git call, no edges,
+ *  originals only read. */
 function importSources(db: Db, bankDir: string, sources: Source[], now: string): ImportResult {
   let created = 0, moved = 0; const owned = new Set<string>();
   const move = db.sql.prepare('UPDATE note SET project=?, domain=?, updated_at=? WHERE id=?');
@@ -53,8 +58,9 @@ function importSources(db: Db, bankDir: string, sources: Source[], now: string):
     if (owned.has(id)) continue; owned.add(id);
     const n = getNote(db, id);
     if (n) {
+      if (n.deleted_at || !samePath(getAttrs(db, id).source_path?.[0], s.file)) continue;
       const domain = n.project === s.project ? (s.domain ?? n.domain) : s.domain;
-      if (n.deleted_at || (n.project === s.project && n.domain === domain)) continue;
+      if (n.project === s.project && n.domain === domain) continue;
       move.run(s.project, domain, now, id); exportNote(db, bankDir, id); moved++; continue;
     }
     upsertNote(db, { id, kind: 'evidence', domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString('utf8')).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
@@ -63,12 +69,14 @@ function importSources(db: Db, bankDir: string, sources: Source[], now: string):
   return { files: sources.length, created, unchanged: sources.length - created - moved, moved };
 }
 
-/** Each `.serena/memories` directory under `dir`, skipping node_modules, .git and `~/.cache` (Ruling R6) and never following symlinks. */
-function serenaDirs(dir: string, skip: string, out: string[] = []): string[] {
+/** Each `.serena/memories` directory under `dir`, skipping node_modules, .git, `~/.cache` (Ruling R6) and the home's application-data folders
+ *  (`~/AppData`, `~/Library`: on 2026-10-24 a walk from the home found 225 of its 377 memory folders under `AppData\Local\Temp`, this suite's
+ *  own fixtures and scratch clones, and imported 20 of them as evidence of projects named `demo`, `repo`, `a`), never following symlinks. */
+function serenaDirs(dir: string, skip: string[], out: string[] = []): string[] {
   let entries; try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
     const p = path.join(dir, e.name);
-    if (!e.isDirectory() || e.name === 'node_modules' || e.name === '.git' || p === skip) continue;
+    if (!e.isDirectory() || e.name === 'node_modules' || e.name === '.git' || skip.some((s) => samePath(s, p))) continue;
     if (e.name === '.serena') { if (existsSync(path.join(p, 'memories'))) out.push(path.join(p, 'memories')); }
     else serenaDirs(p, skip, out);
   }
@@ -91,7 +99,8 @@ export function importSerena(db: Db, bankDir: string, roots: string[], home = os
   const global = path.join(home, '.serena', 'memories', 'global');
   if (existsSync(global)) add(global, none);
   const depth = (p: string) => p.split(path.sep).length, byDepth = (a: string, b: string) => depth(a) - depth(b) || (a < b ? -1 : a > b ? 1 : 0);
-  for (const root of roots) for (const memDir of serenaDirs(path.resolve(root), path.join(home, '.cache')).sort(byDepth)) add(memDir, projectOf(path.dirname(path.dirname(memDir)), home));
+  const skip = ['.cache', 'AppData', 'Library'].map((d) => path.join(home, d));
+  for (const root of roots) for (const memDir of serenaDirs(path.resolve(root), skip).sort(byDepth)) add(memDir, projectOf(path.dirname(path.dirname(memDir)), home));
   return importSources(db, bankDir, sources, now);
 }
 
