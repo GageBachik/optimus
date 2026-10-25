@@ -22,12 +22,14 @@ import { fileHereUnder } from '../kb/auto-register.js';
 import { sync } from '../kb/sync.js';
 import { importSerena, importClaudeMemory, importCodexMemory, type ImportResult } from '../kb/import.js';
 import { generateMap } from '../kb/map.js';
+import { buildBrief, buildManifest, parseKeys, resolveBuildProject, shardLine, validateSpec, validateSummary, vocabularyFor, type Role } from '../kb/build.js';
 import { spawn } from 'node:child_process';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n';
+const buildUsage = 'usage: kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>]\n       kb build brief [--project <id>] [--role extractor|reviewer]\n       kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${path.join(paths.logsDir(), 'hooks.log')})\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -166,6 +168,41 @@ else if (cmd === 'cleanup') {
     const file = generateMap(db); process.stdout.write(`${file}\n`);
     if (has('--open')) { const [bin, pre] = process.platform === 'darwin' ? ['open', []] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '']] : ['xdg-open', []]; spawn(bin, [...pre, file], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); }
   } catch (e) { process.stderr.write(`kb map: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+} else if (cmd === 'build') {
+  // DESIGN §4.13: the knowledge build's mechanical parts. The thinking (reading memories, writing claims, refuting) stays with the session's agents.
+  const sub = args[0], valued = new Set(['--project', '--repo', '--shard', '--out', '--keys', '--role']);
+  const positional = args.slice(1).filter((a, i, all) => !a.startsWith('--') && !valued.has(all[i - 1]))[0];
+  const missing = [...valued].find((f) => has(f) && (value(f) === undefined || value(f)!.startsWith('--')));
+  if (!['manifest', 'brief', 'validate'].includes(sub)) { process.stdout.write(buildUsage); if (sub) process.exitCode = 2; }
+  else if (missing) { process.stderr.write(`${missing} needs a value\n${buildUsage}`); process.exitCode = 2; }
+  else if (sub === 'validate' && !positional) { process.stderr.write(`kb build validate needs a spec file\n${buildUsage}`); process.exitCode = 2; }
+  else if (sub === 'brief' && has('--role') && !['extractor', 'reviewer'].includes(value('--role')!)) { process.stderr.write(`--role is extractor or reviewer\n${buildUsage}`); process.exitCode = 2; }
+  else {
+    const db = openDb(), bank = paths.bankDir();
+    try {
+      if (sub === 'validate') {
+        // Vocabulary from the spec's own domain (its template in the index); --project only cross-checks or fills defaults.project.
+        const file = positional!, spec = JSON.parse(readFileSync(file, 'utf8'));
+        const domain = spec?.defaults?.domain ?? (has('--project') || existsSync(path.join(process.cwd(), '.kb.json')) ? resolveBuildProject(db, process.cwd(), { project: value('--project') }).domain : undefined);
+        if (!domain) throw new Error('spec.defaults.domain is missing and no project names a domain here (--project <id> or a .kb.json)');
+        const r = validateSpec(spec, vocabularyFor(db, domain), { extKeys: parseKeys(value('--keys')), project: value('--project') });
+        process.stdout.write(validateSummary(file, r) + '\n'); for (const p of r.problems) process.stdout.write(`  - ${p}\n`);
+        if (has('--fix')) {
+          const out = value('--out') ?? file; writeFileAtomic(out, JSON.stringify(r.fixed, null, 1) + '\n');
+          process.stdout.write(`wrote ${out}: ${r.keptFindings} of ${r.findings} findings kept\n`);
+          if (r.problems.some((p) => !/^#\d+ finding /.test(p))) process.exitCode = 1; // a failing approach, target or the defaults stay in the file
+        } else if (r.problems.length) process.exitCode = 1;
+      } else {
+        const p = resolveBuildProject(db, process.cwd(), { project: value('--project'), repo: value('--repo') });
+        if (sub === 'brief') process.stdout.write(buildBrief(db, p, (value('--role') ?? 'extractor') as Role));
+        else {
+          const size = has('--shard') ? Number(value('--shard')) : undefined, shards = buildManifest(db, bank, p, size), out = value('--out');
+          if (out) { writeFileAtomic(out, JSON.stringify(shards, null, 1) + '\n'); process.stdout.write(shards.map(shardLine).join('\n') + `\nwrote ${out}\n`); }
+          else process.stdout.write(JSON.stringify(shards, null, 1) + '\n');
+        }
+      }
+    } catch (e) { process.stderr.write(`kb build ${sub}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+  }
 } else if (cmd === 'compare' && args[0]) {
   const db = openDb(), name = args.join(' ');
   try { const rows = compareConcept(db, resolveConceptRef(db, name)); process.stdout.write(rows.length ? rows.map((r) => compareLine(r)).join('\n') + '\n' : `no findings about ${name}\n`); }
