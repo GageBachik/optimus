@@ -70,17 +70,53 @@ function openPending(db: Db, id: string): PendingRow {
   return p;
 }
 
+/** The merge itself, shared by an accepted question and `kb concepts merge`: a's title and aliases move onto b, a's `about`/`relies_on`
+ *  rels re-point to b, a is soft-deleted, open questions that named a as their target now name b and those that proposed a are closed
+ *  as `merged`; every touched note is re-exported. Returns the two titles for the log line. */
+function mergeInto(db: Db, bankDir: string, aId: string, bId: string, now: string): [string, string] {
+  const a = getNote(db, aId), b = getNote(db, bId);
+  for (const [n, id] of [[a, aId], [b, bId]] as const) if (!n || n.kind !== 'concept' || n.deleted_at) throw new Error(`no live concept ${id}`);
+  if (a!.id === b!.id) throw new Error(`${a!.title} cannot merge into itself`);
+  addAlias(db, b!.id, [a!.title, ...(getAttrs(db, a!.id).alias ?? [])], now);
+  const moved = db.sql.prepare(`SELECT id, src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a!.id) as { id: string; src: string }[];
+  for (const r of moved) rekeyRel(db, r.id, { dst: b!.id });
+  const srcs = [...new Set(moved.map((r) => r.src))];
+  softDeleteNote(db, a!.id, now);
+  db.sql.prepare('UPDATE pending_merge SET b=? WHERE b=? AND resolved IS NULL').run(b!.id, a!.id);
+  db.sql.prepare(`UPDATE pending_merge SET resolved='merged' WHERE (a=? OR a=b) AND resolved IS NULL`).run(a!.id); // a=b: the question that proposed b into a, now answered the other way
+  for (const n of [a!.id, b!.id, ...srcs]) { touch(db, n, now); exportNote(db, bankDir, n); }
+  return [a!.title, b!.title];
+}
+
 /** a becomes an alias of b: names move, `about`/`relies_on` rels re-point to b, a is soft-deleted; every touched note is re-exported. */
 export function acceptMerge(db: Db, bankDir: string, id: string, now = new Date().toISOString()): void {
-  const p = openPending(db, id), a = getNote(db, p.a)!, b = getNote(db, p.b)!;
-  addAlias(db, b.id, [a.title, ...(getAttrs(db, a.id).alias ?? [])], now);
-  const moved = db.sql.prepare(`SELECT id, src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id) as { id: string; src: string }[];
-  for (const r of moved) rekeyRel(db, r.id, { dst: b.id });
-  const srcs = [...new Set(moved.map((r) => r.src))];
-  softDeleteNote(db, a.id, now);
+  const p = openPending(db, id);
+  const [aTitle, bTitle] = mergeInto(db, bankDir, p.a, p.b, now);
   db.sql.prepare('UPDATE pending_merge SET resolved=? WHERE id=?').run('accepted', id);
-  for (const n of [a.id, b.id, ...srcs]) { touch(db, n, now); exportNote(db, bankDir, n); }
-  log(bankDir, `- ${now.slice(0, 10)} merged "${a.title}" into ${b.title} (accepted ${id}) · undo: kb concepts split "${normalizeName(a.title)}"`);
+  log(bankDir, `- ${now.slice(0, 10)} merged "${aTitle}" into ${bTitle} (accepted ${id}) · undo: kb concepts split "${normalizeName(aTitle)}"`);
+}
+
+/** A concept named by id, exact title or (when `alias` is allowed) alias; the review's questions name concepts by title.
+ *  The side being merged away never resolves through an alias: on 2026-10-24 "prop firm stress test", by then an alias of the
+ *  "prop firm" hub, named the hub, and the whole hub (47 notes) was merged into "stress test" and had to be repaired by hand. */
+export function conceptByRef(db: Db, ref: string, opts: { alias: boolean } = { alias: true }): string {
+  const norm = normalizeName(ref);
+  const byId = /^c_/.test(ref) ? getNote(db, ref) : null;
+  if (byId && byId.kind === 'concept' && !byId.deleted_at) return byId.id;
+  const exact = concepts(db).find((c) => normalizeName(c.title) === norm); if (exact) return exact.id;
+  const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm) as { id: string } | undefined;
+  if (hit && opts.alias) return hit.id;
+  if (hit) throw new Error(`"${ref}" is an alias of "${getNote(db, hit.id)!.title}" (${hit.id}), not a concept of its own; name that concept by its title or id if the whole of it is meant`);
+  throw new Error(`no concept "${ref}"`);
+}
+
+/** 2026-10-24 triage of 322 questions: 22 were the right merge in the wrong direction ("kalshi" into "kalshi api"), and until now the
+ *  only way to merge the other way was by hand in the bank, which the owner's rule forbids. `kb concepts merge <a> <b>` makes a an alias
+ *  of b outside the question queue, with the same moves and the same undo. */
+export function mergeConcepts(db: Db, bankDir: string, aRef: string, bRef: string, now = new Date().toISOString()): { a: string; b: string } {
+  const [a, b] = mergeInto(db, bankDir, conceptByRef(db, aRef, { alias: false }), conceptByRef(db, bRef), now);
+  log(bankDir, `- ${now.slice(0, 10)} merged "${a}" into ${b} (kb concepts merge) · undo: kb concepts split "${normalizeName(a)}"`);
+  return { a, b };
 }
 
 export function rejectMerge(db: Db, id: string): void {

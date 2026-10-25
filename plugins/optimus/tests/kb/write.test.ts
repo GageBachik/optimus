@@ -28,8 +28,8 @@ test('transfer proposed; baseline-agreeing finding confirms provisionally; disag
 test('R4 revert; a person\'s verdict is final; kb_link; retract soft-deletes; set refreshes gate_rank; R5 facet checks', () => {
   const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'b.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
   const bank2 = mkdtempSync(path.join(tmpdir(), 'bank-'));
-  const a1 = kbWrite(db, bank2, { kind: 'approach', title: 'A', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' } }, now);
-  const a2 = kbWrite(db, bank2, { kind: 'approach', title: 'B', domain: 'trading', project: 'spy', facets: { risk: 'fixed-lot' } }, now);
+  const a1 = kbWrite(db, bank2, { kind: 'approach', title: 'A', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' }, tags: ['risk sizing'] }, now);
+  const a2 = kbWrite(db, bank2, { kind: 'approach', title: 'B', domain: 'trading', project: 'spy', facets: { risk: 'fixed-lot' }, tags: ['risk sizing'] }, now); // v1.7: a candidate shares a concept, a facet key alone admits nobody
   const f = (project: string, value: number, baseline: number) => kbWrite(db, bank2, { kind: 'finding', title: `${project} ${value}`, domain: 'trading', project, tags: ['risk sizing'], attrs: { gate: 'in-sample' }, metrics: [{ name: 'sharpe', value, better: 'higher', baseline }], evidence: [{ kind: 'commit', ref: `${project}${value}` }], rels: [{ type: 'about', dst: project === 'es' ? a1.id : a2.id, props: { facet_key: 'risk' } }] }, now);
   const f1 = f('es', 1.4, 0.9);
   const state = () => getRels(db, f1.id).find((r) => r.type === 'transfer')!.props.state, tid = () => getRels(db, f1.id).find((r) => r.type === 'transfer')!.id;
@@ -75,8 +75,8 @@ test('a rel keeps the id an import of its file derives after a state change (DES
   const { parseNoteFile, relId } = await import('../../src/kb/export.js');
   const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'rekey.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
   const bank3 = mkdtempSync(path.join(tmpdir(), 'bank-'));
-  const a1 = kbWrite(db, bank3, { kind: 'approach', title: 'A', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' } }, now);
-  kbWrite(db, bank3, { kind: 'approach', title: 'B', domain: 'trading', project: 'spy', facets: { risk: 'fixed-lot' } }, now);
+  const a1 = kbWrite(db, bank3, { kind: 'approach', title: 'A', domain: 'trading', project: 'es', facets: { risk: 'fixed-fractional' }, tags: ['risk sizing'] }, now);
+  kbWrite(db, bank3, { kind: 'approach', title: 'B', domain: 'trading', project: 'spy', facets: { risk: 'fixed-lot' }, tags: ['risk sizing'] }, now);
   const f1 = kbWrite(db, bank3, { kind: 'finding', title: 'F', domain: 'trading', project: 'es', tags: ['risk sizing'], attrs: { gate: 'in-sample' }, metrics: [{ name: 'sharpe', value: 1.4, better: 'higher', baseline: 0.9 }], evidence: [{ kind: 'commit', ref: 'r1' }], rels: [{ type: 'about', dst: a1.id, props: { facet_key: 'risk' } }] }, now);
   const local = () => getRels(db, f1.id).find((r) => r.type === 'transfer')!;
   const imported = () => parseNoteFile(readFileSync(path.join(bank3, 'notes', 'finding', `${f1.id}.md`), 'utf8')).rels.find((r) => r.type === 'transfer')!;
@@ -84,4 +84,41 @@ test('a rel keeps the id an import of its file derives after a state change (DES
   assert.equal(local().props.state, 'confirmed'); assert.equal(next, local().id); assert.equal(local().id, imported().id);
   assert.notEqual(next, f1.transfers[0]); assert.throws(() => setTransfer(db, bank3, f1.transfers[0], 'refuted'), /no transfer/);
   assert.equal(relId('s', 't', 'd', { b: 1, a: 2 }), relId('s', 't', 'd', { a: 2, b: 1 }), 'props key order does not change the id');
+});
+
+test('v1.7 transfers (2026-10-24): a candidate must share a concept, a facet key alone admits nobody; ranked by shared concepts, rarity, facet key; cut at MAX_PROPOSALS with a straddling tie group dropped whole', async () => {
+  const { MAX_PROPOSALS, transferCandidates } = await import('../../src/kb/write.js');
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'rank.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const bank4 = mkdtempSync(path.join(tmpdir(), 'bank-'));
+  const approach = (title: string, project: string, tags: string[], facets?: Record<string, string>) => kbWrite(db, bank4, { kind: 'approach', title, domain: 'trading', project, tags, facets }, now).id;
+  const own = approach('ES 2-sigma', 'es', ['risk sizing'], { risk: 'fixed-fractional' });
+  const both = approach('both concepts', 'p-both', ['risk sizing', 'kalshi api']);
+  const rare = approach('rare concept only', 'p-rare', ['kalshi api']);
+  const hubKey = approach('hub concept, same facet key', 'p-hubkey', ['risk sizing'], { risk: 'fixed-lot' });
+  const hubA = approach('hub concept A', 'p-huba', ['risk sizing']);
+  const hubB = approach('hub concept B', 'p-hubb', ['risk sizing']);
+  const facetOnly = approach('facet key only', 'p-facet', [], { risk: 'kelly' });
+  const sameProject = approach('same project', 'es', ['risk sizing', 'kalshi api']);
+  assert.ok(hubA < hubB, 'ulids are monotonic, so the id tie-break is creation order');
+  const finding = (title: string, tags: string[]) => kbWrite(db, bank4, { kind: 'finding', title, domain: 'trading', project: 'es', tags, attrs: { gate: 'in-sample' }, evidence: [{ kind: 'commit', ref: title }], rels: [{ type: 'about', dst: own, props: { facet_key: 'risk' } }] }, now);
+  const dsts = (f: { id: string; transfers: string[] }) => { const rels = getRels(db, f.id).filter((r) => r.type === 'transfer'); return f.transfers.map((t) => rels.find((r) => r.id === t)!.dst); };
+  // risk sizing is touched by six approaches, kalshi api by three: both (2 shared) > rare (rarer) > hubKey (carries facet:risk) > hubA = hubB, a tie straddling the cut, dropped whole.
+  const f1 = finding('fixed-fractional beat fixed lot on Kalshi', ['risk sizing', 'kalshi api']);
+  assert.equal(MAX_PROPOSALS, 4);
+  assert.deepEqual(transferCandidates(db, f1.id).map((c) => [c.id, c.shared, c.rarity, c.facetKey]), [[both, 2, [3, 6], false], [rare, 1, [3], false], [hubKey, 1, [6], true]]);
+  assert.deepEqual(dsts(f1), [both, rare, hubKey], 'proposals follow the ranking, best first');
+  for (const [name, id] of Object.entries({ facetOnly, hubA, hubB, sameProject, own })) assert.ok(!dsts(f1).includes(id), `${name} gets no proposal`);
+  for (const t of getRels(db, f1.id).filter((r) => r.type === 'transfer')) assert.equal(t.props.state, 'proposed');
+  // A candidate set that fits under the cut is proposed whole, equals included.
+  const f2 = finding('hub concept only', ['risk sizing']);
+  assert.deepEqual(dsts(f2), [hubKey, both, hubA, hubB], 'the facet key ranks first among four equal sharers; the rest follow by id and all fit');
+  const f3 = finding('rare concept only', ['kalshi api']);
+  assert.deepEqual(dsts(f3), [both, rare]);
+  // Five equal candidates and nothing to rank them by: none is proposed, rather than four picked by creation order.
+  approach('hub concept C', 'p-hubc', ['risk sizing']);
+  const f4 = finding('hub concept again', ['risk sizing']);
+  assert.deepEqual(dsts(f4), [hubKey], 'hubKey still stands out by its facet key; the five-way tie behind it straddles the cut and is dropped');
+  // A re-write of f1 proposes nothing new: the ranking is stable and existing proposals are never duplicated.
+  const again = kbWrite(db, bank4, { kind: 'finding', id: f1.id, title: 'renamed' }, now);
+  assert.deepEqual(again.transfers, []); assert.equal(getRels(db, f1.id).filter((r) => r.type === 'transfer').length, 3);
 });

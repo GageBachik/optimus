@@ -7,22 +7,29 @@ import { type Db, upsertNote, setAttrs, getNote, deviceId } from './db.js';
 import { exportNote } from './export.js';
 import { evidenceId } from './ids.js';
 import { loadProjectConfig } from './project.js';
+import { WORKSPACE_ROOTS } from './auto-register.js';
 import { redactSensitive } from '../lib/redaction.js';
 
-export type ImportResult = { files: number; created: number; unchanged: number };
+/** `moved` (2026-10-24): existing notes whose project or domain the attribution computed now differs from; see importSources. */
+export type ImportResult = { files: number; created: number; unchanged: number; moved: number };
 type Source = { file: string; title: string; project: string | null; domain: string | null; attrs: Record<string, string> };
 
 const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 const none = { project: null, domain: null };
 /** The project a directory belongs to: its `.kb.json` (walking up) gives id and domain; else the enclosing git repository's directory name, so a
  *  linked worktree (`.git` is a file), an archived tree or a research subfolder inside a repository belongs to the repository; else the directory's
- *  own name. The home directory is no project (auto-register never files it either), nor is a folder under one of its hidden directories; the walk stops at the home. */
+ *  own name. The home directory is no project (auto-register never files it either), nor is a workspace root directly under it (`~/projects`, Desktop, …:
+ *  on 2026-10-24, 48 memories whose cwd or `.serena` folder was `~/projects` had been filed under a project named `projects`), nor a folder under one
+ *  of its hidden directories; the walk stops at the home. */
 function projectOf(dir: string, home: string): { project: string | null; domain: string | null } {
   const d = path.resolve(dir), top = path.resolve(home);
   if (d === top) return none;
   const c = loadProjectConfig(d); if (c) return { project: c.project_id, domain: c.domain };
-  const rel = path.relative(top, d); // a folder under a hidden directory of the home (~/.t3/scratch/<chat>, ~/.claude/…) is scratch, not a project, as auto-register rules
-  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel) && rel.split(path.sep).some((s) => s.startsWith('.'))) return none;
+  const rel = path.relative(top, d);
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+    if (WORKSPACE_ROOTS.includes(rel)) return none; // ~/projects, Desktop, … hold projects and are not one, as auto-register rules
+    if (rel.split(path.sep).some((s) => s.startsWith('.'))) return none; // a folder under a hidden directory of the home (~/.t3/scratch/<chat>, ~/.claude/…) is scratch, not a project
+  }
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try { if (statSync(path.join(p, '.git')).isDirectory()) return { project: path.basename(p), domain: null }; } catch { /* no .git here */ }
     const up = path.dirname(p); if (up === p) break; p = up;
@@ -32,17 +39,28 @@ function projectOf(dir: string, home: string): { project: string | null; domain:
 /** Every `*.md` under `dir`, as paths relative to it, sorted. */
 const mdFiles = (dir: string) => (readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith('.md') && statSync(path.join(dir, f)).isFile()).sort();
 
-/** DESIGN §4.10: one evidence note per file, id `e_<sha256 first 16 hex>` of the file's bytes; a note that already exists is left as it is.
- *  The body is the file's text, redacted (DESIGN §1 rule 10; a file with no secret is stored exactly). No git call, no edges, originals only read. */
+/** DESIGN §4.10: one evidence note per file, id `e_<sha256 first 16 hex>` of the file's bytes. The body is the file's text, redacted (DESIGN §1
+ *  rule 10; a file with no secret is stored exactly). A note that exists keeps its text and attrs, but its `project`/`domain` follow the attribution
+ *  computed now (2026-10-24: a corrected rule had no way to reach the 48 notes the old one misfiled): a different project, or a set domain that
+ *  differs, is written, `updated_at` touched and the note re-exported, counted as `moved`; a null computed domain never undoes one set by `kb project
+ *  move`; a retracted note stays as it is; and the first source in walk order owns a note that two folders hold, so a later copy never moves it and
+ *  a rerun is stable. No git call, no edges, originals only read. */
 function importSources(db: Db, bankDir: string, sources: Source[], now: string): ImportResult {
-  let created = 0;
+  let created = 0, moved = 0; const owned = new Set<string>();
+  const move = db.sql.prepare('UPDATE note SET project=?, domain=?, updated_at=? WHERE id=?');
   for (const s of sources) {
     const bytes = readFileSync(s.file), sha = sha256(bytes), id = evidenceId(sha);
-    if (getNote(db, id)) continue;
+    if (owned.has(id)) continue; owned.add(id);
+    const n = getNote(db, id);
+    if (n) {
+      const domain = n.project === s.project ? (s.domain ?? n.domain) : s.domain;
+      if (n.deleted_at || (n.project === s.project && n.domain === domain)) continue;
+      move.run(s.project, domain, now, id); exportNote(db, bankDir, id); moved++; continue;
+    }
     upsertNote(db, { id, kind: 'evidence', domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString('utf8')).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
     setAttrs(db, id, { ...s.attrs, source_path: s.file, sha256: sha }); exportNote(db, bankDir, id); created++;
   }
-  return { files: sources.length, created, unchanged: sources.length - created };
+  return { files: sources.length, created, unchanged: sources.length - created - moved, moved };
 }
 
 /** Each `.serena/memories` directory under `dir`, skipping node_modules, .git and `~/.cache` (Ruling R6) and never following symlinks. */
@@ -135,7 +153,7 @@ const plainPath = (p: string) => p.trim().replace(/^\\\\\?\\/, '');
  *  are not memories. */
 export function importCodexMemory(db: Db, bankDir: string, home = os.homedir(), now = new Date().toISOString()): ImportResult {
   const mem = path.join(home, '.codex', 'memories'), sources: Source[] = [];
-  if (!existsSync(mem)) return { files: 0, created: 0, unchanged: 0 };
+  if (!existsSync(mem)) return { files: 0, created: 0, unchanged: 0, moved: 0 };
   const scratch = path.resolve(home, 'Documents', 'Codex');
   const ownerOf = (cwd: string | undefined) => { if (!cwd) return none; const c = path.resolve(plainPath(cwd)); return c === scratch || c.startsWith(scratch + path.sep) ? none : projectOf(c, home); };
   const heading = (t: string, fallback: string) => /^# (.+)$/m.exec(t)?.[1].trim() || fallback;

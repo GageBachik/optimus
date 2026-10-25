@@ -7763,7 +7763,7 @@ function runLiveTest(opts = {}) {
   const run = (args2) => spawnSync(
     claude,
     [...args2, "--permission-mode", "bypassPermissions", "--model", "claude-haiku-5-5", "--max-turns", "12", "--output-format", "json", "--setting-sources", "project"],
-    { cwd: dir, env: { ...env, OPTIMUS_HOME: state }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 6e5, maxBuffer: 64 * 1024 * 1024 }
+    { cwd: dir, env: { ...env, OPTIMUS_HOME: state }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 6e5, maxBuffer: 64 * 1024 * 1024, windowsHide: true }
   );
   const started = Date.now();
   const lines = [`dir: ${dir}`];
@@ -7819,7 +7819,7 @@ function installedPlugins(home2) {
 function bankChecks() {
   const bank = paths.bankDir();
   if (!existsSync5(path8.join(bank, ".git"))) return [{ status: "WARN", name: "bank", detail: `${bank} is not a git repository (run \`kb init\`)` }];
-  const g = (args2, timeout = 6e4) => spawnSync2("git", args2, { cwd: bank, encoding: "utf8", timeout });
+  const g = (args2, timeout = 6e4) => spawnSync2("git", args2, { cwd: bank, encoding: "utf8", timeout, windowsHide: true });
   const st = g(["status", "--porcelain"]);
   if (st.error) return [{ status: "WARN", name: "bank", detail: `${bank}: git failed: ${st.error.message}` }];
   const dirty = (st.stdout ?? "").trim() ? "dirty" : "clean";
@@ -7868,7 +7868,7 @@ function doctorChecks(home2) {
   const out = [];
   out.push({ status: "INFO", name: "node", detail: `${process.version} (>= 24.4 required)` });
   out.push(fts5Probe());
-  const git3 = spawnSync2("git", ["--version"], { encoding: "utf8" });
+  const git3 = spawnSync2("git", ["--version"], { encoding: "utf8", windowsHide: true });
   out.push(git3.status === 0 ? { status: "PASS", name: "git", detail: git3.stdout.trim() } : { status: "FAIL", name: "git", detail: "git not found on PATH" });
   const kb = loadProjectConfig(process.cwd());
   out.push(kb ? { status: "PASS", name: "kb-json", detail: `project ${kb.project_id} (domain ${kb.domain})` } : { status: "WARN", name: "kb-json", detail: `no valid .kb.json in ${process.cwd()} (missing project_id or domain): run kb project init` });
@@ -7922,7 +7922,7 @@ function doctor(home2, opts = {}) {
 `);
   for (const c of checks) print(c);
   if (opts.live) {
-    const v = spawnSync2("claude", ["--version"], { encoding: "utf8" });
+    const v = spawnSync2("claude", ["--version"], { encoding: "utf8", windowsHide: true });
     process.stdout.write("\n");
     if (v.status !== 0) {
       const c = { status: "FAIL", name: "live:claude", detail: `claude --version failed (${v.error?.message ?? `exit ${v.status}`}); live test skipped` };
@@ -8377,7 +8377,7 @@ import { spawnSync as spawnSync3 } from "node:child_process";
 import path12 from "node:path";
 var LOCK = ".kb-sync.lock";
 var LOCK_STALE_MS = 10 * 6e4;
-var git = (cwd, ...args2) => spawnSync3("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
+var git = (cwd, ...args2) => spawnSync3("git", args2, { cwd, encoding: "utf8", timeout: 6e4, windowsHide: true });
 var gitIdentity = (cwd) => git(cwd, "var", "GIT_COMMITTER_IDENT").status === 0 ? [] : ["-c", "user.name=optimus", "-c", `user.email=kb@${deviceId()}`];
 var errText = (r) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();
 function lock(bank) {
@@ -8485,7 +8485,7 @@ function shippedTemplatesDir() {
   return [path13.join(here, "..", "templates"), path13.join(here, "..", "..", "templates")].find(existsSync11) ?? path13.join(here, "..", "templates");
 }
 function git2(cwd, ...args2) {
-  const r = spawnSync4("git", args2, { cwd, encoding: "utf8", timeout: 6e4 });
+  const r = spawnSync4("git", args2, { cwd, encoding: "utf8", timeout: 6e4, windowsHide: true });
   if (r.status !== 0) throw new Error(`git ${args2.join(" ")} failed: ${(r.stderr || r.error?.message || "").trim()}`);
   return r.stdout;
 }
@@ -8550,10 +8550,45 @@ function projectInit(cwd, opts) {
   writeFileSync4(file, JSON.stringify(c, null, 2) + "\n");
   return c;
 }
-
-// src/kb/concepts.ts
-import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
-import path14 from "node:path";
+function nearestKbJson(cwd) {
+  let dir = path13.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    const file = path13.join(dir, ".kb.json");
+    if (existsSync11(file)) {
+      try {
+        return { file, cfg: JSON.parse(readFileSync12(file, "utf8")) };
+      } catch (e) {
+        throw new Error(`${file} is not valid JSON: ${e.message}`);
+      }
+    }
+    const up = path13.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+function projectMove(db, bankDir, cwd, opts, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const found = nearestKbJson(cwd), local = typeof found?.cfg.project_id === "string" ? found.cfg.project_id : void 0;
+  const id = opts.id ?? local;
+  if (!id) throw new Error(found ? `${found.file} has no project_id; pass --id <project>` : "no .kb.json here or above; run this in the project folder or pass --id <project>");
+  const domains = installedDomains(db);
+  if (!domains.includes(opts.domain)) throw new Error(`unknown domain ${opts.domain} (installed: ${domains.join(", ") || "none"}); a new kind of project needs kb domain new ${opts.domain} --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] first`);
+  const rows = db.sql.prepare("SELECT id, kind FROM note WHERE project=? AND deleted_at IS NULL AND (domain IS NULL OR domain<>?) ORDER BY kind, id").all(id, opts.domain);
+  const upd = db.sql.prepare("UPDATE note SET domain=?, updated_at=? WHERE id=?"), moved = {};
+  for (const r of rows) {
+    upd.run(opts.domain, now, r.id);
+    exportNote(db, bankDir, r.id);
+    moved[r.kind] = (moved[r.kind] ?? 0) + 1;
+  }
+  let file = null;
+  if (found && local === id) {
+    const { auto: _auto, ...rest } = found.cfg, next = JSON.stringify({ ...rest, domain: opts.domain }, null, 2) + "\n";
+    if (readFileSync12(found.file, "utf8") !== next) writeFileSync4(found.file, next);
+    file = found.file;
+  }
+  log("info", "project moved", { project: id, domain: opts.domain, file, moved, total: rows.length });
+  return { project_id: id, domain: opts.domain, file, moved, total: rows.length };
+}
 
 // src/kb/ids.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
@@ -8589,6 +8624,10 @@ function kindOfId(id) {
   if (!k) throw new Error(`unknown id prefix: ${id}`);
   return k;
 }
+
+// src/kb/concepts.ts
+import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
+import path14 from "node:path";
 
 // src/lib/redaction.ts
 var PATTERNS = [
@@ -8677,19 +8716,44 @@ function openPending(db, id) {
   if (p.resolved) throw new Error(`pending merge ${id} is already ${p.resolved}`);
   return p;
 }
-function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
-  const p = openPending(db, id), a = getNote(db, p.a), b = getNote(db, p.b);
+function mergeInto(db, bankDir, aId, bId, now) {
+  const a = getNote(db, aId), b = getNote(db, bId);
+  for (const [n, id] of [[a, aId], [b, bId]]) if (!n || n.kind !== "concept" || n.deleted_at) throw new Error(`no live concept ${id}`);
+  if (a.id === b.id) throw new Error(`${a.title} cannot merge into itself`);
   addAlias(db, b.id, [a.title, ...getAttrs(db, a.id).alias ?? []], now);
   const moved = db.sql.prepare(`SELECT id, src FROM rel WHERE dst=? AND type IN ('about','relies_on') AND deleted_at IS NULL`).all(a.id);
   for (const r of moved) rekeyRel(db, r.id, { dst: b.id });
   const srcs = [...new Set(moved.map((r) => r.src))];
   softDeleteNote(db, a.id, now);
-  db.sql.prepare("UPDATE pending_merge SET resolved=? WHERE id=?").run("accepted", id);
+  db.sql.prepare("UPDATE pending_merge SET b=? WHERE b=? AND resolved IS NULL").run(b.id, a.id);
+  db.sql.prepare(`UPDATE pending_merge SET resolved='merged' WHERE (a=? OR a=b) AND resolved IS NULL`).run(a.id);
   for (const n of [a.id, b.id, ...srcs]) {
     touch(db, n, now);
     exportNote(db, bankDir, n);
   }
-  log2(bankDir, `- ${now.slice(0, 10)} merged "${a.title}" into ${b.title} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(a.title)}"`);
+  return [a.title, b.title];
+}
+function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const p = openPending(db, id);
+  const [aTitle, bTitle] = mergeInto(db, bankDir, p.a, p.b, now);
+  db.sql.prepare("UPDATE pending_merge SET resolved=? WHERE id=?").run("accepted", id);
+  log2(bankDir, `- ${now.slice(0, 10)} merged "${aTitle}" into ${bTitle} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(aTitle)}"`);
+}
+function conceptByRef(db, ref, opts = { alias: true }) {
+  const norm2 = normalizeName(ref);
+  const byId = /^c_/.test(ref) ? getNote(db, ref) : null;
+  if (byId && byId.kind === "concept" && !byId.deleted_at) return byId.id;
+  const exact = concepts(db).find((c) => normalizeName(c.title) === norm2);
+  if (exact) return exact.id;
+  const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm2);
+  if (hit && opts.alias) return hit.id;
+  if (hit) throw new Error(`"${ref}" is an alias of "${getNote(db, hit.id).title}" (${hit.id}), not a concept of its own; name that concept by its title or id if the whole of it is meant`);
+  throw new Error(`no concept "${ref}"`);
+}
+function mergeConcepts(db, bankDir, aRef, bRef, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const [a, b] = mergeInto(db, bankDir, conceptByRef(db, aRef, { alias: false }), conceptByRef(db, bRef), now);
+  log2(bankDir, `- ${now.slice(0, 10)} merged "${a}" into ${b} (kb concepts merge) \xB7 undo: kb concepts split "${normalizeName(a)}"`);
+  return { a, b };
 }
 function rejectMerge(db, id) {
   openPending(db, id);
@@ -8813,22 +8877,47 @@ function agrees(a, b) {
   }
   return verdict;
 }
-var MAX_PROPOSALS = 12;
-function proposeTransfers(db, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
+var MAX_PROPOSALS = 4;
+function compareCandidates(a, b, withId = true) {
+  if (a.shared !== b.shared) return b.shared - a.shared;
+  for (let i = 0; i < a.rarity.length; i++) if (a.rarity[i] !== b.rarity[i]) return a.rarity[i] - b.rarity[i];
+  if (a.facetKey !== b.facetKey) return a.facetKey ? -1 : 1;
+  return withId ? a.id < b.id ? -1 : a.id > b.id ? 1 : 0 : 0;
+}
+function transferCandidates(db, findingId) {
   const f = must(db, findingId), about = getRels(db, findingId).filter((r) => r.type === "about");
   const concepts2 = about.map((r) => r.dst).filter((d) => kindOfId(d) === "concept");
-  const approaches = about.map((r) => r.dst).filter((d) => kindOfId(d) === "approach");
-  const keys = new Set(about.flatMap((r) => typeof r.props.facet_key === "string" ? [r.props.facet_key] : []));
-  const live2 = `n.kind='approach' AND n.deleted_at IS NULL AND n.project IS NOT NULL AND n.project IS NOT ?`;
-  const byConcept = db.sql.prepare(`SELECT DISTINCT r.src AS id FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND ${live2}`);
-  const byFacet = db.sql.prepare(`SELECT DISTINCT a.note_id AS id FROM attr a JOIN note n ON n.id=a.note_id WHERE a.key=? AND ${live2}`);
-  const candidates = /* @__PURE__ */ new Set();
-  for (const c of concepts2) for (const r of byConcept.all(c, f.project).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
-  for (const k of keys) for (const r of byFacet.all(`facet:${k}`, f.project).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
+  const own = new Set(about.map((r) => r.dst).filter((d) => kindOfId(d) === "approach"));
+  const keys = [...new Set(about.flatMap((r) => typeof r.props.facet_key === "string" ? [r.props.facet_key] : []))];
+  const touching = `FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND n.kind='approach' AND n.deleted_at IS NULL`;
+  const byConcept = db.sql.prepare(`SELECT DISTINCT r.src AS id ${touching} AND n.project IS NOT NULL AND n.project IS NOT ?`);
+  const popularity = db.sql.prepare(`SELECT count(DISTINCT r.src) AS n ${touching}`);
+  const hasKey = db.sql.prepare("SELECT 1 FROM attr WHERE note_id=? AND key=?");
+  const cand = /* @__PURE__ */ new Map();
+  for (const c of concepts2) {
+    const pop = popularity.get(c).n;
+    for (const { id } of byConcept.all(c, f.project)) {
+      if (own.has(id)) continue;
+      const e = cand.get(id) ?? { id, shared: 0, rarity: [], facetKey: false };
+      e.shared++;
+      e.rarity.push(pop);
+      cand.set(id, e);
+    }
+  }
+  for (const e of cand.values()) {
+    e.rarity.sort((a, b) => a - b);
+    e.facetKey = keys.some((k) => hasKey.get(e.id, `facet:${k}`) !== void 0);
+  }
+  const ranked = [...cand.values()].sort((a, b) => compareCandidates(a, b));
+  let n = Math.min(MAX_PROPOSALS, ranked.length);
+  while (n > 0 && n < ranked.length && compareCandidates(ranked[n - 1], ranked[n], false) === 0) n--;
+  return ranked.slice(0, n);
+}
+function proposeTransfers(db, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const existing = new Set(getRels(db, findingId).filter((r) => r.type === "transfer").map((r) => r.dst));
   const made = [];
-  for (const dst of [...candidates].slice(0, MAX_PROPOSALS)) {
-    if (existing.has(dst) || approaches.includes(dst)) continue;
+  for (const { id: dst } of transferCandidates(db, findingId)) {
+    if (existing.has(dst)) continue;
     const props = { state: "proposed" }, id = relId(findingId, "transfer", dst, props);
     addRel(db, { id, src: findingId, type: "transfer", dst, props, created_at: now, deleted_at: null });
     made.push(id);
@@ -8838,6 +8927,32 @@ function proposeTransfers(db, bankDir, findingId, now = (/* @__PURE__ */ new Dat
     exportNote(db, bankDir, findingId);
   }
   return made;
+}
+function planTransferPrune(db) {
+  const rows = db.sql.prepare(`SELECT t.src AS finding, t.id, t.dst, t.props FROM rel t JOIN note f ON f.id=t.src
+    WHERE t.type='transfer' AND t.deleted_at IS NULL AND f.kind='finding' AND f.deleted_at IS NULL ORDER BY t.src, t.id`).all();
+  const plan = [];
+  let cur;
+  for (const r of rows) {
+    if (JSON.parse(r.props).state !== "proposed") continue;
+    if (!cur || cur.finding !== r.finding) {
+      cur = { finding: r.finding, proposed: 0, withdraw: [], keep: new Set(transferCandidates(db, r.finding).map((c) => c.id)) };
+      plan.push(cur);
+    }
+    cur.proposed++;
+    if (!cur.keep.has(r.dst)) cur.withdraw.push(r.id);
+  }
+  return plan.filter((p) => p.withdraw.length).map(({ finding, proposed, withdraw }) => ({ finding, proposed, withdraw }));
+}
+function pruneTransfers(db, bankDir, plan, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const del = db.sql.prepare("UPDATE rel SET deleted_at=? WHERE id=? AND deleted_at IS NULL");
+  let withdrawn = 0;
+  for (const p of plan) {
+    for (const id of p.withdraw) withdrawn += Number(del.run(now, id).changes);
+    touch2(db, p.finding, now);
+    exportNote(db, bankDir, p.finding);
+  }
+  return { withdrawn, findings: plan.length };
 }
 function applyProvisionalVerdicts(db, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const g = must(db, findingId);
@@ -8957,6 +9072,7 @@ import { existsSync as existsSync15, mkdirSync as mkdirSync9, readFileSync as re
 // src/kb/auto-register.ts
 import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync5 } from "node:fs";
 import path15 from "node:path";
+var WORKSPACE_ROOTS = ["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"];
 function findConfig(cwd) {
   let dir = path15.resolve(cwd), file = "";
   for (let i = 0; i < 8; i++) {
@@ -9002,7 +9118,10 @@ function projectOf(dir, home2) {
   const c = loadProjectConfig(d);
   if (c) return { project: c.project_id, domain: c.domain };
   const rel = path16.relative(top, d);
-  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel) && rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel)) {
+    if (WORKSPACE_ROOTS.includes(rel)) return none;
+    if (rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+  }
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try {
       if (statSync6(path16.join(p, ".git")).isDirectory()) return { project: path16.basename(p), domain: null };
@@ -9016,16 +9135,28 @@ function projectOf(dir, home2) {
 }
 var mdFiles = (dir) => readdirSync7(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort();
 function importSources(db, bankDir, sources, now) {
-  let created = 0;
+  let created = 0, moved = 0;
+  const owned = /* @__PURE__ */ new Set();
+  const move = db.sql.prepare("UPDATE note SET project=?, domain=?, updated_at=? WHERE id=?");
   for (const s of sources) {
     const bytes = readFileSync14(s.file), sha = sha2563(bytes), id = evidenceId(sha);
-    if (getNote(db, id)) continue;
+    if (owned.has(id)) continue;
+    owned.add(id);
+    const n = getNote(db, id);
+    if (n) {
+      const domain = n.project === s.project ? s.domain ?? n.domain : s.domain;
+      if (n.deleted_at || n.project === s.project && n.domain === domain) continue;
+      move.run(s.project, domain, now, id);
+      exportNote(db, bankDir, id);
+      moved++;
+      continue;
+    }
     upsertNote(db, { id, kind: "evidence", domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString("utf8")).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
     setAttrs(db, id, { ...s.attrs, source_path: s.file, sha256: sha });
     exportNote(db, bankDir, id);
     created++;
   }
-  return { files: sources.length, created, unchanged: sources.length - created };
+  return { files: sources.length, created, unchanged: sources.length - created - moved, moved };
 }
 function serenaDirs(dir, skip, out = []) {
   let entries;
@@ -9123,7 +9254,7 @@ function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PUR
 var plainPath = (p) => p.trim().replace(/^\\\\\?\\/, "");
 function importCodexMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {
   const mem = path16.join(home2, ".codex", "memories"), sources = [];
-  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0 };
+  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0, moved: 0 };
   const scratch = path16.resolve(home2, "Documents", "Codex");
   const ownerOf = (cwd) => {
     if (!cwd) return none;
@@ -10336,7 +10467,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 var buildUsage = "usage: kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>]\n       kb build brief [--project <id>] [--role extractor|reviewer]\n       kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
@@ -10388,6 +10519,29 @@ else if (cmd === "sync") {
     process.stderr.write("usage: kb project init --domain <d> [--id <id>]\n");
     process.exitCode = 2;
   } else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + "\n");
+} else if (cmd === "project" && args[0] === "move") {
+  const domain = value("--domain"), id = value("--id");
+  if (!domain || has("--id") && !id) {
+    process.stderr.write("usage: kb project move --domain <d> [--id <project>]\n");
+    process.exitCode = 2;
+  } else {
+    const db = openDb(), bank = paths.bankDir();
+    try {
+      const r = projectMove(db, bank, process.cwd(), { domain, id }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
+      process.stdout.write(r.total ? `moved project ${r.project_id} to ${r.domain}: ${parts.join(", ")} (${r.total} note${r.total === 1 ? "" : "s"} re-exported; kb sync ships them)
+` : `project ${r.project_id} is already in ${r.domain}: no note to move
+`);
+      process.stdout.write(r.file ? `.kb.json: ${r.file} (domain ${r.domain}, hand-set)
+` : `no .kb.json for ${r.project_id} here; in its folder, kb project init --domain ${r.domain} --id ${r.project_id} writes one
+`);
+    } catch (e) {
+      process.stderr.write(`kb project move: ${e.message}
+`);
+      process.exitCode = 1;
+    } finally {
+      db.sql.close();
+    }
+  }
 } else if (cmd === "export" || cmd === "rebuild") {
   const db = openDb(), bank = paths.bankDir();
   try {
@@ -10405,8 +10559,8 @@ else if (cmd === "sync") {
   } finally {
     db.sql.close();
   }
-} else if (cmd === "concepts" && ["review", "accept", "reject", "split"].includes(args[0]) && (args[0] === "review" || args[1])) {
-  const db = openDb(), bank = paths.bankDir(), [sub, arg] = args;
+} else if (cmd === "concepts" && ["review", "accept", "reject", "split", "merge"].includes(args[0]) && (args[0] === "review" || (args[0] === "merge" ? args[2] : args[1]))) {
+  const db = openDb(), bank = paths.bankDir(), [sub, arg, arg2] = args;
   try {
     if (sub === "review") {
       const q = pendingQuestions(db, Number.MAX_SAFE_INTEGER);
@@ -10418,6 +10572,10 @@ else if (cmd === "sync") {
     } else if (sub === "reject") {
       rejectMerge(db, arg);
       process.stdout.write(`rejected ${arg}
+`);
+    } else if (sub === "merge") {
+      const r = mergeConcepts(db, bank, arg, arg2);
+      process.stdout.write(`merged "${r.a}" into "${r.b}"; undo: kb concepts split "${arg}"
 `);
     } else process.stdout.write(`split "${arg}" into ${splitAlias(db, bank, arg)}
 `);
@@ -10452,6 +10610,27 @@ else if (cmd === "sync") {
   } finally {
     db.sql.close();
   }
+} else if (cmd === "transfers" && args[0] === "prune") {
+  const db = openDb(), bank = paths.bankDir(), apply = has("--apply");
+  try {
+    const plan = planTransferPrune(db), total = plan.reduce((n, p) => n + p.withdraw.length, 0);
+    for (const p of plan) process.stdout.write(`${apply ? "DONE" : "PLAN"}  ${p.finding}  ${p.withdraw.length} of ${p.proposed} proposed
+`);
+    if (!plan.length) process.stdout.write("nothing to prune: every proposed transfer is one the current rule proposes\n");
+    else if (apply) {
+      const r = pruneTransfers(db, bank, plan);
+      process.stdout.write(`withdrew ${r.withdrawn} proposed transfers on ${r.findings} findings; their notes are re-exported, settled transfers untouched
+`);
+    } else process.stdout.write(`
+${total} proposed transfers on ${plan.length} findings would be withdrawn; re-run with --apply (confirmed, refuted and confirmed_provisional transfers are never touched)
+`);
+  } catch (e) {
+    process.stderr.write(`kb transfers prune: ${e.message}
+`);
+    process.exitCode = 1;
+  } finally {
+    db.sql.close();
+  }
 } else if (cmd === "import" && ["serena", "claude-memory", "codex", "all"].includes(args[0])) {
   const root = value("--root");
   if (has("--root") && !root) {
@@ -10459,7 +10638,7 @@ else if (cmd === "sync") {
     process.exitCode = 2;
   } else {
     const db = openDb(), bank = paths.bankDir(), roots = [root ?? path19.join(home, "projects")];
-    const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
+    const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged, ${r.moved} moved
 `);
     try {
       if (args[0] === "serena" || args[0] === "all") line("serena", importSerena(db, bank, roots));
@@ -10567,7 +10746,7 @@ else if (cmd === "sync") {
 `);
     if (has("--open")) {
       const [bin, pre] = process.platform === "darwin" ? ["open", []] : process.platform === "win32" ? ["cmd", ["/c", "start", ""]] : ["xdg-open", []];
-      spawn(bin, [...pre, file], { detached: true, stdio: "ignore" }).unref();
+      spawn(bin, [...pre, file], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     }
   } catch (e) {
     process.stderr.write(`kb map: ${e.message}

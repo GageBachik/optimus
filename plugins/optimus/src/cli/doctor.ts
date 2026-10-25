@@ -30,7 +30,7 @@ export function installedPlugins(home: string): { name: string; installPath: str
 function bankChecks(): Check[] {
   const bank = paths.bankDir();
   if (!existsSync(path.join(bank, '.git'))) return [{ status: 'WARN', name: 'bank', detail: `${bank} is not a git repository (run \`kb init\`)` }];
-  const g = (args: string[], timeout = 60_000) => spawnSync('git', args, { cwd: bank, encoding: 'utf8', timeout });
+  const g = (args: string[], timeout = 60_000) => spawnSync('git', args, { cwd: bank, encoding: 'utf8', timeout, windowsHide: true });
   const st = g(['status', '--porcelain']);
   if (st.error) return [{ status: 'WARN', name: 'bank', detail: `${bank}: git failed: ${st.error.message}` }];
   const dirty = (st.stdout ?? '').trim() ? 'dirty' : 'clean';
@@ -63,7 +63,7 @@ export function doctorChecks(home: string): Check[] {
   const out: Check[] = [];
   out.push({ status: 'INFO', name: 'node', detail: `${process.version} (>= 24.4 required)` });
   out.push(fts5Probe());
-  const git = spawnSync('git', ['--version'], { encoding: 'utf8' });
+  const git = spawnSync('git', ['--version'], { encoding: 'utf8', windowsHide: true });
   out.push(git.status === 0 ? { status: 'PASS', name: 'git', detail: git.stdout.trim() } : { status: 'FAIL', name: 'git', detail: 'git not found on PATH' });
   const kb = loadProjectConfig(process.cwd());
   out.push(kb ? { status: 'PASS', name: 'kb-json', detail: `project ${kb.project_id} (domain ${kb.domain})` } : { status: 'WARN', name: 'kb-json', detail: `no valid .kb.json in ${process.cwd()} (missing project_id or domain): run kb project init` });
@@ -111,7 +111,7 @@ export function doctor(home: string, opts: { baseline?: boolean; live?: boolean 
   const print = (c: Check) => process.stdout.write(`${c.status.padEnd(4)}  ${c.name.padEnd(18)} ${c.detail}\n`);
   for (const c of checks) print(c);
   if (opts.live) {
-    const v = spawnSync('claude', ['--version'], { encoding: 'utf8' });
+    const v = spawnSync('claude', ['--version'], { encoding: 'utf8', windowsHide: true });
     process.stdout.write('\n');
     if (v.status !== 0) { const c: Check = { status: 'FAIL', name: 'live:claude', detail: `claude --version failed (${v.error?.message ?? `exit ${v.status}`}); live test skipped` }; checks.push(c); print(c); }
     else {

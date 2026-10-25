@@ -9,7 +9,7 @@ import { importAll } from './export.js';
 export type SyncResult = 'ok' | 'busy' | 'no-remote' | 'failed';
 const LOCK = '.kb-sync.lock', LOCK_STALE_MS = 10 * 60_000;
 /** DESIGN §4.4: every git call is spawnSync with a 60-second timeout. */
-const git = (cwd: string, ...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 60_000 });
+const git = (cwd: string, ...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true });
 /** `-c` identity for commit/rebase when git cannot form one (no user.name/email and autodetect refused); never overrides a configured identity. */
 export const gitIdentity = (cwd: string): string[] => git(cwd, 'var', 'GIT_COMMITTER_IDENT').status === 0 ? [] : ['-c', 'user.name=optimus', '-c', `user.email=kb@${deviceId()}`];
 const errText = (r: SpawnSyncReturns<string>) => (r.error?.message || r.stderr || `exit ${r.status}`).trim();

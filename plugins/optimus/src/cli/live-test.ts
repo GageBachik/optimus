@@ -73,7 +73,7 @@ export function runLiveTest(opts: { hookJs?: string; claude?: string } = {}): Li
   writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(liveSettings(hookJs, probe, logFile), null, 2));
   const { CLAUDECODE: _nested, ...env } = process.env; // env -u CLAUDECODE: a nested claude refuses to start inside a Claude Code session
   const run = (args: string[]) => spawnSync(claude, [...args, '--permission-mode', 'bypassPermissions', '--model', 'claude-haiku-5-5', '--max-turns', '12', '--output-format', 'json', '--setting-sources', 'project'],
-    { cwd: dir, env: { ...env, OPTIMUS_HOME: state }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
+    { cwd: dir, env: { ...env, OPTIMUS_HOME: state }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true });
   const started = Date.now(); const lines = [`dir: ${dir}`];
   const r1 = run(['-p', PROMPT]); const out1 = r1.stdout ?? '', err1 = (r1.stderr ?? '').trim(); const j1 = parse(out1);
   lines.push(`run1: exit ${r1.status}${r1.error ? ` error: ${r1.error.message}` : ''}${err1 ? ` stderr: ${err1}` : ''}`, `run1 result: ${j1?.result ?? out1.slice(0, 1000)}`);
