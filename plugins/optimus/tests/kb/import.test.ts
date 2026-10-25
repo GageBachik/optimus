@@ -73,13 +73,13 @@ test('copies of a project\'s Serena memories (a git worktree, an archived tree) 
   assert.equal(rows[0].src, path.join(repo, '.serena', 'memories', 'a.md'), 'the repository\'s own copy owns the note, not the worktree that readdir lists first');
 });
 
-test('auto-memory: the home directory is no project, and a subfolder of a repository belongs to the repository', () => {
+test('auto-memory: the home directory and a scratch folder under a hidden directory are no project; a subfolder of a repository belongs to the repository', () => {
   const home = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'home-'))), repo = path.join(home, 'projects', 'repo'); mkdirSync(path.join(repo, '.git'), { recursive: true });
   const proj = (cwd: string, name: string) => { const d = path.join(home, '.claude', 'projects', cwd.replace(/[^A-Za-z0-9]/g, '-')); put(path.join(d, 'memory', `${name}.md`), `${name}\n`); put(path.join(d, 't.jsonl'), JSON.stringify({ type: 'user', cwd }) + '\n'); };
-  proj(home, 'h'); proj(path.join(repo, 'research', 'run'), 'r');
+  proj(home, 'h'); proj(path.join(repo, 'research', 'run'), 'r'); proj(path.join(home, '.t3', 'scratch', '2026-10-19-watch-a-video'), 's'); // a chat scratch folder under a hidden directory
   const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'd.sqlite'));
-  assert.deepEqual(importClaudeMemory(db, bank, home), { files: 2, created: 2, unchanged: 0 });
-  assert.deepEqual((db.sql.prepare('SELECT project, title FROM note ORDER BY title').all() as any[]).map((r) => [r.project, r.title]), [[null, 'h'], ['repo', 'r']]);
+  assert.deepEqual(importClaudeMemory(db, bank, home), { files: 3, created: 3, unchanged: 0 });
+  assert.deepEqual((db.sql.prepare('SELECT project, title FROM note ORDER BY title').all() as any[]).map((r) => [r.project, r.title]), [[null, 'h'], ['repo', 'r'], [null, 's']]);
 });
 
 test('Codex memories: rollout summaries (project from their cwd), ad-hoc notes and the memory summary become evidence notes; derived files are skipped', () => {

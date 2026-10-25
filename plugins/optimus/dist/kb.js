@@ -8984,6 +8984,8 @@ function projectOf(dir, home2) {
   if (d === top) return none;
   const c = loadProjectConfig(d);
   if (c) return { project: c.project_id, domain: c.domain };
+  const rel = path16.relative(top, d);
+  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel) && rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try {
       if (statSync6(path16.join(p, ".git")).isDirectory()) return { project: path16.basename(p), domain: null };

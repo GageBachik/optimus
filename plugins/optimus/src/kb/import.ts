@@ -16,11 +16,13 @@ const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 const none = { project: null, domain: null };
 /** The project a directory belongs to: its `.kb.json` (walking up) gives id and domain; else the enclosing git repository's directory name, so a
  *  linked worktree (`.git` is a file), an archived tree or a research subfolder inside a repository belongs to the repository; else the directory's
- *  own name. The home directory is no project (auto-register never files it either), and the walk stops there. */
+ *  own name. The home directory is no project (auto-register never files it either), nor is a folder under one of its hidden directories; the walk stops at the home. */
 function projectOf(dir: string, home: string): { project: string | null; domain: string | null } {
   const d = path.resolve(dir), top = path.resolve(home);
   if (d === top) return none;
   const c = loadProjectConfig(d); if (c) return { project: c.project_id, domain: c.domain };
+  const rel = path.relative(top, d); // a folder under a hidden directory of the home (~/.t3/scratch/<chat>, ~/.claude/…) is scratch, not a project, as auto-register rules
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel) && rel.split(path.sep).some((s) => s.startsWith('.'))) return none;
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try { if (statSync(path.join(p, '.git')).isDirectory()) return { project: path.basename(p), domain: null }; } catch { /* no .git here */ }
     const up = path.dirname(p); if (up === p) break; p = up;
