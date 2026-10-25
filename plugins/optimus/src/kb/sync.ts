@@ -24,6 +24,27 @@ function lock(bank: string): boolean {
   return false;
 }
 
+/** 2026-10-24, the first rebase with both machines committing between syncs: each had tagged a new concept, so each had created the same
+ *  deterministic concept note (same id and title; only created_at, updated_at and device_id differed) and the rebase stopped on an add/add conflict
+ *  that needs no judgement. Such conflicts are settled by keeping the remote copy and the rebase continues; any other conflict still aborts for a person. */
+function settleIdenticalConcepts(bank: string, id: string[]): boolean {
+  const strip = (s: string) => s.split('\n').filter((l) => !/^(created_at|updated_at|device_id):/.test(l)).join('\n');
+  const inRebase = () => existsSync(path.join(bank, '.git', 'rebase-merge')) || existsSync(path.join(bank, '.git', 'rebase-apply'));
+  for (let round = 0; round < 20 && inRebase(); round++) {
+    const files = git(bank, 'diff', '--name-only', '--diff-filter=U').stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (!files.length) return false;
+    for (const f of files) {
+      if (!f.startsWith('notes/concept/')) return false;
+      const ours = git(bank, 'show', `:2:${f}`), theirs = git(bank, 'show', `:3:${f}`); // in a rebase, stage 2 is the remote branch and stage 3 the local commit being replayed
+      if (ours.status !== 0 || theirs.status !== 0 || strip(ours.stdout) !== strip(theirs.stdout)) return false;
+      if (git(bank, 'checkout', '--ours', '--', f).status !== 0 || git(bank, 'add', '--', f).status !== 0) return false;
+    }
+    log('info', 'sync: settled identical concept notes created on both machines; kept the remote copies', { files });
+    git(bank, ...id, '-c', 'core.editor=true', 'rebase', '--continue');
+  }
+  return !inRebase();
+}
+
 /** The git steps of DESIGN §4.4. `reason` is what `kb doctor` shows after `failed`. */
 function steps(db: Db, bank: string): { result: SyncResult; reason?: string } {
   const fail = (step: string, r: SpawnSyncReturns<string>) => { log('error', `sync: ${step} failed`, { bank, detail: errText(r) }); return { result: 'failed' as const, reason: `${step} failed` }; };
@@ -37,7 +58,7 @@ function steps(db: Db, bank: string): { result: SyncResult; reason?: string } {
   const before = git(bank, 'rev-parse', '--verify', '-q', 'HEAD').stdout.trim(); // '' on an unborn branch: a clone of an empty remote with nothing written yet
   if (git(bank, 'rev-parse', '--verify', '-q', upstream).status === 0) {
     r = before ? git(bank, ...id, 'rebase', '-q', upstream) : git(bank, 'reset', '-q', '--hard', upstream); // unborn: adopt the remote branch
-    if (r.status !== 0) { git(bank, 'rebase', '--abort'); log('warn', 'sync: rebase conflict, aborted; local commit intact', { bank, detail: errText(r) }); return { result: 'failed', reason: 'rebase conflict' }; }
+    if (r.status !== 0 && !settleIdenticalConcepts(bank, id)) { git(bank, 'rebase', '--abort'); log('warn', 'sync: rebase conflict, aborted; local commit intact', { bank, detail: errText(r) }); return { result: 'failed', reason: 'rebase conflict' }; }
   } else if (!before) return { result: 'ok' }; // nothing here, nothing there
   r = git(bank, 'push', '-q', '-u', remote, branch); if (r.status !== 0) return fail('git push', r);
   // Re-index unconditionally: HEAD may have moved before this sync started (a hand-resolved rebase, the `kb doctor` recovery path), and importAll skips files whose hash is unchanged.

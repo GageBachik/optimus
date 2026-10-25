@@ -48,3 +48,22 @@ test('sync commits and rebases on a machine with no git identity (fallback ident
   writeFileSync(path.join(b, 'n2.md'), 'two\n'); assert.equal(sync(b), 'ok'); // rebase onto a's commit needs a committer identity too
   assert.equal(sh('git rev-list --all --count', bare).trim(), '2');
 }));
+
+test('sync settles an add/add conflict on an identical concept note created on both machines (remote copy kept) and still aborts when the two copies differ', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'git-')); const bare = path.join(root, 'bank.git'); sh(`git init -q --bare ${bare}`, root);
+  const a = path.join(root, 'a'), b = path.join(root, 'b'); sh(`git clone -q ${bare} a && git clone -q ${bare} b`, root);
+  for (const c of [a, b]) sh('git config user.email t@t && git config user.name t && git config core.autocrlf false', c);
+  const concept = (dev: string, at: string, attrs = 'attrs: {}') => `---\n${attrs}\ncreated_at: ${at}\ndevice_id: ${dev}\ndomain: null\nid: c_drawdown000000000000000000\nkind: concept\nproject: null\nrels: []\ntitle: drawdown\nupdated_at: ${at}\n---\n`;
+  const put = (bank: string, text: string) => { mkdirSync(path.join(bank, 'notes', 'concept'), { recursive: true }); writeFileSync(path.join(bank, 'notes', 'concept', 'c_drawdown000000000000000000.md'), text); };
+  const mac = concept('mac', '2026-10-25T02:54:50.845Z');
+  put(a, mac); assert.equal(sync(a), 'ok');
+  put(b, concept('pc', '2026-10-25T03:47:04.651Z')); assert.equal(sync(b), 'ok', 'identical apart from timestamps and device: settled, not failed');
+  assert.equal(readFileSync(path.join(b, 'notes', 'concept', 'c_drawdown000000000000000000.md'), 'utf8'), mac, 'the remote copy is kept');
+  assert.equal(sh('git rev-list --all --count', bare).trim(), '1', 'b\'s commit became empty once the remote copy was kept, so git dropped it; nothing was lost');
+  assert.equal(sh('git rev-parse HEAD', b).trim(), sh('git rev-parse HEAD', a).trim());
+  assert.match(readFileSync(path.join(process.env.OPTIMUS_HOME!, 'logs', 'hooks.log'), 'utf8'), /settled identical concept notes/);
+  // copies that differ in substance (an alias each) are a conflict for a person
+  put(a, concept('mac', '2026-10-25T02:54:50.845Z', 'attrs:\n  alias: dd')); assert.equal(sync(a), 'ok');
+  put(b, concept('pc', '2026-10-25T03:47:04.651Z', 'attrs:\n  alias: max dd')); assert.equal(sync(b), 'failed');
+  assert.ok(!existsSync(path.join(b, '.git', 'rebase-merge')), 'the rebase was aborted, the local commit stays');
+});

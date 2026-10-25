@@ -8399,6 +8399,23 @@ function lock(bank) {
   }
   return false;
 }
+function settleIdenticalConcepts(bank, id) {
+  const strip = (s) => s.split("\n").filter((l) => !/^(created_at|updated_at|device_id):/.test(l)).join("\n");
+  const inRebase = () => existsSync10(path12.join(bank, ".git", "rebase-merge")) || existsSync10(path12.join(bank, ".git", "rebase-apply"));
+  for (let round = 0; round < 20 && inRebase(); round++) {
+    const files = git(bank, "diff", "--name-only", "--diff-filter=U").stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!files.length) return false;
+    for (const f of files) {
+      if (!f.startsWith("notes/concept/")) return false;
+      const ours = git(bank, "show", `:2:${f}`), theirs = git(bank, "show", `:3:${f}`);
+      if (ours.status !== 0 || theirs.status !== 0 || strip(ours.stdout) !== strip(theirs.stdout)) return false;
+      if (git(bank, "checkout", "--ours", "--", f).status !== 0 || git(bank, "add", "--", f).status !== 0) return false;
+    }
+    log("info", "sync: settled identical concept notes created on both machines; kept the remote copies", { files });
+    git(bank, ...id, "-c", "core.editor=true", "rebase", "--continue");
+  }
+  return !inRebase();
+}
 function steps(db, bank) {
   const fail = (step, r2) => {
     log("error", `sync: ${step} failed`, { bank, detail: errText(r2) });
@@ -8417,7 +8434,7 @@ function steps(db, bank) {
   const before = git(bank, "rev-parse", "--verify", "-q", "HEAD").stdout.trim();
   if (git(bank, "rev-parse", "--verify", "-q", upstream).status === 0) {
     r = before ? git(bank, ...id, "rebase", "-q", upstream) : git(bank, "reset", "-q", "--hard", upstream);
-    if (r.status !== 0) {
+    if (r.status !== 0 && !settleIdenticalConcepts(bank, id)) {
       git(bank, "rebase", "--abort");
       log("warn", "sync: rebase conflict, aborted; local commit intact", { bank, detail: errText(r) });
       return { result: "failed", reason: "rebase conflict" };
