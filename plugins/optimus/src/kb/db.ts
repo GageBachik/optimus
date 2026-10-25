@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { createRequire as requireFrom } from 'node:module'; // aliased: the esbuild banner already declares createRequire
 import path from 'node:path';
-import { paths } from '../lib/paths.js';
+import { paths, defaultDeviceId } from '../lib/paths.js';
 import type { Kind } from './ids.js';
 export type NoteRow = { id: string; kind: Kind; domain: string | null; project: string | null; title: string; body: string; created_at: string; updated_at: string; deleted_at: string | null; device_id: string };
 export type RelRow = { id: string; src: string; type: string; dst: string; props: Record<string, unknown>; created_at: string; deleted_at: string | null };
@@ -29,7 +29,7 @@ export function openDb(file = path.join(paths.stateDir(), 'kb.sqlite')): Db {
   const ins = sql.prepare('INSERT OR IGNORE INTO rank_weights(key, value) VALUES (?, ?)'); for (const [k, v] of WEIGHTS) ins.run(k, v);
   return { sql, file };
 }
-export function deviceId(): string { return process.env.OPTIMUS_DEVICE ?? paths.config().deviceId ?? 'unknown'; }
+export function deviceId(): string { return process.env.OPTIMUS_DEVICE ?? paths.config().deviceId ?? defaultDeviceId(); }
 export function upsertNote(db: Db, n: NoteRow): void {
   db.sql.prepare(`INSERT INTO note(id,kind,domain,project,title,body,created_at,updated_at,deleted_at,device_id) VALUES(?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, domain=excluded.domain, project=excluded.project, title=excluded.title, body=excluded.body, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, device_id=excluded.device_id`)

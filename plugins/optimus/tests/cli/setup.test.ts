@@ -21,3 +21,10 @@ test('kb doctor prints no ExperimentalWarning from the FTS5 probe', async () => 
   const r = spawnSync(process.execPath, [path.join(import.meta.dirname, '..', '..', 'dist', 'kb.js'), 'doctor'], { encoding: 'utf8', env: { ...process.env, HOME: home, OPTIMUS_HOME: path.join(home, '.pm') } });
   assert.match(r.stdout, /PASS\s+sqlite-fts5/); assert.doesNotMatch(r.stderr, /ExperimentalWarning/);
 });
+
+test('setup --append-claude-md appends LF text even from a CRLF checkout (Windows, core.autocrlf=true)', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')); mkdirSync(path.join(home, '.claude')); writeFileSync(path.join(home, '.claude', 'CLAUDE.md'), '# mine\n');
+  setup(home, { device: 'x', appendClaudeMd: true, print: () => {} });
+  const t = readFileSync(path.join(home, '.claude', 'CLAUDE.md'), 'utf8');
+  assert.ok(t.includes('## Compaction instructions (optimus)')); assert.ok(!t.includes('\r'), 'no CR in the appended block');
+});

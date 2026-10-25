@@ -28,10 +28,16 @@ function lastPromptIndex(entries: TranscriptEntry[]): number {
  *  previous message's usage). The hook input carries that message; when the file's last assistant text is not it yet, it is appended as one
  *  more entry so the turn is judged whole. */
 function withLastMessage(entries: TranscriptEntry[], last: unknown): TranscriptEntry[] {
-  if (typeof last !== 'string' || !last.trim()) return entries;
-  const prev = [...entries].reverse().find((e) => e.type === 'assistant' && textOf(e));
-  if (prev && textOf(prev) === last.trim()) return entries;
+  if (typeof last !== 'string' || !last.trim() || hasLast(entries, last)) return entries;
   return [...entries, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: last }] } }];
+}
+const hasLast = (entries: TranscriptEntry[], last: string) => { const prev = [...entries].reverse().find((e) => e.type === 'assistant' && textOf(e)); return !!prev && textOf(prev) === last.trim(); };
+/** 2026-10-24 (first Windows live session): the appended text carries no usage, so the metrics line took the previous API call's usage, and all
+ *  nulls for a one-call session. The flush is usually only moments late: the file is re-read for up to a second before the text is appended. */
+async function entriesWithLastMessage(tp: string, last: unknown): Promise<TranscriptEntry[]> {
+  let entries = readTranscript(tp, 0).entries;
+  if (typeof last === 'string' && last.trim()) for (let i = 0; i < 5 && !hasLast(entries, last); i++) { await new Promise((r) => setTimeout(r, 200)); entries = readTranscript(tp, 0).entries; }
+  return withLastMessage(entries, last);
 }
 const wroteFindings = (turn: TranscriptEntry[]) => turn.some((e) => e.type === 'assistant' && Array.isArray(e.message?.content) && (e.message!.content as any[]).some((b) => b?.type === 'tool_use' && /kb_write$/.test(String(b.name ?? ''))));
 const askText = (cfg: ProjectConfig, ask: DraftSpec['records']) => [
@@ -47,7 +53,7 @@ export async function stop(input: HookInput) {
   if (input.agent_id) return undefined;
   const sessionId = String(input.session_id ?? 'unknown'); const cwd = String(input.cwd ?? ''); const tp = String(input.transcript_path ?? '');
   const at = new Date().toISOString();
-  const entries = tp && existsSync(tp) ? withLastMessage(readTranscript(tp, 0).entries, input.last_assistant_message) : [];
+  const entries = tp && existsSync(tp) ? await entriesWithLastMessage(tp, input.last_assistant_message) : [];
   let cfg: ProjectConfig | null = null, ask: DraftSpec['records'] = [];
   // No transcript: keep the previous last-session record rather than overwrite it with an empty one.
   if (entries.length) {
@@ -61,6 +67,8 @@ export async function stop(input: HookInput) {
       const fresh = spec.records.filter((r) => !known.has(draftKey(r.title)));
       drafts = writeDrafts(key, spec);
       if (fresh.length && !input.stop_hook_active && !wroteFindings(turn)) ask = fresh.slice(0, MAX_ASK);
+      // One line per judged turn, so a watcher can tell "ran and found nothing to ask" from "never ran" (the first Windows live session left no trace).
+      log('info', 'stop: turn judged', { project: cfg.project_id, candidates: fresh.length, asked: ask.length > 0, wrote: wroteFindings(turn), continued: !!input.stop_hook_active });
     }
     const last: LastSession = { at, sessionId, cwd, taskState, ...(drafts ? { drafts } : {}) };
     writeFileAtomic(path.join(paths.projectDir(paths.projectKey(cwd)), 'last-session.json'), JSON.stringify(last) + '\n');

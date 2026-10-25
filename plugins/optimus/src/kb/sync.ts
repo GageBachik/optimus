@@ -48,6 +48,7 @@ function steps(db: Db, bank: string): { result: SyncResult; reason?: string } {
 function record(db: Db, result: SyncResult, reason?: string): SyncResult {
   paths.saveConfig({ lastSyncAt: new Date().toISOString() });
   db.sql.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('lastSyncResult', reason ? `${result} (${reason})` : result);
+  log('info', `sync: ${result}`, reason ? { reason } : undefined); // a success leaves a line too: two clean syncs on 2026-10-24 were invisible in hooks.log
   return result;
 }
 

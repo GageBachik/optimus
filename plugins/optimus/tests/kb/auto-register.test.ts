@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.OPTIMUS_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.OPTIMUS_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
@@ -156,4 +156,15 @@ test('auto-register: the home folder itself, a folder outside home and a sibling
   const sibling = home + '-two'; mkdirSync(sibling, { recursive: true }); writeFileSync(path.join(sibling, 'package.json'), '{}');
   assert.equal(autoRegister(sibling, home), null, 'a sibling folder that merely starts with the home path');
   assert.ok(autoRegister(mk('projects/inside', { 'package.json': '{}' }), home), 'a project under home still registers');
+});
+
+test('auto-register: a cwd spelled differently from the home (8.3 short name, /var for /private/var, lower case) is still under it', () => {
+  const d = mk('projects/spelled', { 'package.json': '{"name":"spelled"}' });
+  assert.ok(autoRegister(d, realpathSync.native(home)), 'home given in its on-disk spelling, cwd in the temp spelling');
+});
+
+test('auto-register: a folder with a malformed .kb.json is left alone (the file is never overwritten by a guess); AppData is no project folder', () => {
+  const d = mk('projects/typo', { '.kb.json': '{bad json', 'package.json': '{"name":"typo"}' });
+  assert.equal(autoRegister(d, home), null); assert.equal(readFileSync(path.join(d, '.kb.json'), 'utf8'), '{bad json');
+  assert.equal(autoRegister(mk('AppData/Local/Temp/scratch-1', { 'package.json': '{}' }), home), null);
 });

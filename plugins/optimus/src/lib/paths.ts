@@ -2,9 +2,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync, realpathSync, renameSync } from 'node:fs';
+import { writeFileAtomic } from './atomic.js';
 function ensure(p: string): string { if (!existsSync(p)) mkdirSync(p, { recursive: true }); return p; }
 const safe = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '_');
+/** The on-disk spelling of a path (case, 8.3 short names, /var for /private/var), or the resolved path when it does not exist. */
+export const canonical = (p: string) => { const r = path.resolve(p); try { return realpathSync.native(r); } catch { return r; } };
+/** Short lowercase hostname: `Gages-MacBook-Pro.local` → `gages-macbook-pro` (DESIGN §3.8): the device id `kb setup` records, and what a machine
+ *  that skipped setup reports instead of "unknown" (an isolated run on 2026-10-24 stamped its finding device_id: unknown). */
+export const defaultDeviceId = (host = os.hostname()) => host.split('.')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-');
 export type Config = { bankDir?: string; deviceId?: string; lastSyncAt?: string; offload?: { thresholdChars?: number; headLines?: number; tailLines?: number } };
 export const paths = {
   /** `~/.optimus` (or `OPTIMUS_HOME`). The plugin was called project-memory until 2026-10-20: an existing `~/.project-memory` with no `~/.optimus` beside it is renamed once. */
@@ -17,12 +23,12 @@ export const paths = {
   logsDir(): string { return ensure(path.join(this.stateDir(), 'logs')); },
   configPath(): string { return path.join(this.stateDir(), 'config.json'); },
   config(): Config { try { const c = JSON.parse(readFileSync(this.configPath(), 'utf8')); return c && typeof c === 'object' && !Array.isArray(c) ? c : {}; } catch { return {}; } },
-  saveConfig(patch: Config): void { const next = { ...this.config(), ...patch }; const tmp = this.configPath() + '.tmp'; writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n'); renameSync(tmp, this.configPath()); },
+  saveConfig(patch: Config): void { writeFileAtomic(this.configPath(), JSON.stringify({ ...this.config(), ...patch }, null, 2) + '\n'); }, // the retrying rename: a reader holding config.json open on Windows makes a bare renameSync throw EPERM
   bankDir(): string { return path.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path.join(os.homedir(), 'knowledge-bank')); },
   projectKey(cwd: string): string {
-    let dir = path.resolve(cwd);
+    const start = canonical(cwd); let dir = start; // one folder, one key, whatever spelling the launcher used (audit 2026-10-24: drive letter case, GAGEBA~1 for Gage Bachik)
     for (let i = 0; i < 8; i++) { const f = path.join(dir, '.kb.json'); if (existsSync(f)) { try { const id = JSON.parse(readFileSync(f, 'utf8')).project_id; if (typeof id === 'string' && id) return id; } catch {} } const up = path.dirname(dir); if (up === dir) break; dir = up; }
-    return createHash('sha256').update(path.resolve(cwd)).digest('hex').slice(0, 16);
+    return createHash('sha256').update(start).digest('hex').slice(0, 16);
   },
   projectDir(key: string): string { return ensure(path.join(this.stateDir(), 'projects', safe(key))); },
   /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so

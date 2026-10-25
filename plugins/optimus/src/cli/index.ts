@@ -29,7 +29,7 @@ const home = os.homedir();
 const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
-  try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${paths.logsDir()}/hooks.log)\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
+  try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${path.join(paths.logsDir(), 'hooks.log')})\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
   catch (e) { process.stderr.write(`kb sync: ${(e as Error).message}\n`); process.exitCode = 1; }
 }
 else if (cmd === 'cleanup') {

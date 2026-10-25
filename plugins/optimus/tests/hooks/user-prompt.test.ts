@@ -57,6 +57,8 @@ test('v1.5 recall is domain-first and ignores paths: a solana finding about the 
   assert.ok(r3b && /Solana perps|Fixed-fractional/.test(r3b.hookSpecificOutput.additionalContext), 'an unconfirmed guess may be wrong: other domains are offered');
   const r4: any = await userPrompt({ session_id: 'u11', cwd: d2, prompt: 'open /Users/loser/projects/es/notes.md and summarise it for me' });
   assert.equal(r4, undefined, 'a path containing the project name "es" is not a mention of that project');
+  const r4w: any = await userPrompt({ session_id: 'u11w', cwd: d2, prompt: 'open C:\\Users\\loser\\projects\\es\\notes.md and summarise it for me' });
+  assert.equal(r4w, undefined, 'a Windows path containing the project name "es" is not a mention either');
   const r5: any = await userPrompt({ session_id: 'u12', cwd: d2, prompt: 'what did the es project conclude about sizing' });
   assert.ok(r5 && r5.hookSpecificOutput.additionalContext.includes('Knowledge bank on es'), 'a project named in prose still is');
 });

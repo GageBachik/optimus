@@ -5,7 +5,7 @@ import { loadProjectConfig } from './project.js';
 import { type Db } from './db.js';
 import { installedDomains, templateFor } from './templates.js';
 import { log } from '../lib/log.js';
-import { paths } from '../lib/paths.js';
+import { paths, canonical } from '../lib/paths.js';
 
 export type AutoRegistered = { file: string; project_id: string; domain: string; confidence: 'high' | 'low'; reason: string };
 export type Settled = { file: string; project_id: string; domain: string; previous: string; reason: string };
@@ -42,7 +42,7 @@ export function domainFromText(text: string, minScore: number, margin = 1, lex: 
   const words = [...new Set(tokensOf(text).filter((t) => lex[top[0]].includes(t)))].slice(0, 4);
   return { domain: top[0], score: top[1], reason: words.join(', ') };
 }
-const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'build', '.next', 'vendor', 'Pods']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'build', '.next', 'vendor', 'Pods', 'AppData', 'Library']); // AppData, Library: the OS's hidden folders under the home (Windows %TEMP% lives there)
 const MANIFESTS = ['package.json', 'Cargo.toml', 'pyproject.toml', 'requirements.txt', 'go.mod', 'Package.swift', 'pubspec.yaml', 'Anchor.toml'];
 const read = (p: string) => { try { return readFileSync(p, 'utf8'); } catch { return ''; } };
 
@@ -130,19 +130,21 @@ export function looksLikeProject(cwd: string): boolean {
   return existsSync(path.join(cwd, '.git')) || MANIFESTS.some((m) => existsSync(path.join(cwd, m))) || entries.some((e) => e.endsWith('.xcodeproj')) || entries.length <= 8;
 }
 
+/** A `.kb.json` file here or in a parent (8 levels), whatever its content: a hand-written file with a typo is reported by loadProjectConfig, never replaced by a guess. */
+const kbJsonAbove = (dir: string) => { let d = dir; for (let i = 0; i < 8; i++) { if (existsSync(path.join(d, '.kb.json'))) return true; const up = path.dirname(d); if (up === d) break; d = up; } return false; };
 /** DESIGN §4.5 (v1.4): a session started in an unregistered project folder registers it, so nobody runs `kb project init` by hand. Only under the
  *  home directory, never at the home or workspace roots or inside hidden folders, never when a `.kb.json` already exists here or above. */
 export function autoRegister(cwd: string, home = os.homedir(), lex: Lexicon = DEFAULT_LEXICON): AutoRegistered | null {
   if (!cwd) return null;
-  const dir = path.resolve(cwd);
+  const dir = canonical(cwd); // the on-disk spelling: an 8.3 cwd (what %TEMP% hands a process) is under the home too (audit 2026-10-24)
   if (!existsSync(dir)) return null;
   // path.relative, not a startsWith on the home string: on Windows a VS Code-hosted launch hands Claude Code `c:\Users\…` while the home is
   // `C:\Users\…`, and path.relative compares them case-insensitively. Home itself gives '', a folder outside it '..', another drive an absolute path.
-  const rel = path.relative(home, dir);
+  const rel = path.relative(canonical(home), dir);
   if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
   if (rel.split(path.sep).some((s) => s.startsWith('.') || SKIP_DIRS.has(s))) return null;
   if (['projects', 'Desktop', 'Documents', 'Downloads', 'src', 'code', 'work', 'github'].includes(rel)) return null; // workspace roots hold projects; they are not one
-  if (loadProjectConfig(dir)) return null;
+  if (kbJsonAbove(dir)) return null;
   if (!looksLikeProject(dir)) return null;
   const { domain, confidence, reason } = inferDomain(dir, lex);
   const project_id = path.basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, '-');

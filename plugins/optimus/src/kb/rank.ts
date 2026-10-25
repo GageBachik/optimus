@@ -49,7 +49,7 @@ const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into
  *  recorded without tags — "Cover screen reports an 84pt trailing-only safe-area inset" — is still recalled by a prompt that says
  *  "cover screen". Phrases, not single words: "screen" alone would match half the domain. */
 export function findingsByTitlePhrase(db: Db, prompt: string, domain: string | undefined, limit = 3): { ids: string[]; phrases: string[] } {
-  const toks = prompt.toLowerCase().replace(/\S*\/\S+/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));
+  const toks = prompt.toLowerCase().replace(/\S*[\\/]\S+/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));
   const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
   const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING}${domain ? ' AND n.domain=?' : ''} LIMIT ?`);
   const ids: string[] = [], hit: string[] = [];

@@ -111,7 +111,7 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
   const hits = aliases.filter((a) => a.name_norm && a.name_norm.split('-').every((t) => words.has(t)));
   // v1.5: a path in the prompt names folders, not projects ("/Users/<you>/projects/x" matched import-era projects named after the home
   // folder and "projects" on every prompt); only projects with findings count, and never the asking project itself.
-  const prose = prompt.replace(/\S*\/\S+/g, ' ');
+  const prose = prompt.replace(/\S*[\\/]\S+/g, ' '); // either separator: a Windows path (C:, Users, projects, poker, sim.py) names folders too (audit 2026-10-24)
   const projects = (db.sql.prepare("SELECT DISTINCT project FROM note WHERE kind='finding' AND project IS NOT NULL AND deleted_at IS NULL").all() as { project: string }[])
     .map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, 'i').test(prose));
   const byTitle = findingsByTitlePhrase(db, prompt, cfg.domain); // v1.5: untagged findings, by a two-word phrase of the prompt in their title

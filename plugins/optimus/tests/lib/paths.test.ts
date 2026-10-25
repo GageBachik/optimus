@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 test('stateDir honours OPTIMUS_HOME; sessionDir is per agent; bankDir honours OPTIMUS_BANK', async () => {
@@ -23,4 +23,12 @@ test('kbCli: the command briefs tell a session to run quotes the plugin path and
   const { paths } = await import('../../src/lib/paths.js');
   const cmd = paths.kbCli();
   assert.match(cmd, /^node "[^"\\]+\/kb\.js"$/, cmd);
+});
+
+test('projectKey is the same for every spelling of a folder (8.3 short name, /var for /private/var, case), and deviceId never reads "unknown"', async () => {
+  const { paths, defaultDeviceId } = await import('../../src/lib/paths.js'); const { deviceId } = await import('../../src/kb/db.js');
+  const d = mkdtempSync(path.join(tmpdir(), 'canon-'));
+  assert.equal(paths.projectKey(d), paths.projectKey(realpathSync.native(d)));
+  writeFileSync(paths.configPath(), '{}'); delete process.env.OPTIMUS_DEVICE;
+  assert.equal(deviceId(), defaultDeviceId()); assert.notEqual(deviceId(), 'unknown');
 });

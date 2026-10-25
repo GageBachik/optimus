@@ -63,3 +63,19 @@ test('v1.6: the final message of a turn is judged even when the transcript file 
   assert.equal(r2?.decision, 'block'); assert.match(r2.reason, /2,410 ms/);
   assert.equal((r2.reason.match(/^- /gm) ?? []).length, 1, 'one candidate: the flushed message is not counted twice, the first turn\'s statement is in the log');
 });
+
+test('v1.6 (first Windows live session): Stop waits up to a second for the late flush, so the metrics line carries the turn\'s own usage and the turn is logged as judged', async () => {
+  const { mkdtempSync: mk, writeFileSync: wf, appendFileSync: af } = await import('node:fs');
+  const cwd = mk(path.join(tmpdir(), 'flush-')); wf(path.join(cwd, '.kb.json'), JSON.stringify({ project_id: 'flush', domain: 'tooling' }));
+  const u = (t: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: t } });
+  const a = (t: string, cr: number) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: t }], usage: { input_tokens: 2, cache_read_input_tokens: cr } } });
+  const tool = (name: string, cr: number) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name, input: {} }], usage: { input_tokens: 2, cache_read_input_tokens: cr } } });
+  const tp = path.join(cwd, 'transcript.jsonl'), last = 'The suite finished with 136 tests, 136 passes and 0 failures in 25,157 ms on this machine.';
+  wf(tp, [u('run the suite'), tool('Bash', 16388)].join('\n') + '\n');
+  setTimeout(() => af(tp, a(last, 43123) + '\n'), 300); // Claude Code flushes the final message a moment after starting the hook
+  const r: any = await stop({ session_id: 'flush1', cwd, transcript_path: tp, last_assistant_message: last });
+  assert.equal(r?.decision, 'block'); assert.match(r.reason, /136 tests/);
+  const lines = readFileSync(path.join(process.env.OPTIMUS_HOME!, 'metrics.jsonl'), 'utf8').trim().split('\n'), m = JSON.parse(lines[lines.length - 1]);
+  assert.equal(m.session, 'flush1'); assert.equal(m.cache_read, 43123, 'the flushed final message\'s usage, not the tool call\'s');
+  assert.match(readFileSync(path.join(process.env.OPTIMUS_HOME!, 'logs', 'hooks.log'), 'utf8'), /"msg":"stop: turn judged".*"project":"flush".*"asked":true/);
+});

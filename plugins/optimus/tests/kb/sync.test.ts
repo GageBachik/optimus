@@ -23,7 +23,7 @@ test('two clones sync different notes cleanly; a rebase conflict aborts and is l
   putNote(b, 'B\n'); assert.equal(sync(b), 'failed');
   assert.equal(readFileSync(path.join(b, 'notes', 'finding', 'f_t.md'), 'utf8'), note('B\n')); // local commit intact
   assert.ok(sh('git status --porcelain', b).trim() === '', 'rebase aborted cleanly');
-  assert.match(readFileSync(path.join(process.env.OPTIMUS_HOME!, 'logs', 'hooks.log'), 'utf8'), /rebase conflict/);
+  const hl = readFileSync(path.join(process.env.OPTIMUS_HOME!, 'logs', 'hooks.log'), 'utf8'); assert.match(hl, /rebase conflict/); assert.match(hl, /"msg":"sync: ok"/, 'a clean sync leaves a line too');
   // `kb doctor`: "resolve with git in <bank>, then kb sync". The hand resolution moves HEAD before the next sync starts; that sync must still re-index what it pulled in.
   sh('git pull --rebase -q || true', b); assert.ok(existsSync(path.join(b, '.git', 'rebase-merge')), 'the hand pull stops on the conflict');
   putNote(b, 'R\n'); sh('git add -A && git -c core.editor=true rebase --continue', b);
