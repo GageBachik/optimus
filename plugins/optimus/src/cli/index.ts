@@ -3,7 +3,8 @@ import path from 'node:path';
 import { doctor } from './doctor.js';
 import { planCleanup } from './cleanup.js';
 import { setup } from './setup.js';
-import { initBank, projectInit } from './init.js';
+import { initBank, projectInit, projectMove } from './init.js';
+import { KINDS } from '../kb/ids.js';
 import { paths } from '../lib/paths.js';
 import { openDb } from '../kb/db.js';
 import { exportAll, rebuild } from '../kb/export.js';
@@ -26,7 +27,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${path.join(paths.logsDir(), 'hooks.log')})\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -54,6 +55,17 @@ else if (cmd === 'cleanup') {
   const domain = value('--domain'), id = value('--id');
   if (!domain || (has('--id') && !id)) { process.stderr.write('usage: kb project init --domain <d> [--id <id>]\n'); process.exitCode = 2; }
   else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + '\n');
+} else if (cmd === 'project' && args[0] === 'move') {
+  const domain = value('--domain'), id = value('--id');
+  if (!domain || (has('--id') && !id)) { process.stderr.write('usage: kb project move --domain <d> [--id <project>]\n'); process.exitCode = 2; }
+  else {
+    const db = openDb(), bank = paths.bankDir();
+    try {
+      const r = projectMove(db, bank, process.cwd(), { domain, id }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
+      process.stdout.write(r.total ? `moved project ${r.project_id} to ${r.domain}: ${parts.join(', ')} (${r.total} note${r.total === 1 ? '' : 's'} re-exported; kb sync ships them)\n` : `project ${r.project_id} is already in ${r.domain}: no note to move\n`);
+      process.stdout.write(r.file ? `.kb.json: ${r.file} (domain ${r.domain}, hand-set)\n` : `no .kb.json for ${r.project_id} here; in its folder, kb project init --domain ${r.domain} --id ${r.project_id} writes one\n`);
+    } catch (e) { process.stderr.write(`kb project move: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+  }
 } else if (cmd === 'export' || cmd === 'rebuild') {
   const db = openDb(), bank = paths.bankDir();
   try {

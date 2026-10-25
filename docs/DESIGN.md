@@ -280,7 +280,9 @@ Finding fields are attrs: `state`, `gate`, `gate_rank`, `valid_from`, `valid_to`
 | `kb_brief` | `{project?, limit?}` | the ranked brief text + items |
 | `kb_compare` | `{concept}` | comparison rows (§4.9) |
 
-CLI `kb` (same bundle): `init [--bank <dir>] [--clone <url>]`, `project init --domain <d> [--id <id>]`, `setup [--device <name>]`, `doctor [--baseline] [--live]`, `cleanup [--apply]`, `import serena|claude-memory|all [--root <dir>]`, `export`, `sync`, `rebuild`, `map [--open]`, `concepts review|accept <id>|reject <id>|split <name>`, `transfer <id> confirm|refute`, `retract <id>`, `set <id> <attr> <value>`, `compare <concept>`.
+CLI `kb` (same bundle): `init [--bank <dir>] [--clone <url>]`, `project init --domain <d> [--id <id>]`, `project move --domain <d> [--id <project>]`, `setup [--device <name>]`, `doctor [--baseline] [--live]`, `cleanup [--apply]`, `import serena|claude-memory|all [--root <dir>]`, `export`, `sync`, `rebuild`, `map [--open]`, `concepts review|accept <id>|reject <id>|split <name>`, `transfer <id> confirm|refute`, `retract <id>`, `set <id> <attr> <value>`, `compare <concept>`.
+
+`kb project move --domain <d> [--id <project>]` (2026-10-24) moves a whole project into another domain: `project init --domain` rewrote only `.kb.json` and every note the project already had kept `domain: trading`, so `move` refuses a domain that is not installed (naming `kb domain new`), rewrites the `.kb.json` here or above as a hand-set choice (`auto` dropped, every other key kept) when it names the project, sets `domain` on every live note with that project whatever its kind, touches `updated_at` and re-exports each so `kb sync` ships them, prints the counts per kind, and changes nothing on a second run.
 
 A repo takes part only if it contains a `.kb.json` with `project_id` and `domain` (`kb project init` writes it; commit it). Nothing derives a project id from a git remote or a directory name: the demo repos have no remotes and exist under several directory names.
 
