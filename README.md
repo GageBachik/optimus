@@ -70,7 +70,7 @@ Agents your session spawns get the same project card and record what they measur
 | Command | What it does |
 |---|---|
 | `kb doctor` | Checks the install, the bank, the window and hook collisions |
-| `kb map --open` | Opens the bank as a zoomable map of projects, approaches and findings |
+| `kb map --open` | Opens the bank as a zoomable map of projects, approaches, findings and imported memories |
 | `kb write <file>` | Records the findings in a draft file (or any JSON spec) into the bank |
 | `kb project init --domain <d>` | Files the current folder under a domain by hand |
 | `kb domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2` | Adds a new kind of project to the bank |

@@ -90,6 +90,14 @@ body.lod-min .edge path.vis { stroke-width:3 } body.lod-min .edge.lit path.vis {
 .rail .findings { padding:0 16px 8px 8px }
 .lanes { display:grid; gap:16px; min-width:0 }
 .lane { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
+.memories { grid-column:1 / -1; margin-top:10px; padding-top:10px; border-top:1px dashed var(--rule); position:relative; z-index:3 } .memories > .eyebrow { margin-bottom:6px }
+.mem-project { margin:2px 0 } .mem-project > summary { cursor:pointer; list-style:none; display:flex; align-items:baseline; gap:10px; padding:4px 8px; border-radius:6px; font-size:13px } .mem-project > summary::-webkit-details-marker { display:none }
+.mem-project > summary::before { content:"▸"; color:var(--soft); font-size:10px } .mem-project[open] > summary::before { content:"▾" } .mem-project > summary:hover { background:var(--paper) }
+.mem-project > summary .proj-name { font-weight:600 } .mem-project > summary .n { font:500 11px/1 var(--mono); color:var(--soft) } .mem-project > summary .origins { font:400 11px/1.4 var(--mono); color:var(--soft); margin-left:auto }
+.mem-project ul { list-style:none; margin:2px 0 6px; padding:0 0 0 18px; columns:2 24ch; column-gap:16px }
+.memory { display:block; width:100%; text-align:left; background:none; border:0; color:inherit; font:inherit; font-size:12px; line-height:1.3; padding:3px 6px; border-radius:4px; cursor:pointer; break-inside:avoid; overflow-wrap:anywhere }
+.memory:hover { background:var(--paper) } .memory.selected { outline:2px solid var(--ink) } .memory.dim { opacity:.25 }
+body.lod-min .memories, body.lod-low .mem-project ul { display:none }
 .lane > header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px } .lane h2 { font:600 15px/1.3 var(--sans) }
 .cols { display:grid; gap:12px 40px }
 .col .parts { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; align-content:start } .col .stage { margin-bottom:8px }
@@ -241,7 +249,8 @@ __BOARD__
   }
   function search(q) {
     q = q.trim().toLowerCase();
-    for (const el of $('.node, .badge, .concept')) el.classList.toggle('dim', !!q && !(el.textContent + ' ' + (el.dataset.project || '')).toLowerCase().includes(q));
+    for (const el of $('.node, .badge, .concept, .memory')) el.classList.toggle('dim', !!q && !(el.textContent + ' ' + (el.dataset.project || '') + ' ' + (el.dataset.excerpt || '')).toLowerCase().includes(q));
+    for (const d of $('details.mem-project')) d.open = !!q && [...$('.memory', d)].some((b) => !b.classList.contains('dim')); // a search unfolds the projects that hold a match
   }
 
   // --- traces: orthogonal, rounded elbows, fanned attach points, routed from the measured parts ----------------------------------

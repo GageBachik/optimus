@@ -11,11 +11,13 @@ export type Badge = Node & { attach: string | null; state: string; gateRank: num
 export type Edge = { id: string; type: string; src: string; dst: string; props: Record<string, unknown> };
 export type Column = (typeof COLUMNS)[number];
 export type Lane = { domain: string; columns: Record<Column, Node[]>; top: number; height: number };
-export type Graph = { lanes: Lane[]; concepts: ConceptNode[]; findings: Badge[]; edges: Edge[]; gates: string[] };
+export type Memory = { id: string; title: string; domain: string | null; project: string | null; origin: string; attrs: Record<string, string[]>; excerpt: string };
+export type Graph = { lanes: Lane[]; concepts: ConceptNode[]; findings: Badge[]; edges: Edge[]; gates: string[]; memories: Memory[] };
 
 export const COLUMNS = ['theme', 'approach', 'experiment', 'target'] as const;
 const COL_W = 220, ROW_H = 28, NODE_W = 170, BADGE_STEP = 14, HEADER = 28, LANE_PAD = 50, LANE_GAP = 12, CONCEPT_COL = 4, NO_DOMAIN = '(no domain)';
 const colX = (c: number) => c * COL_W;
+const MEMORY_ORIGINS = new Set(['serena', 'claude-memory', 'codex']);
 const axes = (attrs: Record<string, string[]>) => ({ environment: attrs['facet:environment'] ?? [], subject: attrs['facet:subject'] ?? [] });
 const liveNotes = (db: Db, kinds: readonly string[]) => db.sql.prepare(`SELECT * FROM note WHERE kind IN (${kinds.map(() => '?').join(',')}) AND deleted_at IS NULL ORDER BY created_at, id`).all(...kinds) as NoteRow[];
 
@@ -30,11 +32,18 @@ export function graphData(db: Db, today = new Date()): Graph {
   const outOf = (id: string, type: string) => rels.filter((r) => r.src === id && r.type === type);
   const laneNotes = liveNotes(db, COLUMNS), findingNotes = liveNotes(db, ['finding']), conceptNotes = liveNotes(db, ['concept']);
   const laneNoteIds = new Set(laneNotes.map((n) => n.id)), conceptIds = new Set(conceptNotes.map((n) => n.id));
+  // Imported memories (Serena, Claude Code auto-memory, Codex) are evidence notes: listed per project under their domain's lane, never drawn as parts
+  // (2026-10-24: a second machine imported 276 of them and its projects were invisible on the map).
+  const memories: Memory[] = liveNotes(db, ['evidence']).flatMap((n) => {
+    const a = getAttrs(db, n.id), origin = a.origin?.[0] ?? ''; if (!MEMORY_ORIGINS.has(origin)) return [];
+    const { sha256: _sha, ...attrs } = a;
+    return [{ id: n.id, title: n.title, domain: n.domain, project: n.project, origin, attrs, excerpt: n.body.replace(/\s+/g, ' ').trim().slice(0, 240) }];
+  });
   const attachOf = (f: NoteRow) => { const about = outOf(f.id, 'about').map((r) => r.dst); return about.find((d) => laneNoteIds.has(d)) ?? about.find((d) => conceptIds.has(d)) ?? null; };
   const laneOf = (n: NoteRow) => n.domain ?? NO_DOMAIN;
   const loose = new Map<string, NoteRow[]>();
   for (const f of findingNotes) if (!attachOf(f)) (loose.get(laneOf(f)) ?? loose.set(laneOf(f), []).get(laneOf(f))!).push(f);
-  const domains = [...new Set([...liveNotes(db, ['domain']).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...findingNotes.map(laneOf)])].sort();
+  const domains = [...new Set([...liveNotes(db, ['domain']).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...findingNotes.map(laneOf), ...memories.map((m) => m.domain ?? NO_DOMAIN)])].sort();
 
   const node = (n: NoteRow, x: number, y: number): Node => { const attrs = getAttrs(db, n.id); return { id: n.id, kind: n.kind, title: n.title, domain: n.domain, project: n.project, attrs, x, y, ...axes(attrs) }; };
   const nodeById = new Map<string, Node>(), looseRow = new Map<string, number>();
@@ -83,7 +92,7 @@ export function graphData(db: Db, today = new Date()): Graph {
     const i = Number(r.key.slice(5)); if (!Number.isInteger(i)) continue;
     gates[i] = gates[i] ? (gates[i].split(' / ').includes(r.value) ? gates[i] : `${gates[i]} / ${r.value}`) : r.value;
   }
-  return { lanes, concepts, findings, edges, gates: Array.from(gates, (g) => g ?? '') };
+  return { lanes, concepts, findings, edges, gates: Array.from(gates, (g) => g ?? ''), memories };
 }
 
 const esc = (s: unknown) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -121,15 +130,27 @@ function renderBoard(g: Graph): string {
   if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
   out.push('</ul></aside>', '<div class="lanes">');
   for (const l of g.lanes) {
-    const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
-    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, 'part')} · ${plural(findings, 'finding')}</span></header><div class="cols" style="grid-template-columns:${template(l)}">`);
+    const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [], mem = g.memories.filter((m) => (m.domain ?? NO_DOMAIN) === l.domain);
+    out.push(`<section class="lane"${attr('data-domain', l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, 'part')} · ${plural(findings, 'finding')}${mem.length ? ` · ${mem.length} ${mem.length === 1 ? 'memory' : 'memories'}` : ''}</span></header><div class="cols" style="grid-template-columns:${template(l)}">`);
     for (const c of used) { const ns = l.columns[c]; out.push(`<div class="col${ns.length ? '' : ' is-empty'}"${attr('data-col', c)}><h3 class="eyebrow stage">${LABEL[c]}</h3><div class="parts">${ns.map(node).join('')}</div></div>`); }
     if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Unattached</h3><ul class="findings">${lo.map(badge).join('')}</ul></div>`);
-    if (!parts && !lo.length) out.push('<p class="empty">Nothing here yet.</p>');
+    if (mem.length) out.push(renderMemories(mem));
+    if (!parts && !lo.length && !mem.length) out.push('<p class="empty">Nothing here yet.</p>');
     out.push('</div></section>');
   }
   out.push('</div>');
   return out.join('\n');
+}
+
+/** Imported memories per project: a folded list under the lane with counts by origin in the summary; each title opens the inspector, the excerpt feeds the search. */
+function renderMemories(mem: Memory[]): string {
+  const byProject = new Map<string, Memory[]>();
+  for (const m of mem) { const k = m.project ?? '(no project)'; (byProject.get(k) ?? byProject.set(k, []).get(k)!).push(m); }
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  const groups = [...byProject.entries()].sort((a, b) => b[1].length - a[1].length || cmp(a[0], b[0]));
+  const origins = (ms: Memory[]) => { const c = new Map<string, number>(); for (const m of ms) c.set(m.origin, (c.get(m.origin) ?? 0) + 1); return [...c.entries()].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([o, n]) => `${n} ${o}`).join(' · '); };
+  const item = (m: Memory) => `<li><button class="memory" type="button"${attr('data-id', m.id)}${m.project ? attr('data-project', m.project) : ''}${attr('data-excerpt', m.excerpt)}${attr('title', m.attrs.source_path?.[0] ?? m.title)}>${esc(m.title)}</button></li>`;
+  return `<div class="memories"><h3 class="eyebrow">Memories · imported from Serena, Claude Code and Codex</h3>${groups.map(([p, ms]) => `<details class="mem-project"${attr('data-project', p)}><summary><span class="proj-name">${esc(p)}</span><span class="n">${ms.length}</span><span class="origins">${esc(origins(ms))}</span></summary><ul>${[...ms].sort((a, b) => cmp(a.title, b.title)).map(item).join('')}</ul></details>`).join('')}</div>`;
 }
 
 /** The trace overlay: one <g class="edge"> per relation between drawn elements, with its type, state and gate as data attributes.
@@ -154,7 +175,7 @@ function renderFilters(g: Graph): string {
   const distinct = (xs: string[]) => [...new Set(xs)].sort();
   const states = distinct(['unverified', 'observed', 'reproduced', 'conflicting', ...g.findings.map((b) => b.state)]);
   // a domain with nothing in it starts unchecked: the map shows what is in use
-  const used = new Set(g.lanes.filter((l) => COLUMNS.some((c) => l.columns[c].length) || g.findings.some((b) => (b.domain ?? NO_DOMAIN) === l.domain)).map((l) => l.domain));
+  const used = new Set(g.lanes.filter((l) => COLUMNS.some((c) => l.columns[c].length) || g.findings.some((b) => (b.domain ?? NO_DOMAIN) === l.domain) || g.memories.some((m) => (m.domain ?? NO_DOMAIN) === l.domain)).map((l) => l.domain));
   return [
     group('Domain', 'domain', g.lanes.map((l) => l.domain), (d) => used.has(d)),
     group('Environment', 'environment', distinct(targets.flatMap((t) => t.environment))),
@@ -201,6 +222,7 @@ function items(db: Db, g: Graph): Record<string, Item> {
   for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) put(n, [], [`kb retract ${n.id}`]);
   for (const c of g.concepts) put(c, [], [...(c.pending ? [`kb concepts accept ${c.pending}`, `kb concepts reject ${c.pending}`] : []), `kb retract ${c.id}`]);
   for (const b of g.findings) put(b, b.evidence, [...g.edges.filter((e) => e.type === 'transfer' && e.src === b.id).flatMap((e) => transferCommands(e.id)), `kb retract ${b.id}`, `kb set ${b.id} valid_to <date>`]);
+  for (const m of g.memories) out[m.id] = { id: m.id, kind: 'evidence', title: m.title, domain: m.domain, project: m.project, attrs: { ...m.attrs, ...(m.excerpt ? { excerpt: [m.excerpt] } : {}) }, evidence: [], rels: [], commands: [`kb retract ${m.id}`] };
   for (const e of g.edges) {
     const title = `${e.type}: ${titles.get(e.src) ?? e.src} → ${titles.get(e.dst) ?? e.dst}`, attrs = Object.fromEntries(Object.entries(e.props).map(([k, v]) => [k, [String(v)]]));
     out[e.id] = { id: e.id, kind: 'relation', title, domain: getNote(db, e.src)?.domain ?? null, project: null, attrs, evidence: [], rels: [{ dir: 'out', type: 'src', other: titles.get(e.src) ?? e.src, otherId: e.src, props: '' }, { dir: 'out', type: 'dst', other: titles.get(e.dst) ?? e.dst, otherId: e.dst, props: '' }], commands: e.type === 'transfer' ? transferCommands(e.id) : [] };
@@ -212,7 +234,7 @@ function items(db: Db, g: Graph): Record<string, Item> {
 export function generateMap(db: Db, outFile = path.join(paths.stateDir(), 'map.html'), today = new Date()): string {
   const g = graphData(db, today);
   const parts: Record<string, string> = {
-    META: esc(`Generated ${today.toISOString().slice(0, 10)} · ${plural(g.lanes.length, 'domain')} · ${plural(g.concepts.length, 'concept')} · ${plural(g.findings.length, 'finding')} · ${plural(g.edges.length, 'relation')}`),
+    META: esc(`Generated ${today.toISOString().slice(0, 10)} · ${plural(g.lanes.length, 'domain')} · ${plural(g.concepts.length, 'concept')} · ${plural(g.findings.length, 'finding')} · ${plural(g.edges.length, 'relation')} · ${g.memories.length} memories`),
     FILTERS: renderFilters(g), BOARD: renderBoard(g), EDGES: renderEdges(g),
     DATA: JSON.stringify({ items: items(db, g) }).replace(/</g, '\\u003c'), // `</script>` can never close the data block
   };

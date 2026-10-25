@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.OPTIMUS_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.OPTIMUS_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
-const { openDb } = await import('../../src/kb/db.js');
+const { openDb, upsertNote, setAttrs } = await import('../../src/kb/db.js');
 const { installTemplate, conceptNoteId } = await import('../../src/kb/templates.js');
 const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
 const { kbWrite } = await import('../../src/kb/write.js');
@@ -87,4 +87,24 @@ test('kb map writes <stateDir>/map.html and prints its path', () => {
   const r = spawnSync(process.execPath, ['dist/kb.js', 'map'], { encoding: 'utf8' });
   const file = path.join(process.env.OPTIMUS_HOME!, 'map.html');
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout.trim(), file); assert.ok(existsSync(file));
+});
+
+test('map: imported memories (evidence with origin serena, claude-memory or codex) are listed per project under their domain lane, searchable by excerpt, with an inspector item', () => {
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'mem.sqlite')); installTemplate(db, loadTemplate('templates/trading.yaml'));
+  const put = (id: string, project: string | null, domain: string | null, origin: string, title: string, body: string) => { upsertNote(db, { id, kind: 'evidence', domain, project, title, body, created_at: now, updated_at: now, deleted_at: null, device_id: 'pc' }); setAttrs(db, id, { origin: [origin], source_path: [`/m/${id}.md`] }); };
+  put('e_0000000000000001', 'propfirms', 'trading', 'serena', 'session-2026-10-03-router-live', 'Quantower router went live with 3 accounts.');
+  put('e_0000000000000002', 'propfirms', 'trading', 'codex', 'OFB bridge integrated', 'body');
+  put('e_0000000000000003', null, null, 'claude-memory', 'Prefer small diffs', 'Small diffs review faster.');
+  put('e_0000000000000004', 'es', 'trading', 'path', 'results.json', 'evidence a finding points at, not a memory');
+  const g = graphData(db, today);
+  assert.deepEqual(g.memories.map((m) => m.id), ['e_0000000000000001', 'e_0000000000000002', 'e_0000000000000003']);
+  assert.deepEqual(g.lanes.map((l) => l.domain), ['(no domain)', 'trading'], 'a lane for memories without a domain');
+  const out = path.join(process.env.OPTIMUS_HOME!, 'out', 'mem.html'); generateMap(db, out, today); const html = readFileSync(out, 'utf8');
+  assert.ok(html.includes('<details class="mem-project" data-project="propfirms"><summary><span class="proj-name">propfirms</span><span class="n">2</span><span class="origins">1 codex · 1 serena</span>'), 'a project group with counts by origin');
+  assert.ok(/<button class="memory"[^>]*data-id="e_0000000000000001"[^>]*data-excerpt="Quantower router went live with 3 accounts\."/.test(html), 'the excerpt feeds the search');
+  assert.ok(!html.includes('data-id="e_0000000000000004"'), 'evidence a finding points at is not a memory');
+  assert.ok(html.includes('· 2 memories</span>') && html.includes('· 1 memory</span>'), 'lane headers count memories');
+  assert.ok(html.includes('"e_0000000000000001":{"id":"e_0000000000000001","kind":"evidence"'), 'an inspector item per memory');
+  assert.ok(html.includes('· 3 memories'), 'the meta line counts them');
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]); for (const src of scripts) assert.doesNotThrow(() => new Function(src));
 });

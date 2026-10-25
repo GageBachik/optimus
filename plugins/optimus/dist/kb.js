@@ -9226,6 +9226,14 @@ body.lod-min .edge path.vis { stroke-width:3 } body.lod-min .edge.lit path.vis {
 .rail .findings { padding:0 16px 8px 8px }
 .lanes { display:grid; gap:16px; min-width:0 }
 .lane { background:var(--paper-2); border:1px solid var(--rule); border-radius:10px; padding:16px; min-width:0 }
+.memories { grid-column:1 / -1; margin-top:10px; padding-top:10px; border-top:1px dashed var(--rule); position:relative; z-index:3 } .memories > .eyebrow { margin-bottom:6px }
+.mem-project { margin:2px 0 } .mem-project > summary { cursor:pointer; list-style:none; display:flex; align-items:baseline; gap:10px; padding:4px 8px; border-radius:6px; font-size:13px } .mem-project > summary::-webkit-details-marker { display:none }
+.mem-project > summary::before { content:"\u25B8"; color:var(--soft); font-size:10px } .mem-project[open] > summary::before { content:"\u25BE" } .mem-project > summary:hover { background:var(--paper) }
+.mem-project > summary .proj-name { font-weight:600 } .mem-project > summary .n { font:500 11px/1 var(--mono); color:var(--soft) } .mem-project > summary .origins { font:400 11px/1.4 var(--mono); color:var(--soft); margin-left:auto }
+.mem-project ul { list-style:none; margin:2px 0 6px; padding:0 0 0 18px; columns:2 24ch; column-gap:16px }
+.memory { display:block; width:100%; text-align:left; background:none; border:0; color:inherit; font:inherit; font-size:12px; line-height:1.3; padding:3px 6px; border-radius:4px; cursor:pointer; break-inside:avoid; overflow-wrap:anywhere }
+.memory:hover { background:var(--paper) } .memory.selected { outline:2px solid var(--ink) } .memory.dim { opacity:.25 }
+body.lod-min .memories, body.lod-low .mem-project ul { display:none }
 .lane > header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px } .lane h2 { font:600 15px/1.3 var(--sans) }
 .cols { display:grid; gap:12px 40px }
 .col .parts { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; align-content:start } .col .stage { margin-bottom:8px }
@@ -9377,7 +9385,8 @@ __BOARD__
   }
   function search(q) {
     q = q.trim().toLowerCase();
-    for (const el of $('.node, .badge, .concept')) el.classList.toggle('dim', !!q && !(el.textContent + ' ' + (el.dataset.project || '')).toLowerCase().includes(q));
+    for (const el of $('.node, .badge, .concept, .memory')) el.classList.toggle('dim', !!q && !(el.textContent + ' ' + (el.dataset.project || '') + ' ' + (el.dataset.excerpt || '')).toLowerCase().includes(q));
+    for (const d of $('details.mem-project')) d.open = !!q && [...$('.memory', d)].some((b) => !b.classList.contains('dim')); // a search unfolds the projects that hold a match
   }
 
   // --- traces: orthogonal, rounded elbows, fanned attach points, routed from the measured parts ----------------------------------
@@ -9663,6 +9672,7 @@ var LANE_GAP = 12;
 var CONCEPT_COL = 4;
 var NO_DOMAIN = "(no domain)";
 var colX = (c) => c * COL_W;
+var MEMORY_ORIGINS = /* @__PURE__ */ new Set(["serena", "claude-memory", "codex"]);
 var axes = (attrs) => ({ environment: attrs["facet:environment"] ?? [], subject: attrs["facet:subject"] ?? [] });
 var liveNotes = (db, kinds) => db.sql.prepare(`SELECT * FROM note WHERE kind IN (${kinds.map(() => "?").join(",")}) AND deleted_at IS NULL ORDER BY created_at, id`).all(...kinds);
 function graphData(db, today = /* @__PURE__ */ new Date()) {
@@ -9672,6 +9682,12 @@ function graphData(db, today = /* @__PURE__ */ new Date()) {
   const outOf = (id, type) => rels.filter((r) => r.src === id && r.type === type);
   const laneNotes = liveNotes(db, COLUMNS), findingNotes = liveNotes(db, ["finding"]), conceptNotes = liveNotes(db, ["concept"]);
   const laneNoteIds = new Set(laneNotes.map((n) => n.id)), conceptIds2 = new Set(conceptNotes.map((n) => n.id));
+  const memories = liveNotes(db, ["evidence"]).flatMap((n) => {
+    const a = getAttrs(db, n.id), origin = a.origin?.[0] ?? "";
+    if (!MEMORY_ORIGINS.has(origin)) return [];
+    const { sha256: _sha, ...attrs } = a;
+    return [{ id: n.id, title: n.title, domain: n.domain, project: n.project, origin, attrs, excerpt: n.body.replace(/\s+/g, " ").trim().slice(0, 240) }];
+  });
   const attachOf = (f) => {
     const about = outOf(f.id, "about").map((r) => r.dst);
     return about.find((d) => laneNoteIds.has(d)) ?? about.find((d) => conceptIds2.has(d)) ?? null;
@@ -9679,7 +9695,7 @@ function graphData(db, today = /* @__PURE__ */ new Date()) {
   const laneOf = (n) => n.domain ?? NO_DOMAIN;
   const loose = /* @__PURE__ */ new Map();
   for (const f of findingNotes) if (!attachOf(f)) (loose.get(laneOf(f)) ?? loose.set(laneOf(f), []).get(laneOf(f))).push(f);
-  const domains = [.../* @__PURE__ */ new Set([...liveNotes(db, ["domain"]).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...findingNotes.map(laneOf)])].sort();
+  const domains = [.../* @__PURE__ */ new Set([...liveNotes(db, ["domain"]).map((d) => d.domain ?? d.title), ...laneNotes.map(laneOf), ...findingNotes.map(laneOf), ...memories.map((m) => m.domain ?? NO_DOMAIN)])].sort();
   const node = (n, x, y) => {
     const attrs = getAttrs(db, n.id);
     return { id: n.id, kind: n.kind, title: n.title, domain: n.domain, project: n.project, attrs, x, y, ...axes(attrs) };
@@ -9751,7 +9767,7 @@ function graphData(db, today = /* @__PURE__ */ new Date()) {
     if (!Number.isInteger(i)) continue;
     gates[i] = gates[i] ? gates[i].split(" / ").includes(r.value) ? gates[i] : `${gates[i]} / ${r.value}` : r.value;
   }
-  return { lanes, concepts: concepts2, findings, edges, gates: Array.from(gates, (g) => g ?? "") };
+  return { lanes, concepts: concepts2, findings, edges, gates: Array.from(gates, (g) => g ?? ""), memories };
 }
 var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 var attr = (k, v) => ` ${k}="${esc(v)}"`;
@@ -9783,18 +9799,35 @@ function renderBoard(g) {
   if (!g.concepts.length) out.push('<li class="none">No concepts yet. Tags on findings become concepts.</li>');
   out.push("</ul></aside>", '<div class="lanes">');
   for (const l of g.lanes) {
-    const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings2 = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [];
-    out.push(`<section class="lane"${attr("data-domain", l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, "part")} \xB7 ${plural(findings2, "finding")}</span></header><div class="cols" style="grid-template-columns:${template(l)}">`);
+    const parts = COLUMNS.reduce((n, c) => n + l.columns[c].length, 0), findings2 = g.findings.filter((b) => (b.domain ?? NO_DOMAIN) === l.domain).length, lo = loose.get(l.domain) ?? [], mem = g.memories.filter((m) => (m.domain ?? NO_DOMAIN) === l.domain);
+    out.push(`<section class="lane"${attr("data-domain", l.domain)}><header><h2 title="Fold or unfold this domain">${esc(l.domain)}</h2><span class="eyebrow">${plural(parts, "part")} \xB7 ${plural(findings2, "finding")}${mem.length ? ` \xB7 ${mem.length} ${mem.length === 1 ? "memory" : "memories"}` : ""}</span></header><div class="cols" style="grid-template-columns:${template(l)}">`);
     for (const c of used) {
       const ns = l.columns[c];
       out.push(`<div class="col${ns.length ? "" : " is-empty"}"${attr("data-col", c)}><h3 class="eyebrow stage">${LABEL[c]}</h3><div class="parts">${ns.map(node).join("")}</div></div>`);
     }
     if (lo.length) out.push(`<div class="loose"><h3 class="eyebrow">Unattached</h3><ul class="findings">${lo.map(badge).join("")}</ul></div>`);
-    if (!parts && !lo.length) out.push('<p class="empty">Nothing here yet.</p>');
+    if (mem.length) out.push(renderMemories(mem));
+    if (!parts && !lo.length && !mem.length) out.push('<p class="empty">Nothing here yet.</p>');
     out.push("</div></section>");
   }
   out.push("</div>");
   return out.join("\n");
+}
+function renderMemories(mem) {
+  const byProject = /* @__PURE__ */ new Map();
+  for (const m of mem) {
+    const k = m.project ?? "(no project)";
+    (byProject.get(k) ?? byProject.set(k, []).get(k)).push(m);
+  }
+  const cmp2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const groups = [...byProject.entries()].sort((a, b) => b[1].length - a[1].length || cmp2(a[0], b[0]));
+  const origins = (ms) => {
+    const c = /* @__PURE__ */ new Map();
+    for (const m of ms) c.set(m.origin, (c.get(m.origin) ?? 0) + 1);
+    return [...c.entries()].sort((a, b) => b[1] - a[1] || cmp2(a[0], b[0])).map(([o, n]) => `${n} ${o}`).join(" \xB7 ");
+  };
+  const item = (m) => `<li><button class="memory" type="button"${attr("data-id", m.id)}${m.project ? attr("data-project", m.project) : ""}${attr("data-excerpt", m.excerpt)}${attr("title", m.attrs.source_path?.[0] ?? m.title)}>${esc(m.title)}</button></li>`;
+  return `<div class="memories"><h3 class="eyebrow">Memories \xB7 imported from Serena, Claude Code and Codex</h3>${groups.map(([p, ms]) => `<details class="mem-project"${attr("data-project", p)}><summary><span class="proj-name">${esc(p)}</span><span class="n">${ms.length}</span><span class="origins">${esc(origins(ms))}</span></summary><ul>${[...ms].sort((a, b) => cmp2(a.title, b.title)).map(item).join("")}</ul></details>`).join("")}</div>`;
 }
 function renderEdges(g) {
   const titles = titlesOf(g);
@@ -9810,7 +9843,7 @@ function renderFilters(g) {
   const targets = g.lanes.flatMap((l) => l.columns.target);
   const distinct = (xs) => [...new Set(xs)].sort();
   const states = distinct(["unverified", "observed", "reproduced", "conflicting", ...g.findings.map((b) => b.state)]);
-  const used = new Set(g.lanes.filter((l) => COLUMNS.some((c) => l.columns[c].length) || g.findings.some((b) => (b.domain ?? NO_DOMAIN) === l.domain)).map((l) => l.domain));
+  const used = new Set(g.lanes.filter((l) => COLUMNS.some((c) => l.columns[c].length) || g.findings.some((b) => (b.domain ?? NO_DOMAIN) === l.domain) || g.memories.some((m) => (m.domain ?? NO_DOMAIN) === l.domain)).map((l) => l.domain));
   return [
     group("Domain", "domain", g.lanes.map((l) => l.domain), (d) => used.has(d)),
     group("Environment", "environment", distinct(targets.flatMap((t) => t.environment))),
@@ -9855,6 +9888,7 @@ function items(db, g) {
   for (const l of g.lanes) for (const c of COLUMNS) for (const n of l.columns[c]) put(n, [], [`kb retract ${n.id}`]);
   for (const c of g.concepts) put(c, [], [...c.pending ? [`kb concepts accept ${c.pending}`, `kb concepts reject ${c.pending}`] : [], `kb retract ${c.id}`]);
   for (const b of g.findings) put(b, b.evidence, [...g.edges.filter((e) => e.type === "transfer" && e.src === b.id).flatMap((e) => transferCommands(e.id)), `kb retract ${b.id}`, `kb set ${b.id} valid_to <date>`]);
+  for (const m of g.memories) out[m.id] = { id: m.id, kind: "evidence", title: m.title, domain: m.domain, project: m.project, attrs: { ...m.attrs, ...m.excerpt ? { excerpt: [m.excerpt] } : {} }, evidence: [], rels: [], commands: [`kb retract ${m.id}`] };
   for (const e of g.edges) {
     const title = `${e.type}: ${titles.get(e.src) ?? e.src} \u2192 ${titles.get(e.dst) ?? e.dst}`, attrs = Object.fromEntries(Object.entries(e.props).map(([k, v]) => [k, [String(v)]]));
     out[e.id] = { id: e.id, kind: "relation", title, domain: getNote(db, e.src)?.domain ?? null, project: null, attrs, evidence: [], rels: [{ dir: "out", type: "src", other: titles.get(e.src) ?? e.src, otherId: e.src, props: "" }, { dir: "out", type: "dst", other: titles.get(e.dst) ?? e.dst, otherId: e.dst, props: "" }], commands: e.type === "transfer" ? transferCommands(e.id) : [] };
@@ -9864,7 +9898,7 @@ function items(db, g) {
 function generateMap(db, outFile = path17.join(paths.stateDir(), "map.html"), today = /* @__PURE__ */ new Date()) {
   const g = graphData(db, today);
   const parts = {
-    META: esc(`Generated ${today.toISOString().slice(0, 10)} \xB7 ${plural(g.lanes.length, "domain")} \xB7 ${plural(g.concepts.length, "concept")} \xB7 ${plural(g.findings.length, "finding")} \xB7 ${plural(g.edges.length, "relation")}`),
+    META: esc(`Generated ${today.toISOString().slice(0, 10)} \xB7 ${plural(g.lanes.length, "domain")} \xB7 ${plural(g.concepts.length, "concept")} \xB7 ${plural(g.findings.length, "finding")} \xB7 ${plural(g.edges.length, "relation")} \xB7 ${g.memories.length} memories`),
     FILTERS: renderFilters(g),
     BOARD: renderBoard(g),
     EDGES: renderEdges(g),
