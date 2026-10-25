@@ -16,6 +16,7 @@ type Source = { file: string; title: string; project: string | null; domain: str
 
 const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 const none = { project: null, domain: null };
+const CODEX_SCRATCH = path.join('Documents', 'Codex');
 /** The project a directory belongs to: its `.kb.json` (walking up) gives id and domain; else the enclosing git repository's directory name, so a
  *  linked worktree (`.git` is a file), an archived tree or a research subfolder inside a repository belongs to the repository; else the directory's
  *  own name. The home directory is no project (auto-register never files it either), nor is a workspace root directly under it (`~/projects`, Desktop, …:
@@ -29,6 +30,7 @@ function projectOf(dir: string, home: string): { project: string | null; domain:
   if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
     if (WORKSPACE_ROOTS.includes(rel)) return none; // ~/projects, Desktop, … hold projects and are not one, as auto-register rules
     if (rel.split(path.sep).some((s) => s.startsWith('.'))) return none; // a folder under a hidden directory of the home (~/.t3/scratch/<chat>, ~/.claude/…) is scratch, not a project
+    if (rel === CODEX_SCRATCH || rel.startsWith(CODEX_SCRATCH + path.sep)) return none; // Codex's own workspaces (~/Documents/Codex/<date>/<letter>): the Codex importer never filed them, the Serena walk filed one under `t`
   }
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try { if (statSync(path.join(p, '.git')).isDirectory()) return { project: path.basename(p), domain: null }; } catch { /* no .git here */ }
@@ -71,7 +73,7 @@ function importSources(db: Db, bankDir: string, sources: Source[], now: string):
 
 /** Each `.serena/memories` directory under `dir`, skipping node_modules, .git, `~/.cache` (Ruling R6) and the home's application-data folders
  *  (`~/AppData`, `~/Library`: on 2026-10-24 a walk from the home found 225 of its 377 memory folders under `AppData\Local\Temp`, this suite's
- *  own fixtures and scratch clones, and imported 20 of them as evidence of projects named `demo`, `repo`, `a`), never following symlinks. */
+ *  own fixtures and scratch clones, and imported 16 of them as evidence of projects named `demo`, `repo`, `a`), never following symlinks. */
 function serenaDirs(dir: string, skip: string[], out: string[] = []): string[] {
   let entries; try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
@@ -163,8 +165,7 @@ const plainPath = (p: string) => p.trim().replace(/^\\\\\?\\/, '');
 export function importCodexMemory(db: Db, bankDir: string, home = os.homedir(), now = new Date().toISOString()): ImportResult {
   const mem = path.join(home, '.codex', 'memories'), sources: Source[] = [];
   if (!existsSync(mem)) return { files: 0, created: 0, unchanged: 0, moved: 0 };
-  const scratch = path.resolve(home, 'Documents', 'Codex');
-  const ownerOf = (cwd: string | undefined) => { if (!cwd) return none; const c = path.resolve(plainPath(cwd)); return c === scratch || c.startsWith(scratch + path.sep) ? none : projectOf(c, home); };
+  const ownerOf = (cwd: string | undefined) => (cwd ? projectOf(path.resolve(plainPath(cwd)), home) : none); // projectOf files nothing under ~/Documents/Codex
   const heading = (t: string, fallback: string) => /^# (.+)$/m.exec(t)?.[1].trim() || fallback;
   const field = (t: string, key: string) => new RegExp(`^${key}: (.+)$`, 'm').exec(t)?.[1].trim();
   const list = (dir: string) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md') && statSync(path.join(dir, f)).isFile()).sort() : []);

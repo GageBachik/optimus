@@ -9112,6 +9112,7 @@ import os3 from "node:os";
 import path16 from "node:path";
 var sha2563 = (b) => createHash4("sha256").update(b).digest("hex");
 var none = { project: null, domain: null };
+var CODEX_SCRATCH = path16.join("Documents", "Codex");
 function projectOf(dir, home2) {
   const d = path16.resolve(dir), top = path16.resolve(home2);
   if (d === top) return none;
@@ -9121,6 +9122,7 @@ function projectOf(dir, home2) {
   if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel)) {
     if (WORKSPACE_ROOTS.includes(rel)) return none;
     if (rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+    if (rel === CODEX_SCRATCH || rel.startsWith(CODEX_SCRATCH + path16.sep)) return none;
   }
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try {
@@ -9258,12 +9260,7 @@ var plainPath = (p) => p.trim().replace(/^\\\\\?\\/, "");
 function importCodexMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {
   const mem = path16.join(home2, ".codex", "memories"), sources = [];
   if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0, moved: 0 };
-  const scratch = path16.resolve(home2, "Documents", "Codex");
-  const ownerOf = (cwd) => {
-    if (!cwd) return none;
-    const c = path16.resolve(plainPath(cwd));
-    return c === scratch || c.startsWith(scratch + path16.sep) ? none : projectOf(c, home2);
-  };
+  const ownerOf = (cwd) => cwd ? projectOf(path16.resolve(plainPath(cwd)), home2) : none;
   const heading = (t, fallback) => /^# (.+)$/m.exec(t)?.[1].trim() || fallback;
   const field = (t, key) => new RegExp(`^${key}: (.+)$`, "m").exec(t)?.[1].trim();
   const list2 = (dir) => existsSync13(dir) ? readdirSync7(dir).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort() : [];

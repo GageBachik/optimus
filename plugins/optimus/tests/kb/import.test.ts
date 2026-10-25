@@ -197,3 +197,12 @@ test('a walk from the home skips its application-data folders (AppData, Library)
   assert.deepEqual(importSerena(db, bank, [home], home), { files: 1, created: 1, unchanged: 0, moved: 0 });
   assert.deepEqual((db.sql.prepare('SELECT project, title FROM note').all() as any[]).map((r) => [r.project, r.title]), [['odds', 'o']]);
 });
+
+test('a Serena memory inside a Codex workspace (~/Documents/Codex/<date>/<letter>) has no project, as the Codex importer already ruled for its cwd', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')), ws = path.join(home, 'Documents', 'Codex', '2026-09-27', 't');
+  put(path.join(ws, '.serena', 'memories', 'research', 'leaps.md'), 'research handoff\n');
+  put(path.join(home, 'Documents', 'thesis', '.serena', 'memories', 'n.md'), 'a Documents project of its own\n');
+  const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'n.sqlite'));
+  assert.deepEqual(importSerena(db, bank, [home], home), { files: 2, created: 2, unchanged: 0, moved: 0 });
+  assert.deepEqual((db.sql.prepare('SELECT project, title FROM note ORDER BY title').all() as any[]).map((r) => [r.project, r.title]), [['thesis', 'n'], [null, 'research/leaps']]);
+});
