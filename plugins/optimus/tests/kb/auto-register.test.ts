@@ -36,13 +36,13 @@ test('auto-register: never at the home or workspace roots, in hidden folders, or
 
 test('session start in an unregistered folder registers it and says so in the brief', async () => {
   const d = mk('projects/fresh2', { 'package.json': '{"name":"fresh2"}' });
-  const prev = process.env.HOME; process.env.HOME = home;
+  const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE }; process.env.HOME = process.env.USERPROFILE = home; // os.homedir(): HOME on POSIX, USERPROFILE on Windows
   try {
     const r = (await sessionStart({ hook_event_name: 'SessionStart', source: 'startup', session_id: 's1', cwd: d } as any)) as any;
     const text = r.hookSpecificOutput.additionalContext as string;
     assert.ok(text.includes('registered in the knowledge bank automatically: project `fresh2`, domain `tooling`'), text.slice(0, 300));
     assert.ok(existsSync(path.join(d, '.kb.json')));
-  } finally { process.env.HOME = prev; }
+  } finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 });
 
 test('auto-register: the folder name is a hint when the files say nothing', () => {
@@ -62,7 +62,7 @@ test('domainFromText: needs clear evidence, tooling needs more, ties resolve to 
 test('the first prompt settles a guessed domain, confirms a right guess, and never touches a hand-set one', async () => {
   const d = mk('projects/mystery'); autoRegister(d, home);
   assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'tooling');
-  const prev = process.env.HOME; process.env.HOME = home;
+  const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE }; process.env.HOME = process.env.USERPROFILE = home; // os.homedir(): HOME on POSIX, USERPROFILE on Windows
   try {
     const r = (await userPrompt({ hook_event_name: 'UserPromptSubmit', session_id: 's2', cwd: d, prompt: 'Today I want to research, develop and get ready to trade a crypto momentum strategy with a proper backtest' } as any)) as any;
     const cfg = JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8'));
@@ -75,7 +75,7 @@ test('the first prompt settles a guessed domain, confirms a right guess, and nev
     writeFileSync(path.join(d, '.kb.json'), JSON.stringify({ project_id: 'mystery', domain: 'ios' }));
     assert.equal(settleFromPrompt(d, 'trade crypto momentum strategy backtest sharpe'), null, 'hand-set file is never touched');
     assert.equal(JSON.parse(readFileSync(path.join(d, '.kb.json'), 'utf8')).domain, 'ios');
-  } finally { process.env.HOME = prev; }
+  } finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 });
 
 test('v1.5: the lexicon comes from the templates in the index, so a new template is a domain the first prompt can settle to', async () => {
@@ -120,7 +120,7 @@ test('v1.5: the prompt hook asks for the domain decision once per folder, in wha
   const d = mk('projects/smack-two'); autoRegister(d, home);
   const prompt = 'Build me a board game night planner for my family where everyone votes on snacks and the winner picks the movie we watch';
   const r1: any = await userPrompt({ session_id: 'dec1', cwd: d, prompt });
-  const t1 = r1.hookSpecificOutput.additionalContext; assert.match(t1, /^This folder was filed under `tooling` by a guess/); assert.match(t1, /node "\S+\/dist\/kb\.js" domain new <name> --facets/);
+  const t1 = r1.hookSpecificOutput.additionalContext; assert.match(t1, /^This folder was filed under `tooling` by a guess/); assert.match(t1, /node "[^"]+\/dist\/kb\.js" domain new <name> --facets/);
   assert.match(t1, /If it is one of console, ios, run/, 'the known domains come from the bank, tooling excluded');
   const r2: any = await userPrompt({ session_id: 'dec2', cwd: d, prompt: prompt + ' please' }); // a NEW session: still not asked again
   assert.ok(!r2 || !/filed under `tooling` by a guess/.test(r2.hookSpecificOutput.additionalContext), 'once per folder');

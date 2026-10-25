@@ -83,6 +83,8 @@ function resolveDashed(dashed: string): string | null {
     }
     return null;
   };
+  const drive = /^([A-Za-z])--(.+)$/.exec(dashed); // Windows: a drive path (C: and a separator) encodes as C--…
+  if (drive) return walk(`${drive[1]}:\\`, drive[2]);
   return dashed.startsWith('-') ? walk(path.sep, dashed.slice(1)) : null;
 }
 

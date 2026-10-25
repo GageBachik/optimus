@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.OPTIMUS_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.OPTIMUS_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
@@ -50,7 +50,7 @@ test('Serena and auto-memory files become evidence notes: content-hash ids, proj
 });
 
 test('auto-memory project without a transcript: the dashed directory name is resolved against the disk, else kept as is', () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'home-')), repo = mkdtempSync(path.join(tmpdir(), 'my-repo.x-'));
+  const home = mkdtempSync(path.join(tmpdir(), 'home-')), repo = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'my-repo.x-'))); // the long path: Claude Code encodes process.cwd(), never an 8.3 short name
   put(path.join(home, '.claude', 'projects', repo.replace(/[^A-Za-z0-9]/g, '-'), 'memory', 'a.md'), 'no frontmatter\n');
   put(path.join(home, '.claude', 'projects', '-no-such-place-here', 'memory', 'b.md'), '---\nname: B\ntype: project\n---\nold-style type key\n');
   const db = openDb(path.join(process.env.OPTIMUS_HOME!, 'b.sqlite'));

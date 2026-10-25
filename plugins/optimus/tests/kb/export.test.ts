@@ -60,3 +60,8 @@ test('rebuild is atomic: a malformed note file leaves the index untouched and na
   assert.throws(() => rebuild(db, bank), /f_broken\.md/);
   assert.equal((db.sql.prepare('SELECT title FROM note WHERE id=?').get(id) as any).title, 'keep me');
 });
+
+test('a note file with CRLF line endings (a Windows checkout or editor) parses as its LF rendering', () => {
+  const lf = `---\nid: f_t\nkind: finding\ntitle: T\ncreated_at: 2026-01-01T00:00:00.000Z\nupdated_at: 2026-01-01T00:00:00.000Z\ndevice_id: t\n---\n## Claim\nx\n`;
+  assert.deepEqual(kbExport.parseNoteFile(lf.replace(/\n/g, '\r\n')), kbExport.parseNoteFile(lf));
+});

@@ -46,7 +46,7 @@ test('a finding from another project says how its target and facets differ from 
   assert.ok(line.includes('your subject differs: SPY 0DTE options vs SPX 0DTE options'), line);
   assert.ok(line.includes('your environment differs: Schwab paper vs Databento backtest'), line);
   assert.ok(line.includes('your risk differs: all-in vs size-for-target'), line);
-  assert.ok(new RegExp(`transfer proposed: (node "\\S+/kb\\.js"|kb) transfer ${f.transfers[0]} confirm\\|refute`).test(line), line);
+  assert.ok(new RegExp(`transfer proposed: (node "[^"]+/kb\\.js"|kb) transfer ${f.transfers[0]} confirm\\|refute`).test(line), line);
   // The project that made the finding sees neither a difference nor a transfer line.
   const options = { project_id: 'options-0dte', domain: 'trading', facets: { risk: 'size-for-target' }, target: { environment: 'Databento backtest', subject: 'SPX 0DTE options' }, relies_on: ['risk sizing'] };
   const mine = buildProjectBrief(db, options, []).split('\n').find((l) => l.includes(f.id))!;

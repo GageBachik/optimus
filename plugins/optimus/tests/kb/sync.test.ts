@@ -15,7 +15,7 @@ const putNote = (bank: string, body: string) => { mkdirSync(path.join(bank, 'not
 test('two clones sync different notes cleanly; a rebase conflict aborts and is logged; the doctor\'s recovery path re-indexes the resolved note (review focus 2)', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'git-')); const bare = path.join(root, 'bank.git'); sh(`git init -q --bare ${bare}`, root);
   const a = path.join(root, 'a'), b = path.join(root, 'b'); sh(`git clone -q ${bare} a && git clone -q ${bare} b`, root);
-  for (const c of [a, b]) { sh('git config user.email t@t && git config user.name t', c); }
+  for (const c of [a, b]) { sh('git config user.email t@t && git config user.name t && git config core.autocrlf false', c); }
   putNote(a, 'one\n'); assert.equal(sync(a), 'ok');
   writeFileSync(path.join(b, 'n2.md'), 'two\n'); assert.equal(sync(b), 'ok'); assert.ok(existsSync(path.join(b, 'notes', 'finding', 'f_t.md')));
   assert.equal(sync(a), 'ok'); assert.ok(existsSync(path.join(a, 'n2.md')));
@@ -33,7 +33,7 @@ test('two clones sync different notes cleanly; a rebase conflict aborts and is l
 });
 test('session-sync spawns a detached `kb sync` that commits and pushes the bank (DESIGN §3.1 async hook)', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'git-')); const bare = path.join(root, 'bank.git'); sh(`git init -q --bare ${bare}`, root);
-  const c = path.join(root, 'c'); sh(`git clone -q ${bare} c`, root); sh('git config user.email t@t && git config user.name t', c);
+  const c = path.join(root, 'c'); sh(`git clone -q ${bare} c`, root); sh('git config user.email t@t && git config user.name t && git config core.autocrlf false', c);
   writeFileSync(path.join(c, 'n.md'), 'n\n'); process.env.OPTIMUS_BANK = c;
   await sessionSync({});
   const pushed = () => sh('git rev-list --all --count', bare).trim();

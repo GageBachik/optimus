@@ -8254,7 +8254,8 @@ function renderNoteFile(n, attrs, rels) {
 ${(0, import_yaml2.stringify)(fm, { sortMapEntries: true, lineWidth: 0 })}---
 ${n.body.replace(/\r\n?/g, "\n")}`;
 }
-function parseNoteFile(text) {
+function parseNoteFile(raw) {
+  const text = raw.replace(/\r\n/g, "\n");
   const end = text.indexOf("\n---\n", 3);
   if (!text.startsWith("---\n") || end < 0) throw new Error("note file has no frontmatter");
   const fm = (0, import_yaml2.parse)(text.slice(4, end + 1)) ?? {};
@@ -9053,6 +9054,8 @@ function resolveDashed(dashed) {
     }
     return null;
   };
+  const drive = /^([A-Za-z])--(.+)$/.exec(dashed);
+  if (drive) return walk(`${drive[1]}:\\`, drive[2]);
   return dashed.startsWith("-") ? walk(path16.sep, dashed.slice(1)) : null;
 }
 function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {

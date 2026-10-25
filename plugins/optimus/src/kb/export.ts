@@ -39,7 +39,8 @@ export function renderNoteFile(n: NoteRow, attrs: Record<string, string[]>, rels
   return `---\n${stringify(fm, { sortMapEntries: true, lineWidth: 0 })}---\n${n.body.replace(/\r\n?/g, '\n')}`;
 }
 
-export function parseNoteFile(text: string): { note: NoteRow; attrs: Record<string, string[]>; rels: RelRow[] } {
+export function parseNoteFile(raw: string): { note: NoteRow; attrs: Record<string, string[]>; rels: RelRow[] } {
+  const text = raw.replace(/\r\n/g, '\n'); // a note checked out or saved with CRLF (Windows) is the LF file it was rendered as
   const end = text.indexOf('\n---\n', 3);
   if (!text.startsWith('---\n') || end < 0) throw new Error('note file has no frontmatter');
   const fm = parse(text.slice(4, end + 1)) ?? {};
