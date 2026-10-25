@@ -75,31 +75,35 @@ Agents your session spawns get the same project card and record what they measur
 | `kb project init --domain <d>` | Files the current folder under a domain by hand |
 | `kb domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2` | Adds a new kind of project to the bank |
 | `kb concepts review` | Shows the open "merge X into Y?" questions |
-| `kb sync` | Commits and pushes the bank (also runs itself at the end of each turn) |
+| `kb sync` | Commits the bank, pulls what other machines pushed, and pushes (also runs itself at the end of each turn) |
 
 `kb` with no arguments lists everything.
 
-## A second device
+## The bank repository and a second device
 
-Create an empty private repository (no README) for the bank, push the bank to it once from the first machine, then install Optimus and clone the bank on the next one:
+The bank is a git repository of Markdown files in `~/knowledge-bank`. Give it a **private** remote: it holds what your projects learned, including numbers, paths and names from your own code. Create an empty private repository (no README, no license) and push the bank to it once; from then on `kb sync` commits and pushes at the end of every turn and pulls what your other machines pushed. With the GitHub CLI that is one command:
 
 ```sh
-# first machine
-cd ~/knowledge-bank && git remote add origin <your private git remote> && git push -u origin main
-
-# second machine: install the plugin and the kb function exactly as in Install, then, before opening any project session,
-kb setup
-kb init --clone <your private git remote>
-kb doctor
+cd ~/knowledge-bank && gh repo create <you>/knowledge-bank --private --source . --remote origin --push
 ```
 
-If `~/knowledge-bank` already exists on the second machine (an earlier `kb init`, or a session already recorded a note there), remove it first or pass `--bank <empty dir>` to the init. Keep the bank repository private: it holds what your projects learned.
+Without it: `cd ~/knowledge-bank && git remote add origin <your private git remote> && git push -u origin main`.
+
+On the next machine, install the plugin and the `kb` function exactly as in Install, make sure `git` can reach the private repository (an SSH key on your account, or `gh auth login && gh auth setup-git`), then, before opening any project session:
+
+```sh
+kb setup
+kb init --clone <your private git remote>
+kb doctor      # bank-remote should read "origin reachable"
+```
+
+If `~/knowledge-bank` already exists on the second machine (an earlier `kb init`, or a session already recorded a note there), remove it first or pass `--bank <empty dir>` to the init. If a sync ever hits a rebase conflict, it aborts, keeps the local commit, and `kb doctor` shows `last-sync  failed (rebase conflict)` until you resolve it in `~/knowledge-bank` like any git conflict.
 
 ## Setting it up with Claude Code
 
 Paste this into a Claude Code session and it will do the steps above for you:
 
-> Install the Optimus plugin from https://github.com/GageBachik/optimus. Run `claude plugin marketplace add GageBachik/optimus` and `claude plugin install optimus@optimus`. Find the plugin folder with `claude plugin list --json`: the entry with id `optimus@optimus`, field `readFromFolder` if present, else `installPath`; call it PLUGIN. Append the `kb` function from the README's Install section to my shell profile (`~/.zshrc` for zsh, `~/.bashrc` for bash, `$PROFILE` for PowerShell). Then run `node PLUGIN/dist/kb.js setup`, `node PLUGIN/dist/kb.js init` and `node PLUGIN/dist/kb.js doctor` directly (your shell has no aliases), show me the doctor output, and remind me to restart Claude Code or run `/reload-plugins` so the hooks load.
+> Install the Optimus plugin from https://github.com/GageBachik/optimus. Run `claude plugin marketplace add GageBachik/optimus` and `claude plugin install optimus@optimus`. Find the plugin folder with `claude plugin list --json`: the entry with id `optimus@optimus`, field `readFromFolder` if present, else `installPath`; call it PLUGIN. Append the `kb` function from the README's Install section to my shell profile (`~/.zshrc` for zsh, `~/.bashrc` for bash, `$PROFILE` for PowerShell). Then run `node PLUGIN/dist/kb.js setup`, `node PLUGIN/dist/kb.js init` (or `node PLUGIN/dist/kb.js init --clone <url>` if I give you the URL of my private bank repository) and `node PLUGIN/dist/kb.js doctor` directly (your shell has no aliases), show me the doctor output, and remind me to restart Claude Code or run `/reload-plugins` so the hooks load.
 
 Notes for agents: state lives in `~/.optimus/` (sessions, drafts, blobs, `logs/hooks.log`, `metrics.jsonl`; override with `OPTIMUS_HOME`); the bank is `~/knowledge-bank/` (`notes/<kind>/*.md`; `templates/*.yaml` are the domains; override with `OPTIMUS_BANK` or `kb init --bank <dir>`); a project takes part when it has a `.kb.json` with `project_id` and `domain`; the MCP tools are `kb_brief`, `kb_find`, `kb_write`, `kb_compare`, `kb_link` and `recall`; the full design is in `docs/DESIGN.md`.
 
