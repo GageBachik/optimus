@@ -19,14 +19,14 @@ import { installTemplate, installedDomains, normalizeKeywords, templateNoteId } 
 import { loadTemplate } from '../kb/templates-yaml.js';
 import { fileHereUnder } from '../kb/auto-register.js';
 import { sync } from '../kb/sync.js';
-import { importSerena, importClaudeMemory } from '../kb/import.js';
+import { importSerena, importClaudeMemory, importCodexMemory } from '../kb/import.js';
 import { generateMap } from '../kb/map.js';
 import { spawn } from 'node:child_process';
 const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${paths.logsDir()}/hooks.log)\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -75,15 +75,16 @@ else if (cmd === 'cleanup') {
     else if (cmd === 'retract') { retractNote(db, bank, id); process.stdout.write(`retracted ${id}\n`); }
     else { setAttr(db, bank, id, a, b); process.stdout.write(`set ${a}=${b} on ${id}\n`); }
   } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
-} else if (cmd === 'import' && ['serena', 'claude-memory', 'all'].includes(args[0])) {
+} else if (cmd === 'import' && ['serena', 'claude-memory', 'codex', 'all'].includes(args[0])) {
   const root = value('--root');
   if (has('--root') && !root) { process.stderr.write('--root needs a directory\n'); process.exitCode = 2; }
   else {
     const db = openDb(), bank = paths.bankDir(), roots = [root ?? path.join(home, 'projects')]; // Ruling R6: default root ~/projects
     const line = (what: string, r: { files: number; created: number; unchanged: number }) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged\n`);
     try {
-      if (args[0] !== 'claude-memory') line('serena', importSerena(db, bank, roots));
-      if (args[0] !== 'serena') line('claude-memory', importClaudeMemory(db, bank));
+      if (args[0] === 'serena' || args[0] === 'all') line('serena', importSerena(db, bank, roots));
+      if (args[0] === 'claude-memory' || args[0] === 'all') line('claude-memory', importClaudeMemory(db, bank));
+      if (args[0] === 'codex' || args[0] === 'all') line('codex', importCodexMemory(db, bank));
     } catch (e) { process.stderr.write(`kb import: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
   }
 } else if (cmd === 'write' && args[0]) {
