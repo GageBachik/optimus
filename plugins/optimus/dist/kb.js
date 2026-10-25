@@ -8700,18 +8700,19 @@ function acceptMerge(db, bankDir, id, now = (/* @__PURE__ */ new Date()).toISOSt
   db.sql.prepare("UPDATE pending_merge SET resolved=? WHERE id=?").run("accepted", id);
   log2(bankDir, `- ${now.slice(0, 10)} merged "${aTitle}" into ${bTitle} (accepted ${id}) \xB7 undo: kb concepts split "${normalizeName(aTitle)}"`);
 }
-function conceptByRef(db, ref) {
+function conceptByRef(db, ref, opts = { alias: true }) {
   const norm = normalizeName(ref);
   const byId = /^c_/.test(ref) ? getNote(db, ref) : null;
   if (byId && byId.kind === "concept" && !byId.deleted_at) return byId.id;
   const exact = concepts(db).find((c) => normalizeName(c.title) === norm);
   if (exact) return exact.id;
   const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm);
-  if (hit) return hit.id;
+  if (hit && opts.alias) return hit.id;
+  if (hit) throw new Error(`"${ref}" is an alias of "${getNote(db, hit.id).title}" (${hit.id}), not a concept of its own; name that concept by its title or id if the whole of it is meant`);
   throw new Error(`no concept "${ref}"`);
 }
 function mergeConcepts(db, bankDir, aRef, bRef, now = (/* @__PURE__ */ new Date()).toISOString()) {
-  const [a, b] = mergeInto(db, bankDir, conceptByRef(db, aRef), conceptByRef(db, bRef), now);
+  const [a, b] = mergeInto(db, bankDir, conceptByRef(db, aRef, { alias: false }), conceptByRef(db, bRef), now);
   log2(bankDir, `- ${now.slice(0, 10)} merged "${a}" into ${b} (kb concepts merge) \xB7 undo: kb concepts split "${normalizeName(a)}"`);
   return { a, b };
 }

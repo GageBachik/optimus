@@ -81,4 +81,8 @@ test('kb concepts merge: a named concept becomes an alias of another outside the
   assert.match(readFileSync(path.join(bank4, 'concept-merges.md'), 'utf8'), /merged "kalshi" into kalshi api \(kb concepts merge\) · undo: kb concepts split "kalshi"/);
   assert.throws(() => mergeConcepts(db, bank4, 'kalshi api', 'kalshi api', now), /cannot merge into itself/);
   assert.throws(() => mergeConcepts(db, bank4, 'no such concept', 'kalshi api', now), /no concept "no such concept"/);
+  // 2026-10-24: "kalshi" is now only an alias; naming it as the side to merge away must not merge the whole "kalshi api" concept
+  assert.throws(() => mergeConcepts(db, bank4, 'kalshi', 'kalshi fees', now), /"kalshi" is an alias of "kalshi api"/);
+  assert.ok(!getNote(db, api.conceptId)!.deleted_at, 'the concept behind the alias is untouched');
+  assert.equal(mergeConcepts(db, bank4, 'kalshi fees', 'kalshi', now).b, 'kalshi api', 'the surviving side may be named by an alias');
 });
