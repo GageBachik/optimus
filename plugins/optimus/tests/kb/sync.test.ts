@@ -37,7 +37,7 @@ test('session-sync spawns a detached `kb sync` that commits and pushes the bank 
   writeFileSync(path.join(c, 'n.md'), 'n\n'); process.env.OPTIMUS_BANK = c;
   await sessionSync({});
   const pushed = () => sh('git rev-list --all --count', bare).trim();
-  for (let i = 0; i < 150 && pushed() === '0'; i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 600 && pushed() === '0'; i++) /* 60 s: a loaded machine (parallel test files, a concurrent import) failed 15 s twice on 2026-10-24 */ await new Promise((r) => setTimeout(r, 100));
   assert.equal(pushed(), '1');
   assert.ok(JSON.parse(readFileSync(path.join(process.env.OPTIMUS_HOME!, 'config.json'), 'utf8')).lastSyncAt);
 });
