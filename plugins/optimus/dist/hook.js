@@ -680,19 +680,20 @@ function findingsAbout(db, concepts) {
   if (!concepts.length) return [];
   return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
 }
-function findingsAboutIn(db, concepts, domain, unsure = false) {
+function findingsAboutIn(db, concepts, domain) {
   if (!concepts.length) return [];
-  if (!domain) return findingsAbout(db, concepts);
-  const own = ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain));
-  return own.length || !unsure ? own : findingsAbout(db, concepts);
+  const all = findingsAbout(db, concepts);
+  if (!domain) return all;
+  const own = new Set(ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain)));
+  return [...all.filter((id) => own.has(id)), ...all.filter((id) => !own.has(id))];
 }
 function findingsByTitlePhrase(db, prompt, domain, limit = 3) {
   const toks = prompt.toLowerCase().replace(/\S*[\\/]\S+/g, " ").split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP2.has(t));
   const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
-  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING}${domain ? " AND n.domain=?" : ""} LIMIT ?`);
+  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING} ORDER BY CASE WHEN n.domain=? THEN 0 ELSE 1 END, n.id LIMIT ?`);
   const ids2 = [], hit = [];
   for (const p of phrases) {
-    const rows = q.all(`title:"${p}"`, ...domain ? [domain] : [], limit);
+    const rows = q.all(`title:"${p}"`, domain ?? null, limit);
     if (rows.length) {
       hit.push(p);
       for (const r of rows) if (!ids2.includes(r.id)) ids2.push(r.id);
@@ -723,7 +724,7 @@ function candidateIds(db, cfg) {
   return [...out2];
 }
 function loadCandidates(db, findingIds) {
-  const note = db.sql.prepare("SELECT id, title, project, updated_at FROM note WHERE id=? AND deleted_at IS NULL");
+  const note = db.sql.prepare("SELECT id, title, project, domain, updated_at FROM note WHERE id=? AND deleted_at IS NULL");
   const out2 = [];
   for (const id of new Set(findingIds)) {
     const n = note.get(id);
@@ -922,7 +923,7 @@ function fitNotes(f, cfg) {
 }
 function findingLine(f, cfg) {
   const a = f.attrs;
-  const meta = [a.state?.[0] ?? "unverified", a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(", ");
+  const meta = [a.state?.[0] ?? "unverified", a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, cfg?.domain && f.domain && f.domain !== cfg.domain && `domain ${f.domain}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(", ");
   const notes = cfg ? fitNotes(f, cfg) : [];
   return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join("; ") || "none"}${notes.length ? ` \u2014 ${notes.join("; ")}` : ""}`;
 }
@@ -969,10 +970,10 @@ function buildRecallBrief(db, cfg, prompt, state, today = /* @__PURE__ */ new Da
   const byTitle = findingsByTitlePhrase(db, prompt, cfg.domain);
   const names = [.../* @__PURE__ */ new Set([...hits.map((h) => h.title), ...projects, ...byTitle.phrases.map((p) => `"${p}"`)])];
   if (!names.length) return null;
-  const unsure = cfg.auto?.confidence === "low";
-  const fresh = [.../* @__PURE__ */ new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects), ...byTitle.ids])].filter((id) => !state.briefed.includes(id));
+  const fresh = [.../* @__PURE__ */ new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain), ...findingsIn(db, projects), ...byTitle.ids])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
-  const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
+  const all = rankCandidates(db, loadCandidates(db, fresh), cfg, today);
+  const ranked = [...all.filter((r) => r.domain === cfg.domain), ...all.filter((r) => r.domain !== cfg.domain)].slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));
   return fitBrief(PREAMBLE, [{ title: `Knowledge bank on ${names.join(", ")}`, priority: 7, items: ranked.map((f) => findingLine(f, cfg)) }]).text;
 }

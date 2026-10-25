@@ -4,7 +4,7 @@ import { normalizeName } from './normalize.js';
 import { conceptNoteId } from './templates.js';
 
 export type Candidate = {
-  id: string; title: string; project: string | null; updated_at: string;
+  id: string; title: string; project: string | null; domain: string | null; updated_at: string;
   attrs: Record<string, string[]>;
   /** `facet:<key>` values of the approaches the finding is `about`, merged by key. */
   facets: Record<string, string[]>;
@@ -35,14 +35,17 @@ export function findingsAbout(db: Db, concepts: string[]): string[] {
   if (!concepts.length) return [];
   return ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND ${LIVE_FINDING}`).all(...concepts));
 }
-/** v1.5 domain-first: the findings about these concepts in the asking project's own domain. "testing" has 46 findings across four
- *  domains: an iPhone session was shown Solana and poker ones, five per prompt, and cited none. Nothing related means nothing injected;
- *  other domains are offered only while the project's domain is still an unconfirmed guess (`unsure`), when the own domain may be wrong. */
-export function findingsAboutIn(db: Db, concepts: string[], domain: string | undefined, unsure = false): string[] {
+/** Own domain first, then every other domain (2026-10-25). v1.5 showed the own domain only once a domain was settled, after an iPhone
+ *  session was shown Solana and poker "testing" findings, five per prompt, and cited none; the owner overruled it when the trading
+ *  domains were split: "the whole point is not to have to reintroduce the same thing over and over once it's solved somewhere else" — a
+ *  prop-firm session that names autocorrelation must see what trading measured about it. Nothing related still means nothing injected;
+ *  the caller's cap per prompt and this order bound the noise, and the brief names the domain of a finding from another one. */
+export function findingsAboutIn(db: Db, concepts: string[], domain: string | undefined): string[] {
   if (!concepts.length) return [];
-  if (!domain) return findingsAbout(db, concepts);
-  const own = ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain));
-  return own.length || !unsure ? own : findingsAbout(db, concepts);
+  const all = findingsAbout(db, concepts);
+  if (!domain) return all;
+  const own = new Set(ids(db.sql.prepare(`SELECT DISTINCT n.id FROM rel r JOIN note n ON n.id=r.src WHERE r.type='about' AND r.deleted_at IS NULL AND r.dst IN (${marks(concepts)}) AND n.domain=? AND ${LIVE_FINDING}`).all(...concepts, domain)));
+  return [...all.filter((id) => own.has(id)), ...all.filter((id) => !own.has(id))];
 }
 const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'have', 'will', 'make', 'like', 'want', 'just', 'then', 'also', 'about', 'what', 'when', 'where', 'which', 'there', 'their', 'them', 'they', 'been', 'were', 'some', 'more', 'very', 'over', 'under', 'after', 'before', 'each', 'every', 'should', 'would', 'could', 'please', 'need', 'only', 'does', 'did', 'can', 'not', 'but', 'you', 'our', 'its', 'are', 'was', 'use', 'using', 'add', 'now', 'let', 'get']);
 /** v1.5: two-word phrases of the prompt matched against finding titles in the project's domain (porter-stemmed FTS), so a finding
@@ -51,10 +54,11 @@ const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into
 export function findingsByTitlePhrase(db: Db, prompt: string, domain: string | undefined, limit = 3): { ids: string[]; phrases: string[] } {
   const toks = prompt.toLowerCase().replace(/\S*[\\/]\S+/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));
   const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
-  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING}${domain ? ' AND n.domain=?' : ''} LIMIT ?`);
+  // 2026-10-25: the project's own domain first, then any other (the same rule as findingsAboutIn); before, other domains were never searched.
+  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING} ORDER BY CASE WHEN n.domain=? THEN 0 ELSE 1 END, n.id LIMIT ?`);
   const ids: string[] = [], hit: string[] = [];
   for (const p of phrases) {
-    const rows = q.all(`title:"${p}"`, ...(domain ? [domain] : []), limit) as { id: string }[];
+    const rows = q.all(`title:"${p}"`, domain ?? null, limit) as { id: string }[];
     if (rows.length) { hit.push(p); for (const r of rows) if (!ids.includes(r.id)) ids.push(r.id); }
     if (ids.length >= limit) break;
   }
@@ -89,10 +93,10 @@ export function candidateIds(db: Db, cfg: ProjectConfig): string[] {
 
 /** Hydrates findings (live ones only) with what the score and the brief line need. */
 export function loadCandidates(db: Db, findingIds: Iterable<string>): Candidate[] {
-  const note = db.sql.prepare('SELECT id, title, project, updated_at FROM note WHERE id=? AND deleted_at IS NULL');
+  const note = db.sql.prepare('SELECT id, title, project, domain, updated_at FROM note WHERE id=? AND deleted_at IS NULL');
   const out: Candidate[] = [];
   for (const id of new Set(findingIds)) {
-    const n = note.get(id) as Pick<Candidate, 'id' | 'title' | 'project' | 'updated_at'> | undefined; if (!n) continue;
+    const n = note.get(id) as Pick<Candidate, 'id' | 'title' | 'project' | 'domain' | 'updated_at'> | undefined; if (!n) continue;
     const rels = getRels(db, id, 'both');
     const c: Candidate = { ...n, attrs: getAttrs(db, id), facets: {}, target: { environment: [], subject: [] }, transfers: { confirmed: 0, refuted: 0 }, conflicts: 0, proposals: [], evidence: [] };
     for (const r of rels) {

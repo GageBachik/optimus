@@ -29572,7 +29572,7 @@ function candidateIds(db2, cfg) {
   return [...out];
 }
 function loadCandidates(db2, findingIds) {
-  const note = db2.sql.prepare("SELECT id, title, project, updated_at FROM note WHERE id=? AND deleted_at IS NULL");
+  const note = db2.sql.prepare("SELECT id, title, project, domain, updated_at FROM note WHERE id=? AND deleted_at IS NULL");
   const out = [];
   for (const id of new Set(findingIds)) {
     const n = note.get(id);
@@ -29794,7 +29794,7 @@ function fitNotes(f, cfg) {
 }
 function findingLine(f, cfg) {
   const a = f.attrs;
-  const meta = [a.state?.[0] ?? "unverified", a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(", ");
+  const meta = [a.state?.[0] ?? "unverified", a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, cfg?.domain && f.domain && f.domain !== cfg.domain && `domain ${f.domain}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(", ");
   const notes = cfg ? fitNotes(f, cfg) : [];
   return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join("; ") || "none"}${notes.length ? ` \u2014 ${notes.join("; ")}` : ""}`;
 }

@@ -52,7 +52,7 @@ function fitNotes(f: Candidate, cfg: ProjectConfig): string[] {
 /** DESIGN §3.6: one line per finding, ending with its id and evidence pointer; given the asking project's config, the fit notes follow. */
 export function findingLine(f: Candidate & { demoted?: boolean }, cfg?: ProjectConfig): string {
   const a = f.attrs;
-  const meta = [a.state?.[0] ?? 'unverified', a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(', ');
+  const meta = [a.state?.[0] ?? 'unverified', a.gate?.[0] && `gate ${a.gate[0]}`, a.valid_from?.[0] ?? f.updated_at.slice(0, 10), f.project && `project ${f.project}`, cfg?.domain && f.domain && f.domain !== cfg.domain && `domain ${f.domain}`, f.demoted && `expired ${a.valid_to?.[0]}`].filter(Boolean).join(', ');
   const notes = cfg ? fitNotes(f, cfg) : [];
   return `${f.title} (${meta}) [${f.id}] evidence: ${f.evidence.join('; ') || 'none'}${notes.length ? ` — ${notes.join('; ')}` : ''}`;
 }
@@ -117,10 +117,11 @@ export function buildRecallBrief(db: Db, cfg: ProjectConfig, prompt: string, sta
   const byTitle = findingsByTitlePhrase(db, prompt, cfg.domain); // v1.5: untagged findings, by a two-word phrase of the prompt in their title
   const names = [...new Set([...hits.map((h) => h.title), ...projects, ...byTitle.phrases.map((p) => `"${p}"`)])];
   if (!names.length) return null;
-  const unsure = cfg.auto?.confidence === 'low'; // an unconfirmed guess: the own domain may be wrong, so other domains may answer
-  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain, unsure), ...findingsIn(db, projects), ...byTitle.ids])].filter((id) => !state.briefed.includes(id));
+  const fresh = [...new Set([...findingsAboutIn(db, [...new Set(hits.map((h) => h.concept_id))], cfg.domain), ...findingsIn(db, projects), ...byTitle.ids])].filter((id) => !state.briefed.includes(id));
   if (!fresh.length) return null;
-  const ranked = rankCandidates(db, loadCandidates(db, fresh), cfg, today).slice(0, RECALL_FINDINGS);
+  // 2026-10-25: the own domain's findings take the slots first, other domains' fill what is left, and findingLine names a foreign domain.
+  const all = rankCandidates(db, loadCandidates(db, fresh), cfg, today);
+  const ranked = [...all.filter((r) => r.domain === cfg.domain), ...all.filter((r) => r.domain !== cfg.domain)].slice(0, RECALL_FINDINGS);
   state.briefed.push(...ranked.map((r) => r.id));
   return fitBrief(PREAMBLE, [{ title: `Knowledge bank on ${names.join(', ')}`, priority: 7, items: ranked.map((f) => findingLine(f, cfg)) }]).text;
 }

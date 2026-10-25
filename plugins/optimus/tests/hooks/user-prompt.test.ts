@@ -42,19 +42,23 @@ test('startup in a .kb.json project appends the bank sections; synonym questions
   assert.ok(!again.hookSpecificOutput.additionalContext.includes('## Pending concept questions')); assert.ok(again.hookSpecificOutput.additionalContext.includes(title));
   assert.equal(await userPrompt({ session_id: 'u2', cwd, prompt }), undefined);
 });
-test('v1.5 recall is domain-first and ignores paths: a solana finding about the same concept stays out of a trading brief; a path naming a project is not a mention', async () => {
+test('recall is own-domain first, then every domain (2026-10-25), and ignores paths: a trading brief lists its own risk-sizing finding before the Solana one, which names its domain; a domain with nothing about the concept is shown the others\'; a path naming a project is not a mention', async () => {
   { const db = openDb(); installTemplate(db, loadTemplate('templates/solana.yaml'));
     kbWrite(db, bank, { kind: 'finding', title: 'Risk sizing on Solana perps: 0.25% per trade survived 3 liquidation cascades', domain: 'solana', project: 'sol-perps', tags: ['risk sizing'], attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now);
     db.sql.close(); }
   const d2 = mkdtempSync(path.join(tmpdir(), 'spy2-')); writeFileSync(path.join(d2, '.kb.json'), JSON.stringify({ project_id: 'spy2', domain: 'trading' }));
   const r: any = await userPrompt({ session_id: 'u9', cwd: d2, prompt: 'Should we revisit risk sizing for the SPY book?' });
-  const t = r.hookSpecificOutput.additionalContext; assert.ok(t.includes(title), t); assert.ok(!t.includes('Solana perps'), 'same concept, other domain: left out while the own domain has findings\n' + t);
+  const t = r.hookSpecificOutput.additionalContext; assert.ok(t.includes(title), t);
+  assert.ok(t.includes('Solana perps'), 'same concept, other domain: shown after the own domain\'s findings (the owner: never reintroduce what is solved elsewhere)\n' + t);
+  assert.ok(t.indexOf(title) < t.indexOf('Solana perps'), 'own domain first\n' + t);
+  const lines = t.split('\n'); assert.match(lines.find((l: string) => l.includes('Solana perps'))!, /domain solana/, 'a finding from another domain names it');
+  assert.doesNotMatch(lines.find((l: string) => l.includes(title))!, /domain trading/, 'an own-domain finding does not');
   const d3 = mkdtempSync(path.join(tmpdir(), 'tool-')); writeFileSync(path.join(d3, '.kb.json'), JSON.stringify({ project_id: 'toolx', domain: 'tooling' }));
   const r3: any = await userPrompt({ session_id: 'u10', cwd: d3, prompt: 'Should we revisit risk sizing for the bot?' });
-  assert.equal(r3, undefined, 'a known domain with nothing about the concept: nothing is injected, never other domains');
+  assert.ok(r3 && /Solana perps|Fixed-fractional/.test(r3.hookSpecificOutput.additionalContext), 'a settled domain with nothing about the concept is shown what the others measured');
   const d4 = mkdtempSync(path.join(tmpdir(), 'guess-')); writeFileSync(path.join(d4, '.kb.json'), JSON.stringify({ project_id: 'guessy', domain: 'tooling', auto: { registered: '2026-10-20', confidence: 'low', reason: 'empty folder', decided: '2026-10-20' } }));
   const r3b: any = await userPrompt({ session_id: 'u10b', cwd: d4, prompt: 'Should we revisit risk sizing for the bot?' });
-  assert.ok(r3b && /Solana perps|Fixed-fractional/.test(r3b.hookSpecificOutput.additionalContext), 'an unconfirmed guess may be wrong: other domains are offered');
+  assert.ok(r3b && /Solana perps|Fixed-fractional/.test(r3b.hookSpecificOutput.additionalContext), 'so is an unconfirmed guess');
   const r4: any = await userPrompt({ session_id: 'u11', cwd: d2, prompt: 'open /Users/loser/projects/es/notes.md and summarise it for me' });
   assert.equal(r4, undefined, 'a path containing the project name "es" is not a mention of that project');
   const r4w: any = await userPrompt({ session_id: 'u11w', cwd: d2, prompt: 'open C:\\Users\\loser\\projects\\es\\notes.md and summarise it for me' });
