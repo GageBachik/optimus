@@ -8132,7 +8132,7 @@ function stem(word) {
   let w = word;
   if (w.length <= 2) return w;
   if (w.endsWith("sses") || w.endsWith("ies")) w = w.slice(0, -2);
-  else if (w.endsWith("s") && !w.endsWith("ss")) w = w.slice(0, -1);
+  else if (w.endsWith("s") && !w.endsWith("ss") && w.length > 3) w = w.slice(0, -1);
   if (w.endsWith("eed")) {
     if (measure(w.slice(0, -3)) > 0) w = w.slice(0, -1);
   } else {

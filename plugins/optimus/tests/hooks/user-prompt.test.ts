@@ -87,6 +87,14 @@ test('v1.5: a two-word phrase of the prompt that appears in a finding title reca
   assert.ok(!r2 || !/84pt trailing-only/.test(r2.hookSpecificOutput.additionalContext), 'a single shared word ("screen") is not a match');
 });
 
+test('a prompt about the IB bot does not recall IBS (2026-10-25): the plural strip no longer turns a three-letter acronym into another name', async () => {
+  const ibs = 'IBS QQQ dip buy +42 bp per trade t 4.6 (n 823) confirmed net of costs';
+  { const db = openDb(); kbWrite(db, bank, { kind: 'finding', title: ibs, domain: 'trading', project: 'strategy', tags: ['ibs'], attrs: { state: 'reproduced', gate: 'out-of-sample' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now); db.sql.close(); }
+  assert.equal(await userPrompt({ session_id: 'ib1', cwd, prompt: 'restart the IB gateway before the open' }), undefined, 'IB is not IBS');
+  const r: any = await userPrompt({ session_id: 'ib2', cwd, prompt: 'is IBS dip buying still profitable on QQQ?' });
+  assert.ok(r && r.hookSpecificOutput.additionalContext.includes(ibs), 'IBS by name still recalls it\n' + (r?.hookSpecificOutput.additionalContext ?? ''));
+});
+
 test('when the bank query throws, the last successful brief cached in state.json is injected (DESIGN §3.1)', async () => {
   const first: any = await userPrompt({ session_id: 'u3', cwd, prompt });
   writeFileSync(path.join(process.env.OPTIMUS_HOME!, 'kb.sqlite'), 'not a database');

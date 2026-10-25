@@ -19,8 +19,11 @@ const STEP3 = P('icate>ic ative> alize>al iciti>ic ical>ic ful> ness>');
 const STEP4 = 'al ance ence er ic able ible ant ement ment ent ion ou ism ate iti ous ive ize'.split(' ');
 export function stem(word: string): string {
   let w = word; if (w.length <= 2) return w;
-  // 1a
-  if (w.endsWith('sses') || w.endsWith('ies')) w = w.slice(0, -2); else if (w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
+  // 1a. A three-letter word keeps its s (2026-10-25): such words are acronyms far more often than plurals, and the plural strip had turned
+  // IBS into "ib", so a prompt about the owner's IB (Interactive Brokers) bot recalled internal-bar-strength findings; OOS, MES, TTS, iOS
+  // and GAS were mangled the same way. Measured on the bank that night: five concept names change norm (ios-27, ibs, ibs dip buy, live
+  // ops, tts), no two concepts collide before or after, and the plural matches given up are bps~bp, cis~ci, ups~up (one to five titles each).
+  if (w.endsWith('sses') || w.endsWith('ies')) w = w.slice(0, -2); else if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) w = w.slice(0, -1);
   // 1b
   if (w.endsWith('eed')) { if (measure(w.slice(0, -3)) > 0) w = w.slice(0, -1); }
   else { const suf = w.endsWith('ed') ? 2 : w.endsWith('ing') ? 3 : 0; const base = w.slice(0, -suf);
