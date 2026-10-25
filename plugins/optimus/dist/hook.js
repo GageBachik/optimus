@@ -1334,7 +1334,7 @@ function spawnKbSync() {
     log("warn", "kb sync not spawned: dist/kb.js not found");
     return;
   }
-  spawn(process.execPath, [kb, "sync", "--quiet"], { detached: true, stdio: "ignore", windowsHide: true }).on("error", (e) => log("error", "kb sync spawn failed", String(e))).unref();
+  spawn(process.execPath, [kb, "sync", "--quiet", "--wait"], { detached: true, stdio: "ignore", windowsHide: true }).on("error", (e) => log("error", "kb sync spawn failed", String(e))).unref();
 }
 var init_kb_sync = __esm({
   "src/lib/kb-sync.ts"() {
@@ -1825,26 +1825,28 @@ async function stop(input) {
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
   const entries = tp && existsSync10(tp) ? await entriesWithLastMessage(tp, input.last_assistant_message) : [];
-  let cfg = null, ask = [];
+  let cfg = null, ask = [], wrote = false;
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
     cfg = loadProjectConfig(cwd);
+    const turn = entries.slice(lastPromptIndex(entries));
+    wrote = wroteFindings(turn);
     let drafts;
     if (cfg) {
-      const key = paths.projectKey(cwd), turn = entries.slice(lastPromptIndex(entries));
+      const key = paths.projectKey(cwd);
       const turnState = JSON.parse(JSON.stringify(extractTaskState(turn, []), redactJson));
       const spec = buildDrafts(cfg, turnState, tp), known = existingDraftKeys(key);
       const fresh = spec.records.filter((r) => !known.has(draftKey(r.title)));
       drafts = writeDrafts(key, spec);
-      if (fresh.length && !input.stop_hook_active && !wroteFindings(turn)) ask = fresh.slice(0, MAX_ASK);
-      log("info", "stop: turn judged", { project: cfg.project_id, candidates: fresh.length, asked: ask.length > 0, wrote: wroteFindings(turn), continued: !!input.stop_hook_active });
+      if (fresh.length && !input.stop_hook_active && !wrote) ask = fresh.slice(0, MAX_ASK);
+      log("info", "stop: turn judged", { project: cfg.project_id, candidates: fresh.length, asked: ask.length > 0, wrote, continued: !!input.stop_hook_active });
     }
     const last = { at, sessionId, cwd, taskState, ...drafts ? { drafts } : {} };
     writeFileAtomic(path18.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
   }
   const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
   appendFileSync3(path18.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
-  if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
+  if (wrote || Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
   if (cfg && ask.length) {
     log("info", "stop: asked the session to record", { project: cfg.project_id, candidates: ask.length });
     return { decision: "block", reason: askText(cfg, ask) };

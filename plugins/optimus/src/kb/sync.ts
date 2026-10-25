@@ -73,6 +73,15 @@ function record(db: Db, result: SyncResult, reason?: string): SyncResult {
   return result;
 }
 
+/** `kb sync --wait`: when another sync holds the lock, retry every half second for up to `timeoutMs` instead of returning `busy`. The running
+ *  sync committed what was in the bank when it started; a note written since then is only shipped by a sync that runs after it. */
+export function syncWait(bankDir: string, timeoutMs = 60_000): SyncResult {
+  const started = Date.now(); let r = sync(bankDir), waited = false;
+  while (r === 'busy' && Date.now() - started < timeoutMs) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); waited = true; r = sync(bankDir); }
+  if (waited) log('info', r === 'busy' ? 'sync: gave up waiting for the lock' : 'sync: ran after waiting for the lock', { waitedMs: Date.now() - started });
+  return r;
+}
+
 /** DESIGN §4.4: the one sync, under the bank's directory lock. `busy` records nothing (the running sync will). */
 export function sync(bankDir: string): SyncResult {
   const bank = path.resolve(bankDir), db = openDb();

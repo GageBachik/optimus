@@ -45,7 +45,8 @@ const askText = (cfg: ProjectConfig, ask: DraftSpec['records']) => [
   ...ask.map((r) => `- ${r.title}`),
 ].join('\n');
 
-// DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample; runs `kb sync` when the last one is older than 60 s.
+// DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample; runs `kb sync` when the turn called kb_write or
+// the last sync is older than 60 s.
 // v1.6: the session records its own findings. The turn's measured statements are drafted into the project's log, and when the turn recorded
 // nothing itself, the hook asks the session once (decision "block" with the candidates) to judge and write the durable ones. The log is
 // never something a person has to process by hand.
@@ -54,21 +55,22 @@ export async function stop(input: HookInput) {
   const sessionId = String(input.session_id ?? 'unknown'); const cwd = String(input.cwd ?? ''); const tp = String(input.transcript_path ?? '');
   const at = new Date().toISOString();
   const entries = tp && existsSync(tp) ? await entriesWithLastMessage(tp, input.last_assistant_message) : [];
-  let cfg: ProjectConfig | null = null, ask: DraftSpec['records'] = [];
+  let cfg: ProjectConfig | null = null, ask: DraftSpec['records'] = [], wrote = false;
   // No transcript: keep the previous last-session record rather than overwrite it with an empty one.
   if (entries.length) {
     const taskState: TaskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
     cfg = loadProjectConfig(cwd);
+    const turn = entries.slice(lastPromptIndex(entries)); wrote = wroteFindings(turn);
     let drafts: LastSession['drafts'];
     if (cfg) {
-      const key = paths.projectKey(cwd), turn = entries.slice(lastPromptIndex(entries));
+      const key = paths.projectKey(cwd);
       const turnState: TaskState = JSON.parse(JSON.stringify(extractTaskState(turn, []), redactJson));
       const spec = buildDrafts(cfg, turnState, tp), known = existingDraftKeys(key);
       const fresh = spec.records.filter((r) => !known.has(draftKey(r.title)));
       drafts = writeDrafts(key, spec);
-      if (fresh.length && !input.stop_hook_active && !wroteFindings(turn)) ask = fresh.slice(0, MAX_ASK);
+      if (fresh.length && !input.stop_hook_active && !wrote) ask = fresh.slice(0, MAX_ASK);
       // One line per judged turn, so a watcher can tell "ran and found nothing to ask" from "never ran" (the first Windows live session left no trace).
-      log('info', 'stop: turn judged', { project: cfg.project_id, candidates: fresh.length, asked: ask.length > 0, wrote: wroteFindings(turn), continued: !!input.stop_hook_active });
+      log('info', 'stop: turn judged', { project: cfg.project_id, candidates: fresh.length, asked: ask.length > 0, wrote, continued: !!input.stop_hook_active });
     }
     const last: LastSession = { at, sessionId, cwd, taskState, ...(drafts ? { drafts } : {}) };
     writeFileAtomic(path.join(paths.projectDir(paths.projectKey(cwd)), 'last-session.json'), JSON.stringify(last) + '\n');
@@ -76,8 +78,10 @@ export async function stop(input: HookInput) {
   // Ruling R2: a turn without usage fields (or no transcript) still gets a line with nulls, so the measurement never skips a turn silently.
   const u = [...entries].reverse().find((e) => e.type === 'assistant' && e.message?.usage)?.message?.usage ?? {};
   appendFileSync(path.join(paths.stateDir(), 'metrics.jsonl'), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + '\n');
-  // DESIGN §4.4: sync when the last one is older than 60 s; never synced (unparsable date) counts as 0.
-  if (Date.now() - (Date.parse(paths.config().lastSyncAt ?? '') || 0) > 60_000) spawnKbSync();
+  // DESIGN §4.4: sync when the turn wrote to the bank, or when the last sync is older than 60 s; never synced (unparsable date) counts as 0.
+  // 2026-10-25, a T3 Code thread: the asking stop synced, the thread then wrote two findings, and the continued stop 14 s later skipped the
+  // sync, so the findings sat uncommitted until an unrelated session happened to sync. A turn that wrote always ships what it wrote.
+  if (wrote || Date.now() - (Date.parse(paths.config().lastSyncAt ?? '') || 0) > 60_000) spawnKbSync();
   if (cfg && ask.length) { log('info', 'stop: asked the session to record', { project: cfg.project_id, candidates: ask.length }); return { decision: 'block' as const, reason: askText(cfg, ask) }; }
   return undefined;
 }

@@ -8457,6 +8457,17 @@ function record(db, result, reason) {
   log("info", `sync: ${result}`, reason ? { reason } : void 0);
   return result;
 }
+function syncWait(bankDir, timeoutMs = 6e4) {
+  const started = Date.now();
+  let r = sync(bankDir), waited = false;
+  while (r === "busy" && Date.now() - started < timeoutMs) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    waited = true;
+    r = sync(bankDir);
+  }
+  if (waited) log("info", r === "busy" ? "sync: gave up waiting for the lock" : "sync: ran after waiting for the lock", { waitedMs: Date.now() - started });
+  return r;
+}
 function sync(bankDir) {
   const bank = path12.resolve(bankDir), db = openDb();
   try {
@@ -10489,12 +10500,12 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] [--gate <old>=<new>]... | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] [--gate <old>=<new>]... | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] [--wait]| kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 var buildUsage = "usage: kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>]\n       kb build brief [--project <id>] [--role extractor|reviewer]\n       kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
-    const r = sync(paths.bankDir());
+    const r = has("--wait") ? syncWait(paths.bankDir()) : sync(paths.bankDir());
     if (!has("--quiet")) process.stdout.write(r === "failed" ? `sync: failed (details in ${path19.join(paths.logsDir(), "hooks.log")})
 ` : `sync: ${r}
 `);
