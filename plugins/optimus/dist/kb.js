@@ -8573,21 +8573,43 @@ function projectMove(db, bankDir, cwd, opts, now = (/* @__PURE__ */ new Date()).
   if (!id) throw new Error(found ? `${found.file} has no project_id; pass --id <project>` : "no .kb.json here or above; run this in the project folder or pass --id <project>");
   const domains = installedDomains(db);
   if (!domains.includes(opts.domain)) throw new Error(`unknown domain ${opts.domain} (installed: ${domains.join(", ") || "none"}); a new kind of project needs kb domain new ${opts.domain} --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] first`);
+  const ladder = templateFor(db, opts.domain).gates;
+  const gated = db.sql.prepare(`SELECT n.id, a.value AS gate FROM note n JOIN attr a ON a.note_id=n.id AND a.key='gate' WHERE n.project=? AND n.kind='finding' AND n.deleted_at IS NULL ORDER BY n.id`).all(id);
+  const plan = gated.map((g) => {
+    const to = opts.gates?.[g.gate] ?? g.gate;
+    return { ...g, to, rank: String(ladder.indexOf(to)) };
+  });
+  const off = plan.filter((p) => !ladder.includes(p.to));
+  if (off.length) {
+    const names = [...new Set(off.map((p) => p.to))].sort(), n = off.length;
+    throw new Error(`${n} finding${n === 1 ? "" : "s"} of ${id} carr${n === 1 ? "ies" : "y"} a gate ${opts.domain} does not list (${names.join(", ")}; its ladder is ${ladder.join(" < ")}); nothing moved. Pass --gate <old>=<new> for each, then kb set <id> gate <g> for any finding that belongs elsewhere on the ladder. First: ${off.slice(0, 3).map((p) => `${p.id} ${p.gate}`).join(", ")}`);
+  }
   const rows = db.sql.prepare("SELECT id, kind FROM note WHERE project=? AND deleted_at IS NULL AND (domain IS NULL OR domain<>?) ORDER BY kind, id").all(id, opts.domain);
-  const upd = db.sql.prepare("UPDATE note SET domain=?, updated_at=? WHERE id=?"), moved = {};
+  const upd = db.sql.prepare("UPDATE note SET domain=?, updated_at=? WHERE id=?"), moved = {}, touched = /* @__PURE__ */ new Set();
   for (const r of rows) {
     upd.run(opts.domain, now, r.id);
-    exportNote(db, bankDir, r.id);
+    touched.add(r.id);
     moved[r.kind] = (moved[r.kind] ?? 0) + 1;
   }
+  let relabeled = 0;
+  const touch3 = db.sql.prepare("UPDATE note SET updated_at=? WHERE id=?");
+  for (const p of plan) {
+    const attrs = getAttrs(db, p.id);
+    if (attrs.gate?.[0] === p.to && attrs.gate_rank?.[0] === p.rank) continue;
+    setAttrs(db, p.id, { ...attrs, gate: [p.to], gate_rank: [p.rank] });
+    touch3.run(now, p.id);
+    touched.add(p.id);
+    relabeled++;
+  }
+  for (const n of touched) exportNote(db, bankDir, n);
   let file = null;
   if (found && local === id) {
     const { auto: _auto, ...rest } = found.cfg, next = JSON.stringify({ ...rest, domain: opts.domain }, null, 2) + "\n";
     if (readFileSync12(found.file, "utf8") !== next) writeFileSync4(found.file, next);
     file = found.file;
   }
-  log("info", "project moved", { project: id, domain: opts.domain, file, moved, total: rows.length });
-  return { project_id: id, domain: opts.domain, file, moved, total: rows.length };
+  log("info", "project moved", { project: id, domain: opts.domain, file, moved, total: rows.length, relabeled });
+  return { project_id: id, domain: opts.domain, file, moved, total: rows.length, relabeled };
 }
 
 // src/kb/ids.ts
@@ -10467,7 +10489,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] [--gate <old>=<new>]... | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 var buildUsage = "usage: kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>]\n       kb build brief [--project <id>] [--role extractor|reviewer]\n       kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
@@ -10520,16 +10542,18 @@ else if (cmd === "sync") {
     process.exitCode = 2;
   } else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + "\n");
 } else if (cmd === "project" && args[0] === "move") {
-  const domain = value("--domain"), id = value("--id");
-  if (!domain || has("--id") && !id) {
-    process.stderr.write("usage: kb project move --domain <d> [--id <project>]\n");
+  const domain = value("--domain"), id = value("--id"), gateArgs = args.flatMap((a, i) => a === "--gate" ? [args[i + 1] ?? ""] : []);
+  if (!domain || has("--id") && !id || gateArgs.some((g) => !/^[^=\s]+=[^=\s]+$/.test(g))) {
+    process.stderr.write("usage: kb project move --domain <d> [--id <project>] [--gate <old>=<new>]...\n");
     process.exitCode = 2;
   } else {
-    const db = openDb(), bank = paths.bankDir();
+    const db = openDb(), bank = paths.bankDir(), gates = Object.fromEntries(gateArgs.map((g) => g.split("=")));
     try {
-      const r = projectMove(db, bank, process.cwd(), { domain, id }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
+      const r = projectMove(db, bank, process.cwd(), { domain, id, gates }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
       process.stdout.write(r.total ? `moved project ${r.project_id} to ${r.domain}: ${parts.join(", ")} (${r.total} note${r.total === 1 ? "" : "s"} re-exported; kb sync ships them)
 ` : `project ${r.project_id} is already in ${r.domain}: no note to move
+`);
+      if (r.relabeled) process.stdout.write(`${r.relabeled} finding gate${r.relabeled === 1 ? "" : "s"} relabeled onto the ${r.domain} ladder
 `);
       process.stdout.write(r.file ? `.kb.json: ${r.file} (domain ${r.domain}, hand-set)
 ` : `no .kb.json for ${r.project_id} here; in its folder, kb project init --domain ${r.domain} --id ${r.project_id} writes one

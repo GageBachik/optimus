@@ -73,7 +73,7 @@ Agents your session spawns get the same project card and record what they measur
 | `kb map --open` | Opens the bank as a zoomable map of projects, approaches, findings and imported memories |
 | `kb write <file>` | Records the findings in a draft file (or any JSON spec) into the bank |
 | `kb project init --domain <d>` | Files the current folder under a domain by hand |
-| `kb project move --domain <d>` | Moves the current project and every note it has into another domain (`--id <project>` names it from elsewhere) |
+| `kb project move --domain <d>` | Moves the current project and every note it has into another domain (`--id <project>` names it from elsewhere; `--gate <old>=<new>` relabels finding gates onto the new ladder, and the move refuses while a finding's gate is on neither) |
 | `kb domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2` | Adds a new kind of project to the bank |
 | `kb concepts review` | Shows the open "merge X into Y?" questions |
 | `kb transfers prune [--apply]` | Lists (with `--apply`, withdraws) the proposed transfers the current rule would no longer propose; confirmed, refuted and provisional ones are never touched |

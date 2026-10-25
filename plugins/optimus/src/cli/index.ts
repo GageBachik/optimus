@@ -28,7 +28,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] [--gate <old>=<new>]... | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n';
 const buildUsage = 'usage: kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>]\n       kb build brief [--project <id>] [--role extractor|reviewer]\n       kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
@@ -58,13 +58,14 @@ else if (cmd === 'cleanup') {
   if (!domain || (has('--id') && !id)) { process.stderr.write('usage: kb project init --domain <d> [--id <id>]\n'); process.exitCode = 2; }
   else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + '\n');
 } else if (cmd === 'project' && args[0] === 'move') {
-  const domain = value('--domain'), id = value('--id');
-  if (!domain || (has('--id') && !id)) { process.stderr.write('usage: kb project move --domain <d> [--id <project>]\n'); process.exitCode = 2; }
+  const domain = value('--domain'), id = value('--id'), gateArgs = args.flatMap((a, i) => (a === '--gate' ? [args[i + 1] ?? ''] : []));
+  if (!domain || (has('--id') && !id) || gateArgs.some((g) => !/^[^=\s]+=[^=\s]+$/.test(g))) { process.stderr.write('usage: kb project move --domain <d> [--id <project>] [--gate <old>=<new>]...\n'); process.exitCode = 2; }
   else {
-    const db = openDb(), bank = paths.bankDir();
+    const db = openDb(), bank = paths.bankDir(), gates = Object.fromEntries(gateArgs.map((g) => g.split('=') as [string, string]));
     try {
-      const r = projectMove(db, bank, process.cwd(), { domain, id }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
+      const r = projectMove(db, bank, process.cwd(), { domain, id, gates }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
       process.stdout.write(r.total ? `moved project ${r.project_id} to ${r.domain}: ${parts.join(', ')} (${r.total} note${r.total === 1 ? '' : 's'} re-exported; kb sync ships them)\n` : `project ${r.project_id} is already in ${r.domain}: no note to move\n`);
+      if (r.relabeled) process.stdout.write(`${r.relabeled} finding gate${r.relabeled === 1 ? '' : 's'} relabeled onto the ${r.domain} ladder\n`);
       process.stdout.write(r.file ? `.kb.json: ${r.file} (domain ${r.domain}, hand-set)\n` : `no .kb.json for ${r.project_id} here; in its folder, kb project init --domain ${r.domain} --id ${r.project_id} writes one\n`);
     } catch (e) { process.stderr.write(`kb project move: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
   }

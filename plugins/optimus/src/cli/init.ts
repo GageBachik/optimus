@@ -4,8 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { paths } from '../lib/paths.js';
 import { log } from '../lib/log.js';
-import { openDb, type Db } from '../kb/db.js';
-import { installTemplate, installedDomains } from '../kb/templates.js';
+import { openDb, getAttrs, setAttrs, type Db } from '../kb/db.js';
+import { installTemplate, installedDomains, templateFor } from '../kb/templates.js';
 import { exportNote, rebuild } from '../kb/export.js';
 import { gitIdentity } from '../kb/sync.js';
 import { loadTemplate } from '../kb/templates-yaml.js';
@@ -70,7 +70,7 @@ export function projectInit(cwd: string, opts: { domain: string; id?: string }):
   writeFileSync(file, JSON.stringify(c, null, 2) + '\n'); return c;
 }
 
-export type ProjectMove = { project_id: string; domain: string; file: string | null; moved: Record<string, number>; total: number };
+export type ProjectMove = { project_id: string; domain: string; file: string | null; moved: Record<string, number>; total: number; relabeled: number };
 /** The nearest `.kb.json` at or above cwd (8 levels), parsed; null when there is none. A file that is not JSON is an error, not a guess. */
 function nearestKbJson(cwd: string): { file: string; cfg: Record<string, unknown> } | null {
   let dir = path.resolve(cwd);
@@ -86,22 +86,45 @@ function nearestKbJson(cwd: string): { file: string; cfg: Record<string, unknown
  *  sets `domain` on every live note with `project = id`, whatever its kind, touches `updated_at` and re-exports each: the bank files change and
  *  `kb sync` ships them. A note already in the domain is left alone, so a second run changes nothing. The domain must be installed (`kb domain
  *  new` creates one). The `.kb.json` here or above is rewritten as a hand-set choice (its `auto` record dropped, every other key kept) when it
- *  names the moved project; `--id` names the project from anywhere else (the bank, say) and leaves an unrelated `.kb.json` alone. */
-export function projectMove(db: Db, bankDir: string, cwd: string, opts: { domain: string; id?: string }, now = new Date().toISOString()): ProjectMove {
+ *  names the moved project; `--id` names the project from anywhere else (the bank, say) and leaves an unrelated `.kb.json` alone.
+ *  Gates (2026-10-25): a finding's `gate` is validated against its domain's ladder on write only, so a move into a template with other
+ *  gate names (prop-firm renames trading's paper/live-small/live to evaluation/funded/payout, market-mechanics has a ladder of its own)
+ *  would leave findings whose gate the brief, the map's gate filter and `kb set` no longer recognise. The move therefore refuses, before
+ *  writing anything, while any live finding of the project carries a gate the new ladder does not list; `gates` (`--gate <old>=<new>`,
+ *  repeatable) relabels them as part of the move, and every gated finding takes the new ladder's rank for its name, since `gate_rank` is
+ *  what ranking and the map read. A finding that belongs elsewhere on the ladder than the bulk of its old gate is set afterwards with
+ *  `kb set <id> gate <g>`, which validates against the new domain. */
+export function projectMove(db: Db, bankDir: string, cwd: string, opts: { domain: string; id?: string; gates?: Record<string, string> }, now = new Date().toISOString()): ProjectMove {
   const found = nearestKbJson(cwd), local = typeof found?.cfg.project_id === 'string' ? (found.cfg.project_id as string) : undefined;
   const id = opts.id ?? local;
   if (!id) throw new Error(found ? `${found.file} has no project_id; pass --id <project>` : 'no .kb.json here or above; run this in the project folder or pass --id <project>');
   const domains = installedDomains(db);
   if (!domains.includes(opts.domain)) throw new Error(`unknown domain ${opts.domain} (installed: ${domains.join(', ') || 'none'}); a new kind of project needs kb domain new ${opts.domain} --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] first`);
+  const ladder = templateFor(db, opts.domain)!.gates;
+  const gated = db.sql.prepare(`SELECT n.id, a.value AS gate FROM note n JOIN attr a ON a.note_id=n.id AND a.key='gate' WHERE n.project=? AND n.kind='finding' AND n.deleted_at IS NULL ORDER BY n.id`).all(id) as { id: string; gate: string }[];
+  const plan = gated.map((g) => { const to = opts.gates?.[g.gate] ?? g.gate; return { ...g, to, rank: String(ladder.indexOf(to)) }; });
+  const off = plan.filter((p) => !ladder.includes(p.to));
+  if (off.length) {
+    const names = [...new Set(off.map((p) => p.to))].sort(), n = off.length;
+    throw new Error(`${n} finding${n === 1 ? '' : 's'} of ${id} carr${n === 1 ? 'ies' : 'y'} a gate ${opts.domain} does not list (${names.join(', ')}; its ladder is ${ladder.join(' < ')}); nothing moved. Pass --gate <old>=<new> for each, then kb set <id> gate <g> for any finding that belongs elsewhere on the ladder. First: ${off.slice(0, 3).map((p) => `${p.id} ${p.gate}`).join(', ')}`);
+  }
   const rows = db.sql.prepare('SELECT id, kind FROM note WHERE project=? AND deleted_at IS NULL AND (domain IS NULL OR domain<>?) ORDER BY kind, id').all(id, opts.domain) as { id: string; kind: string }[];
-  const upd = db.sql.prepare('UPDATE note SET domain=?, updated_at=? WHERE id=?'), moved: Record<string, number> = {};
-  for (const r of rows) { upd.run(opts.domain, now, r.id); exportNote(db, bankDir, r.id); moved[r.kind] = (moved[r.kind] ?? 0) + 1; }
+  const upd = db.sql.prepare('UPDATE note SET domain=?, updated_at=? WHERE id=?'), moved: Record<string, number> = {}, touched = new Set<string>();
+  for (const r of rows) { upd.run(opts.domain, now, r.id); touched.add(r.id); moved[r.kind] = (moved[r.kind] ?? 0) + 1; }
+  let relabeled = 0;
+  const touch = db.sql.prepare('UPDATE note SET updated_at=? WHERE id=?');
+  for (const p of plan) {
+    const attrs = getAttrs(db, p.id);
+    if (attrs.gate?.[0] === p.to && attrs.gate_rank?.[0] === p.rank) continue;
+    setAttrs(db, p.id, { ...attrs, gate: [p.to], gate_rank: [p.rank] }); touch.run(now, p.id); touched.add(p.id); relabeled++;
+  }
+  for (const n of touched) exportNote(db, bankDir, n);
   let file: string | null = null;
   if (found && local === id) {
     const { auto: _auto, ...rest } = found.cfg, next = JSON.stringify({ ...rest, domain: opts.domain }, null, 2) + '\n';
     if (readFileSync(found.file, 'utf8') !== next) writeFileSync(found.file, next);
     file = found.file;
   }
-  log('info', 'project moved', { project: id, domain: opts.domain, file, moved, total: rows.length });
-  return { project_id: id, domain: opts.domain, file, moved, total: rows.length };
+  log('info', 'project moved', { project: id, domain: opts.domain, file, moved, total: rows.length, relabeled });
+  return { project_id: id, domain: opts.domain, file, moved, total: rows.length, relabeled };
 }

@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 process.env.OPTIMUS_HOME = mkdtempSync(path.join(tmpdir(), 'pm-')); process.env.OPTIMUS_BANK = mkdtempSync(path.join(tmpdir(), 'bank-'));
-const { openDb, getNote } = await import('../../src/kb/db.js');
+const { openDb, getNote, getAttrs } = await import('../../src/kb/db.js');
 const { installTemplate } = await import('../../src/kb/templates.js');
 const { loadTemplate } = await import('../../src/kb/templates-yaml.js');
 const { kbWrite, retractNote } = await import('../../src/kb/write.js');
@@ -81,5 +81,41 @@ test('--id names the project from any folder (the bank, say): an unrelated .kb.j
   assert.deepEqual(JSON.parse(readFileSync(path.join(other, '.kb.json'), 'utf8')), { project_id: 'spy', domain: 'trading' });
   assert.equal(getNote(db, ids.approach)!.domain, 'ios');
   assert.throws(() => projectMove(db, bank, mkdtempSync(path.join(tmpdir(), 'bare-')), { domain: 'ios' }, later), /pass --id <project>/);
+  db.sql.close();
+});
+
+test('a finding gate the new ladder does not list refuses the move before anything is written; --gate <old>=<new> relabels it with the new rank, re-exports, and a rerun changes nothing', () => {
+  const { db } = seed('f'), cwd = folder({ project_id: 'odds', domain: 'trading' });
+  const w = (title: string, gate: string) => kbWrite(db, bank, { kind: 'finding', title, domain: 'trading', project: 'odds', attrs: { state: 'observed', gate } }, now).id;
+  const paper = w('paper run held', 'paper'), live = w('live run held', 'live'), live2 = w('second live run', 'live');
+  const gateOf = (id: string) => { const a = getAttrs(db, id); return [a.gate[0], a.gate_rank[0]]; };
+  assert.deepEqual(gateOf(paper), ['paper', '2']); assert.deepEqual(gateOf(live), ['live', '4']);
+  const bankBefore = snapshot(bank), cfgBefore = readFileSync(path.join(cwd, '.kb.json'), 'utf8');
+  assert.throws(() => projectMove(db, bank, cwd, { domain: 'ios' }, later), /3 findings of odds carry a gate ios does not list \(live, paper; its ladder is simulator < device < testflight < app-store-review < app-store-live\); nothing moved\. Pass --gate <old>=<new>/);
+  assert.throws(() => projectMove(db, bank, cwd, { domain: 'ios', gates: { paper: 'simulator' } }, later), /2 findings of odds carry a gate ios does not list \(live;/);
+  assert.throws(() => projectMove(db, bank, cwd, { domain: 'ios', gates: { paper: 'simulator', live: 'sim' } }, later), /\(sim;/, 'a mapping onto a name the ladder lacks is refused the same way');
+  assert.deepEqual(snapshot(bank), bankBefore, 'bank untouched'); assert.equal(readFileSync(path.join(cwd, '.kb.json'), 'utf8'), cfgBefore, '.kb.json untouched');
+  assert.equal(getNote(db, paper)!.domain, 'trading'); assert.deepEqual(gateOf(paper), ['paper', '2']);
+  const r = projectMove(db, bank, cwd, { domain: 'ios', gates: { paper: 'simulator', live: 'device' } }, later);
+  assert.equal(r.relabeled, 3); assert.equal(r.moved.finding, 4, 'the gate-less seed finding moves too');
+  assert.deepEqual(gateOf(paper), ['simulator', '0']); assert.deepEqual(gateOf(live), ['device', '1']); assert.deepEqual(gateOf(live2), ['device', '1']);
+  const text = readFileSync(path.join(bank, 'notes', 'finding', `${live}.md`), 'utf8');
+  assert.match(text, /^domain: ios$/m); assert.match(text, /^  gate: device$/m); assert.match(text, /^  gate_rank: "1"$/m);
+  assert.match(readFileSync(path.join(process.env.OPTIMUS_HOME!, 'logs', 'hooks.log'), 'utf8'), /"msg":"project moved".*"relabeled":3/);
+  const bankAfter = snapshot(bank), again = projectMove(db, bank, cwd, { domain: 'ios', gates: { paper: 'simulator', live: 'device' } }, '2026-10-24T02:00:00Z');
+  assert.equal(again.total, 0); assert.equal(again.relabeled, 0); assert.deepEqual(snapshot(bank), bankAfter);
+  const u = kb(cwd, 'project', 'move', '--domain', 'ios', '--gate', 'paper');
+  assert.equal(u.status, 2); assert.match(u.stderr, /\[--gate <old>=<new>\]\.\.\./);
+  db.sql.close();
+});
+
+test('a gate name both ladders list keeps its name and takes the new ladder\'s rank', () => {
+  const { db } = seed('g'), cwd = folder({ project_id: 'odds', domain: 'trading' });
+  installTemplate(db, { domain: 'ladder', facets: ['lens'], methods: ['replay'], gates: ['paper', 'in-sample', 'live'], environment: 'dataset', subject: 'mechanism', seed_concepts: [] });
+  const f = kbWrite(db, bank, { kind: 'finding', title: 'in-sample edge', domain: 'trading', project: 'odds', attrs: { state: 'observed', gate: 'in-sample' } }, now).id;
+  assert.deepEqual([getAttrs(db, f).gate[0], getAttrs(db, f).gate_rank[0]], ['in-sample', '0']);
+  const r = projectMove(db, bank, cwd, { domain: 'ladder' }, later);
+  assert.equal(r.relabeled, 1); assert.deepEqual([getAttrs(db, f).gate[0], getAttrs(db, f).gate_rank[0]], ['in-sample', '1']);
+  assert.match(readFileSync(path.join(bank, 'notes', 'finding', `${f}.md`), 'utf8'), /^  gate_rank: "1"$/m);
   db.sql.close();
 });
