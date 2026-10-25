@@ -141,7 +141,7 @@ else if (cmd === 'cleanup') {
   const db = openDb();
   try {
     const file = generateMap(db); process.stdout.write(`${file}\n`);
-    if (has('--open')) { const [bin, pre] = process.platform === 'darwin' ? ['open', []] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '']] : ['xdg-open', []]; spawn(bin, [...pre, file], { detached: true, stdio: 'ignore' }).unref(); }
+    if (has('--open')) { const [bin, pre] = process.platform === 'darwin' ? ['open', []] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '']] : ['xdg-open', []]; spawn(bin, [...pre, file], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); }
   } catch (e) { process.stderr.write(`kb map: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else if (cmd === 'compare' && args[0]) {
   const db = openDb(), name = args.join(' ');

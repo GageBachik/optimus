@@ -15,7 +15,7 @@ function shippedTemplatesDir(): string {
   return [path.join(here, '..', 'templates'), path.join(here, '..', '..', 'templates')].find(existsSync) ?? path.join(here, '..', 'templates');
 }
 function git(cwd: string, ...args: string[]): string {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 60_000 });
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true });
   if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').trim()}`);
   return r.stdout;
 }
