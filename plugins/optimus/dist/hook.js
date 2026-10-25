@@ -1128,7 +1128,7 @@ function autoRegister(cwd, home = os2.homedir(), lex = DEFAULT_LEXICON) {
   const rel = path9.relative(canonical(home), dir);
   if (!rel || rel === ".." || rel.startsWith(".." + path9.sep) || path9.isAbsolute(rel)) return null;
   if (rel.split(path9.sep).some((s) => s.startsWith(".") || SKIP_DIRS.has(s))) return null;
-  if (["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"].includes(rel)) return null;
+  if (WORKSPACE_ROOTS.includes(rel)) return null;
   if (kbJsonAbove(dir)) return null;
   if (!looksLikeProject(dir)) return null;
   const { domain, confidence, reason } = inferDomain(dir, lex);
@@ -1138,7 +1138,7 @@ function autoRegister(cwd, home = os2.homedir(), lex = DEFAULT_LEXICON) {
   log("info", "auto-registered project", { file, domain, confidence, reason });
   return { file, project_id, domain, confidence, reason };
 }
-var DEFAULT_LEXICON, knownDomains, tokensOf, SKIP_DIRS, MANIFESTS, read, settledLine, MIN_DECISION_WORDS, decisionLine, kbJsonAbove, autoLine;
+var DEFAULT_LEXICON, knownDomains, tokensOf, WORKSPACE_ROOTS, SKIP_DIRS, MANIFESTS, read, settledLine, MIN_DECISION_WORDS, decisionLine, kbJsonAbove, autoLine;
 var init_auto_register = __esm({
   "src/kb/auto-register.ts"() {
     "use strict";
@@ -1154,6 +1154,7 @@ var init_auto_register = __esm({
     };
     knownDomains = (lex = DEFAULT_LEXICON) => Object.keys(lex).sort((a, b) => a === "tooling" ? 1 : b === "tooling" ? -1 : a.localeCompare(b));
     tokensOf = (text) => text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean);
+    WORKSPACE_ROOTS = ["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"];
     SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "target", "dist", "build", ".next", "vendor", "Pods", "AppData", "Library"]);
     MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "requirements.txt", "go.mod", "Package.swift", "pubspec.yaml", "Anchor.toml"];
     read = (p) => {

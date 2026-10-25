@@ -42,6 +42,8 @@ export function domainFromText(text: string, minScore: number, margin = 1, lex: 
   const words = [...new Set(tokensOf(text).filter((t) => lex[top[0]].includes(t)))].slice(0, 4);
   return { domain: top[0], score: top[1], reason: words.join(', ') };
 }
+/** The folders directly under the home that hold projects and are not one: never registered, and (2026-10-24) no project for an imported memory either. */
+export const WORKSPACE_ROOTS = ['projects', 'Desktop', 'Documents', 'Downloads', 'src', 'code', 'work', 'github'];
 const SKIP_DIRS = new Set(['node_modules', '.git', 'target', 'dist', 'build', '.next', 'vendor', 'Pods', 'AppData', 'Library']); // AppData, Library: the OS's hidden folders under the home (Windows %TEMP% lives there)
 const MANIFESTS = ['package.json', 'Cargo.toml', 'pyproject.toml', 'requirements.txt', 'go.mod', 'Package.swift', 'pubspec.yaml', 'Anchor.toml'];
 const read = (p: string) => { try { return readFileSync(p, 'utf8'); } catch { return ''; } };
@@ -143,7 +145,7 @@ export function autoRegister(cwd: string, home = os.homedir(), lex: Lexicon = DE
   const rel = path.relative(canonical(home), dir);
   if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
   if (rel.split(path.sep).some((s) => s.startsWith('.') || SKIP_DIRS.has(s))) return null;
-  if (['projects', 'Desktop', 'Documents', 'Downloads', 'src', 'code', 'work', 'github'].includes(rel)) return null; // workspace roots hold projects; they are not one
+  if (WORKSPACE_ROOTS.includes(rel)) return null; // workspace roots hold projects; they are not one
   if (kbJsonAbove(dir)) return null;
   if (!looksLikeProject(dir)) return null;
   const { domain, confidence, reason } = inferDomain(dir, lex);

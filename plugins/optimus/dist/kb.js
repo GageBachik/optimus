@@ -8550,10 +8550,45 @@ function projectInit(cwd, opts) {
   writeFileSync4(file, JSON.stringify(c, null, 2) + "\n");
   return c;
 }
-
-// src/kb/concepts.ts
-import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
-import path14 from "node:path";
+function nearestKbJson(cwd) {
+  let dir = path13.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    const file = path13.join(dir, ".kb.json");
+    if (existsSync11(file)) {
+      try {
+        return { file, cfg: JSON.parse(readFileSync12(file, "utf8")) };
+      } catch (e) {
+        throw new Error(`${file} is not valid JSON: ${e.message}`);
+      }
+    }
+    const up = path13.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+function projectMove(db, bankDir, cwd, opts, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const found = nearestKbJson(cwd), local = typeof found?.cfg.project_id === "string" ? found.cfg.project_id : void 0;
+  const id = opts.id ?? local;
+  if (!id) throw new Error(found ? `${found.file} has no project_id; pass --id <project>` : "no .kb.json here or above; run this in the project folder or pass --id <project>");
+  const domains = installedDomains(db);
+  if (!domains.includes(opts.domain)) throw new Error(`unknown domain ${opts.domain} (installed: ${domains.join(", ") || "none"}); a new kind of project needs kb domain new ${opts.domain} --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] first`);
+  const rows = db.sql.prepare("SELECT id, kind FROM note WHERE project=? AND deleted_at IS NULL AND (domain IS NULL OR domain<>?) ORDER BY kind, id").all(id, opts.domain);
+  const upd = db.sql.prepare("UPDATE note SET domain=?, updated_at=? WHERE id=?"), moved = {};
+  for (const r of rows) {
+    upd.run(opts.domain, now, r.id);
+    exportNote(db, bankDir, r.id);
+    moved[r.kind] = (moved[r.kind] ?? 0) + 1;
+  }
+  let file = null;
+  if (found && local === id) {
+    const { auto: _auto, ...rest } = found.cfg, next = JSON.stringify({ ...rest, domain: opts.domain }, null, 2) + "\n";
+    if (readFileSync12(found.file, "utf8") !== next) writeFileSync4(found.file, next);
+    file = found.file;
+  }
+  log("info", "project moved", { project: id, domain: opts.domain, file, moved, total: rows.length });
+  return { project_id: id, domain: opts.domain, file, moved, total: rows.length };
+}
 
 // src/kb/ids.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
@@ -8589,6 +8624,10 @@ function kindOfId(id) {
   if (!k) throw new Error(`unknown id prefix: ${id}`);
   return k;
 }
+
+// src/kb/concepts.ts
+import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
+import path14 from "node:path";
 
 // src/lib/redaction.ts
 var PATTERNS = [
@@ -9033,6 +9072,7 @@ import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as re
 // src/kb/auto-register.ts
 import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync5 } from "node:fs";
 import path15 from "node:path";
+var WORKSPACE_ROOTS = ["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"];
 function findConfig(cwd) {
   let dir = path15.resolve(cwd), file = "";
   for (let i = 0; i < 8; i++) {
@@ -9078,7 +9118,10 @@ function projectOf(dir, home2) {
   const c = loadProjectConfig(d);
   if (c) return { project: c.project_id, domain: c.domain };
   const rel = path16.relative(top, d);
-  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel) && rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel)) {
+    if (WORKSPACE_ROOTS.includes(rel)) return none;
+    if (rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+  }
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try {
       if (statSync6(path16.join(p, ".git")).isDirectory()) return { project: path16.basename(p), domain: null };
@@ -9092,16 +9135,28 @@ function projectOf(dir, home2) {
 }
 var mdFiles = (dir) => readdirSync7(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort();
 function importSources(db, bankDir, sources, now) {
-  let created = 0;
+  let created = 0, moved = 0;
+  const owned = /* @__PURE__ */ new Set();
+  const move = db.sql.prepare("UPDATE note SET project=?, domain=?, updated_at=? WHERE id=?");
   for (const s of sources) {
     const bytes = readFileSync14(s.file), sha = sha2563(bytes), id = evidenceId(sha);
-    if (getNote(db, id)) continue;
+    if (owned.has(id)) continue;
+    owned.add(id);
+    const n = getNote(db, id);
+    if (n) {
+      const domain = n.project === s.project ? s.domain ?? n.domain : s.domain;
+      if (n.deleted_at || n.project === s.project && n.domain === domain) continue;
+      move.run(s.project, domain, now, id);
+      exportNote(db, bankDir, id);
+      moved++;
+      continue;
+    }
     upsertNote(db, { id, kind: "evidence", domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString("utf8")).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
     setAttrs(db, id, { ...s.attrs, source_path: s.file, sha256: sha });
     exportNote(db, bankDir, id);
     created++;
   }
-  return { files: sources.length, created, unchanged: sources.length - created };
+  return { files: sources.length, created, unchanged: sources.length - created - moved, moved };
 }
 function serenaDirs(dir, skip, out = []) {
   let entries;
@@ -9199,7 +9254,7 @@ function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PUR
 var plainPath = (p) => p.trim().replace(/^\\\\\?\\/, "");
 function importCodexMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {
   const mem = path16.join(home2, ".codex", "memories"), sources = [];
-  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0 };
+  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0, moved: 0 };
   const scratch = path16.resolve(home2, "Documents", "Codex");
   const ownerOf = (cwd) => {
     if (!cwd) return none;
@@ -10013,7 +10068,7 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb project move --domain <d> [--id <project>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
@@ -10064,6 +10119,29 @@ else if (cmd === "sync") {
     process.stderr.write("usage: kb project init --domain <d> [--id <id>]\n");
     process.exitCode = 2;
   } else process.stdout.write(JSON.stringify(projectInit(process.cwd(), { domain, id }), null, 2) + "\n");
+} else if (cmd === "project" && args[0] === "move") {
+  const domain = value("--domain"), id = value("--id");
+  if (!domain || has("--id") && !id) {
+    process.stderr.write("usage: kb project move --domain <d> [--id <project>]\n");
+    process.exitCode = 2;
+  } else {
+    const db = openDb(), bank = paths.bankDir();
+    try {
+      const r = projectMove(db, bank, process.cwd(), { domain, id }), parts = KINDS.filter((k) => r.moved[k]).map((k) => `${k} ${r.moved[k]}`);
+      process.stdout.write(r.total ? `moved project ${r.project_id} to ${r.domain}: ${parts.join(", ")} (${r.total} note${r.total === 1 ? "" : "s"} re-exported; kb sync ships them)
+` : `project ${r.project_id} is already in ${r.domain}: no note to move
+`);
+      process.stdout.write(r.file ? `.kb.json: ${r.file} (domain ${r.domain}, hand-set)
+` : `no .kb.json for ${r.project_id} here; in its folder, kb project init --domain ${r.domain} --id ${r.project_id} writes one
+`);
+    } catch (e) {
+      process.stderr.write(`kb project move: ${e.message}
+`);
+      process.exitCode = 1;
+    } finally {
+      db.sql.close();
+    }
+  }
 } else if (cmd === "export" || cmd === "rebuild") {
   const db = openDb(), bank = paths.bankDir();
   try {
@@ -10160,7 +10238,7 @@ ${total} proposed transfers on ${plan.length} findings would be withdrawn; re-ru
     process.exitCode = 2;
   } else {
     const db = openDb(), bank = paths.bankDir(), roots = [root ?? path18.join(home, "projects")];
-    const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
+    const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged, ${r.moved} moved
 `);
     try {
       if (args[0] === "serena" || args[0] === "all") line("serena", importSerena(db, bank, roots));
