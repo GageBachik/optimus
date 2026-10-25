@@ -20,7 +20,7 @@ import { installTemplate, installedDomains, normalizeKeywords, templateNoteId } 
 import { loadTemplate } from '../kb/templates-yaml.js';
 import { fileHereUnder } from '../kb/auto-register.js';
 import { sync } from '../kb/sync.js';
-import { importSerena, importClaudeMemory, importCodexMemory } from '../kb/import.js';
+import { importSerena, importClaudeMemory, importCodexMemory, type ImportResult } from '../kb/import.js';
 import { generateMap } from '../kb/map.js';
 import { spawn } from 'node:child_process';
 const [cmd, ...args] = process.argv.slice(2);
@@ -92,7 +92,7 @@ else if (cmd === 'cleanup') {
   if (has('--root') && !root) { process.stderr.write('--root needs a directory\n'); process.exitCode = 2; }
   else {
     const db = openDb(), bank = paths.bankDir(), roots = [root ?? path.join(home, 'projects')]; // Ruling R6: default root ~/projects
-    const line = (what: string, r: { files: number; created: number; unchanged: number }) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged\n`);
+    const line = (what: string, r: ImportResult) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged, ${r.moved} moved\n`);
     try {
       if (args[0] === 'serena' || args[0] === 'all') line('serena', importSerena(db, bank, roots));
       if (args[0] === 'claude-memory' || args[0] === 'all') line('claude-memory', importClaudeMemory(db, bank));

@@ -8996,6 +8996,7 @@ import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as re
 // src/kb/auto-register.ts
 import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync5 } from "node:fs";
 import path15 from "node:path";
+var WORKSPACE_ROOTS = ["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"];
 function findConfig(cwd) {
   let dir = path15.resolve(cwd), file = "";
   for (let i = 0; i < 8; i++) {
@@ -9041,7 +9042,10 @@ function projectOf(dir, home2) {
   const c = loadProjectConfig(d);
   if (c) return { project: c.project_id, domain: c.domain };
   const rel = path16.relative(top, d);
-  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel) && rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+  if (rel && !rel.startsWith("..") && !path16.isAbsolute(rel)) {
+    if (WORKSPACE_ROOTS.includes(rel)) return none;
+    if (rel.split(path16.sep).some((s) => s.startsWith("."))) return none;
+  }
   for (let p = d, i = 0; i < 16 && p !== top; i++) {
     try {
       if (statSync6(path16.join(p, ".git")).isDirectory()) return { project: path16.basename(p), domain: null };
@@ -9055,16 +9059,28 @@ function projectOf(dir, home2) {
 }
 var mdFiles = (dir) => readdirSync7(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort();
 function importSources(db, bankDir, sources, now) {
-  let created = 0;
+  let created = 0, moved = 0;
+  const owned = /* @__PURE__ */ new Set();
+  const move = db.sql.prepare("UPDATE note SET project=?, domain=?, updated_at=? WHERE id=?");
   for (const s of sources) {
     const bytes = readFileSync14(s.file), sha = sha2563(bytes), id = evidenceId(sha);
-    if (getNote(db, id)) continue;
+    if (owned.has(id)) continue;
+    owned.add(id);
+    const n = getNote(db, id);
+    if (n) {
+      const domain = n.project === s.project ? s.domain ?? n.domain : s.domain;
+      if (n.deleted_at || n.project === s.project && n.domain === domain) continue;
+      move.run(s.project, domain, now, id);
+      exportNote(db, bankDir, id);
+      moved++;
+      continue;
+    }
     upsertNote(db, { id, kind: "evidence", domain: s.domain, project: s.project, title: redactSensitive(s.title).text, body: redactSensitive(bytes.toString("utf8")).text, created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
     setAttrs(db, id, { ...s.attrs, source_path: s.file, sha256: sha });
     exportNote(db, bankDir, id);
     created++;
   }
-  return { files: sources.length, created, unchanged: sources.length - created };
+  return { files: sources.length, created, unchanged: sources.length - created - moved, moved };
 }
 function serenaDirs(dir, skip, out = []) {
   let entries;
@@ -9162,7 +9178,7 @@ function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PUR
 var plainPath = (p) => p.trim().replace(/^\\\\\?\\/, "");
 function importCodexMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {
   const mem = path16.join(home2, ".codex", "memories"), sources = [];
-  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0 };
+  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0, moved: 0 };
   const scratch = path16.resolve(home2, "Documents", "Codex");
   const ownerOf = (cwd) => {
     if (!cwd) return none;
@@ -10121,7 +10137,7 @@ else if (cmd === "sync") {
     process.exitCode = 2;
   } else {
     const db = openDb(), bank = paths.bankDir(), roots = [root ?? path18.join(home, "projects")];
-    const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
+    const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged, ${r.moved} moved
 `);
     try {
       if (args[0] === "serena" || args[0] === "all") line("serena", importSerena(db, bank, roots));
