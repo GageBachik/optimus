@@ -196,49 +196,50 @@ export function validatorRules(v: Vocabulary): string[] {
 }
 
 const TRADING_GATES = 'Gates for trading: a backtest on the fitting period is in-sample; a holdout, walk-forward or forward test is out-of-sample; paper trading is paper; small live accounts are live-small; live is live.';
-/** The worked examples of the 2026-10-17 Mac build, kept as the illustration for trading projects only (the words of any other domain come from its template). */
-const TRADING_EXAMPLES = `## Worked examples (verbatim bank records of a trading project, 2026-10-17)
+/** Worked examples for trading projects only (the words of any other domain come from its template). Synthetic: an invented strategy on an
+ *  invented instrument with invented numbers, in the shape the real builds used. The owner's own records stay in the private bank. */
+const TRADING_EXAMPLES = `## Worked examples (synthetic: an invented strategy, instrument and numbers, in the shape the build records)
 
 An approach (facets are the trading template's keys):
 
-title: "YoloLottery: all-in 0DTE SPY lottery ticket (3-5 delta, +500% target, no stop)"
-facets: horizon=0dte, instrument_class=etf-options, risk=all-in
-tags: [risk sizing]
-body: The core thesis strategy of the yolo harness: Sizing=AllIn, cheapest strike with 0.03 <= |delta| <= 0.05, exit at +500% vs average fill, hold to expiration (.serena/memories/phase_1_complete_phase_2_handoff.md).
+title: "Moonfade: short the opening gap on XYZ micro futures after a 2-bar confirmation, 1.5x ATR stop, flat by 11:00"
+facets: why="opening gaps on XYZ filled 61% of mornings in the fitting years", entry="sell at the close of the second bar against the gap", risk="1.5x ATR stop, one contract per $4,000", exit="gap fill or 11:00 flat", horizon=intraday, instrument_class=futures
+tags: [gap fade]
+body: The gap-fade arm of the example harness: two 1-minute bars against the gap direction, one contract per $4,000 of equity, stop at 1.5x the 20-day ATR, out at the fill or at 11:00 (.serena/memories/moonfade-design.md).
 
 A target (facets are exactly environment and subject: platform x instrument):
 
-title: ThetaData backtest × SPY 0DTE options
-facets: environment="ThetaData backtest", subject="SPY 0DTE options"
-body: Historical SPY 0DTE chains from ThetaData (502 daily parquets, 2024-2026) replayed through yolo's fill simulator, dispatcher and the pipeline/ validation gates (bootstrap, walk-forward, MCPT).
+title: Demo replay × XYZ micro futures
+facets: environment="Demo replay", subject="XYZ micro futures"
+body: Minute bars 2019-2024 from the demo vendor replayed through the harness's fill model and its walk-forward gate (.serena/memories/replay-setup.md).
 
 A finding (one dated, evidenced, declarative claim with the number in the title):
 
-title: GapFade 255-day sanity-gate baseline refreshed on 2026-05-21 to $306,010.08 / 23 active days / 430 fills post dispatcher remediation (a3519d2+4714fb1+ddadacd); old baseline $217,851.47 / 593 fills applied only up to ddadacd-1
-attrs: state=observed, gate=in-sample, valid_from=2026-05-21
-metrics: [{ name: pnl_usd, value: 306010.08, unit: usd, better: higher, baseline: 217851.47 }]
-tags: [data quality, fill leg multi, gap reversal]
+title: Moonfade 2019-2024 in-sample refresh on 2024-03-02: 1.7 ticks per contract after costs over 640 fills; the earlier 2.4-tick figure counted fills before the cost model landed (a1b2c3d)
+attrs: state=observed, gate=in-sample, valid_from=2024-03-02
+metrics: [{ name: net_ticks_per_contract, value: 1.7, unit: ticks, better: higher, baseline: 2.4 }]
+tags: [gap fade, transaction cost model, data quality]
 rels: about @approach (facet_key exit); validated_in @target (gate in-sample)
-evidence: [{ kind: path, ref: <home>/.claude/projects/<dashed-cwd>/memory/feedback_run_acceptance_gates_each_phase.md }]
+evidence: [{ kind: path, ref: <home>/.claude/projects/<dashed-cwd>/memory/moonfade-costs.md }]
 body:
 ## Claim
-GapFade 255-day sanity-gate baseline refreshed on 2026-05-21 to $306,010.08 / 23 active days / 430 fills post dispatcher remediation (a3519d2+4714fb1+ddadacd); old baseline $217,851.47 / 593 fills applied only up to ddadacd-1
+Moonfade 2019-2024 in-sample refresh on 2024-03-02: 1.7 ticks per contract after costs over 640 fills; the earlier 2.4-tick figure counted fills before the cost model landed (a1b2c3d)
 
 ## Why it matters
-Only the unit suites were run Phases 11-15, so the integrated economic number drifted ~3.4x unnoticed; end-to-end gates must run every phase and baselines must only be refreshed with written provenance.
+The headline number drifted by 0.7 ticks without anyone noticing because only the unit suites ran between refreshes; the end-to-end replay must run every phase and a baseline is refreshed only with written provenance.
 
 ## Applies when / does not establish
-Deterministic 255-day in-sample reproduction gate (scripts/pipeline_gapfade_sanity.py); the $306k reflects the multi-leg partial-fill revert remediation, not an out-of-sample result, and the gate's own _run_one_day still has a 60s-timeout silent swallow.
+Deterministic 2019-2024 in-sample replay (scripts/replay_moonfade.py); the 1.7 ticks include the cost model, not an out-of-sample result, and the replay still swallows a vendor timeout silently.
 
 ## Evidence
-> baseline refreshed to $306,010.08 / 23 active days / 430 fills post dispatcher remediation (a3519d2+4714fb1+ddadacd); old baseline ($217,851.47 / 593)
+> net 1.7 ticks/contract after costs over 640 fills; the 2.4 figure predates the cost model (a1b2c3d)
 
-<home>/.claude/projects/<dashed-cwd>/memory/feedback_run_acceptance_gates_each_phase.md
+<home>/.claude/projects/<dashed-cwd>/memory/moonfade-costs.md
 
-Another finding title, for the register (quant research):
+Another finding title, for the register (a two-part claim with a holdout):
 
-"ES 10:00 vol regime predicts rest-of-day range (0.74x compressed vs 1.40x expanded, holds in 2020-26 holdout) but picks no profitable intraday strategy: 0/120 regime-strategy cells net t>=2 in 2010-19"
-metrics: har_logrv_oos_r2 0.6301 higher (baseline 0.5446); regime_first_holdout_net_bps_per_day -0.5825 higher; rod_range_ratio_compressed_holdout 0.7352 lower; rod_range_ratio_expanded_holdout 1.415 higher
+"Moonfade's 2-bar confirmation halves false starts (18% to 9% in the 2022-2024 holdout) but costs 0.6 ticks of entry slippage: net 1.1 ticks per contract out of sample against 1.7 in sample, and 0 of 12 confirmation lengths beat it"
+metrics: false_start_rate 0.09 lower (baseline 0.18); net_ticks_per_contract_oos 1.1 higher (baseline 1.7); entry_slippage_ticks 0.6 lower
 `;
 
 /** The spec skeleton an extractor fills, with the template's own facet keys, gates and axes. */
@@ -270,7 +271,7 @@ export function buildBrief(db: Db, p: BuildProject, role: Role = 'extractor'): s
   const v = vocabularyFor(db, p.domain), cli = paths.kbCli(), rules = validatorRules(v).map((r) => `- ${r}`).join('\n');
   if (role === 'reviewer') {
     return [`# Knowledge build, reviewer brief: project ${p.project} (domain ${p.domain}, repo ${fwd(p.repo)})`, '',
-      `You review the extractor shards of one project before anything reaches the bank. The judgement is yours; ${cli} build validate checks shape and quotes, ${cli} write records. The 2026-10-24 build dropped 83 of 121 candidates in one project at this step and merged 18: expect to drop and merge.`, '',
+      `You review the extractor shards of one project before anything reaches the bank. The judgement is yours; ${cli} build validate checks shape and quotes, ${cli} write records. Ops-heavy memories (session logs, plans, superseded numbers) commonly lose two thirds of their candidates at this step and merge a dozen more: expect to drop and merge.`, '',
       '## What to do',
       `1. Merge: concatenate the shard specs in shard order into one spec (defaults.domain ${p.domain}, defaults.project ${p.project}). Keys stay unique across shards (a rel to an earlier shard's key resolves once the files are one). An approach or target two shards both wrote is one record: keep one key, repoint the rels.`,
       '2. Refute: for every finding, open the cited path and find the quote and the number. Drop a claim the source does not carry, a number the source states differently, a superseded figure (a later memory gives a newer number for the same thing), an ops log, a plan, a to-do, a worktree duplicate. The quote is copied, not paraphrased; the title restates the source, not what one would advise.',

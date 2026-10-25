@@ -13,12 +13,13 @@ const bank = process.env.OPTIMUS_BANK!;
 const put = (file: string, text: string) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
 const fwd = (p: string) => p.replace(/\\/g, '/');
 
-// One project on disk: a repo with a .kb.json, three Serena memories, documents at three depths, and files the document walk must skip.
+// One invented project on disk (a made-up strategy on a made-up instrument): a repo with a .kb.json, three Serena memories, documents at three
+// depths, and files the document walk must skip.
 const root = mkdtempSync(path.join(tmpdir(), 'root-')), home = mkdtempSync(path.join(tmpdir(), 'home-')), repo = path.join(root, 'demo-repo');
-const MEM = 'Carry held 95-99.9c favourites: fills kept 0.4c per contract after adverse selection over 1,200 contracts.';
-const mem1 = path.join(repo, '.serena', 'memories', 'carry.md');
+const MEM = 'Moonfade kept 1.7 ticks per contract after costs over 640 simulated fills at a 2-bar confirmation.';
+const mem1 = path.join(repo, '.serena', 'memories', 'moonfade.md');
 put(path.join(repo, '.kb.json'), JSON.stringify({ project_id: 'demo', domain: 'trading' }));
-put(mem1, `# Carry\n\n${MEM}\n`); put(path.join(repo, '.serena', 'memories', 'second.md'), 'second memory with enough words to count\n'); put(path.join(repo, '.serena', 'memories', 'third.md'), 'third memory, a different text again\n');
+put(mem1, `# Moonfade\n\n${MEM}\n`); put(path.join(repo, '.serena', 'memories', 'second.md'), 'second memory with enough words to count\n'); put(path.join(repo, '.serena', 'memories', 'third.md'), 'third memory, a different text again\n');
 put(path.join(repo, 'README.md'), 'r'.repeat(200)); put(path.join(repo, 'docs', 'notes.md'), 'n'.repeat(150)); put(path.join(repo, 'docs', 'deep', 'deeper.md'), 'd'.repeat(150)); put(path.join(repo, 'docs', 'deep', 'too', 'far.md'), 'f'.repeat(150));
 put(path.join(repo, 'tiny.md'), 'short'); put(path.join(repo, 'node_modules', 'pkg', 'README.md'), 'm'.repeat(200)); put(path.join(repo, 'package-lock.json'), '{}'.padEnd(200, ' ')); put(path.join(repo, 'src', 'a.ts'), 'code'.repeat(50)); put(path.join(repo, 'backup-2026', 'old.md'), 'o'.repeat(200));
 const db = openDb(); installTemplate(db, loadTemplate('templates/trading.yaml')); installTemplate(db, loadTemplate('templates/ios.yaml'));
@@ -34,10 +35,10 @@ test('manifest: a project\'s imported memories and repo documents in the scratch
   assert.deepEqual(Object.keys(s), ['project', 'domain', 'repo', 'shard', 'notes', 'docs', 'docs_note', 'vocabulary']);
   assert.equal(s.project, 'demo'); assert.equal(s.domain, 'trading'); assert.equal(s.repo, fwd(repo)); assert.equal(s.shard, '1/1'); assert.equal(s.docs_note, '');
   assert.equal(s.notes.length, 3);
-  const carry = s.notes.find((n) => n.source_path === mem1)!;
-  assert.deepEqual(Object.keys(carry), ['id', 'title', 'origin', 'device', 'bytes', 'source_path', 'bank_file']);
-  assert.match(carry.id, /^e_[0-9a-f]{16}$/); assert.equal(carry.title, 'carry'); assert.equal(carry.origin, 'serena'); assert.equal(typeof carry.device, 'string'); assert.equal(carry.bytes, `# Carry\n\n${MEM}\n`.length);
-  assert.equal(carry.bank_file, fwd(path.join(bank, 'notes', 'evidence', `${carry.id}.md`)));
+  const note = s.notes.find((n) => n.source_path === mem1)!;
+  assert.deepEqual(Object.keys(note), ['id', 'title', 'origin', 'device', 'bytes', 'source_path', 'bank_file']);
+  assert.match(note.id, /^e_[0-9a-f]{16}$/); assert.equal(note.title, 'moonfade'); assert.equal(note.origin, 'serena'); assert.equal(typeof note.device, 'string'); assert.equal(note.bytes, `# Moonfade\n\n${MEM}\n`.length);
+  assert.equal(note.bank_file, fwd(path.join(bank, 'notes', 'evidence', `${note.id}.md`)));
   assert.deepEqual(s.vocabulary, { facets: trading.facets, gates: trading.gates, methods: trading.methods, states: ['unverified', 'observed', 'reproduced', 'conflicting'], environment: 'platform', subject: 'instrument' });
 });
 
@@ -98,11 +99,12 @@ test('brief (extractor): the template\'s facets, gate order, axes, the spec skel
   assert.ok(b.includes('## Rules the validator enforces') && b.includes('verbatim'), 'rules');
 });
 
-test('brief: the trading examples illustrate trading only; another domain shows its own facet names', () => {
-  const ios = templateFor(db, 'ios')!;
-  assert.ok(buildBrief(db, demo, 'extractor').includes('YoloLottery'), 'trading keeps the worked examples');
+test('brief: the synthetic worked examples illustrate trading only; another domain shows its own facet names', () => {
+  const ios = templateFor(db, 'ios')!, t = buildBrief(db, demo, 'extractor');
+  assert.ok(t.includes('## Worked examples (synthetic') && t.includes('Moonfade'), 'trading carries the examples, declared synthetic');
+  for (const h of ['## Claim', '## Why it matters', '## Applies when / does not establish', '## Evidence', '> net 1.7 ticks']) assert.ok(t.includes(h), `the example finding shows ${h}`);
   const b = buildBrief(db, { project: 'app', domain: 'ios', repo }, 'extractor');
-  assert.ok(!b.includes('YoloLottery') && !b.includes('instrument_class') && !b.includes('in-sample'), 'no trading words in an ios brief');
+  assert.ok(!b.includes('Worked examples') && !b.includes('Moonfade') && !b.includes('instrument_class') && !b.includes('in-sample'), 'no trading words in an ios brief');
   for (const f of ios.facets) assert.ok(b.includes(f), f);
   assert.ok(b.includes(ios.gates.join(' < ')));
 });
@@ -113,15 +115,15 @@ test('brief (reviewer): merge the shards, refute what the cited source does not 
   assert.ok(!b.includes('"defaults": {'), 'no skeleton: the reviewer merges specs, it does not write new ones');
 });
 
-// A spec that passes every rule; the cases below each break one.
+// A spec that passes every rule (the same invented strategy); the cases below each break one.
 const good = () => ({ defaults: { domain: 'trading', project: 'demo' }, records: [
-  { key: 'a1', kind: 'approach', title: 'carry15: Kalshi favourite maker carry held to settlement', facets: { risk: 'equity-scaled joins', horizon: 'intraday' }, tags: ['maker carry'], body: `From ${fwd(mem1)}` },
-  { key: 't1', kind: 'target', title: 'Kalshi live × 15-min commodity binaries', facets: { environment: 'Kalshi live', subject: '15-min commodity binaries' }, body: 'Real money.' },
-  { kind: 'finding', title: 'carry15 fills kept 0.4c per contract after adverse selection over 1,200 contracts', tags: ['maker carry', 'adverse selection'], attrs: { state: 'observed', gate: 'live', valid_from: '2026-09-21' },
-    metrics: [{ name: 'edge_c_per_contract', value: 0.4, unit: 'c', better: 'higher' }],
-    rels: [{ type: 'about', dst: '@a1', props: { facet_key: 'risk' } }, { type: 'validated_in', dst: '@t1', props: { gate: 'live' } }],
+  { key: 'a1', kind: 'approach', title: 'Moonfade: short the opening gap on XYZ micro futures after a 2-bar confirmation', facets: { risk: '1.5x ATR stop', horizon: 'intraday' }, tags: ['gap fade'], body: `From ${fwd(mem1)}` },
+  { key: 't1', kind: 'target', title: 'Demo replay × XYZ micro futures', facets: { environment: 'Demo replay', subject: 'XYZ micro futures' }, body: 'Minute bars replayed.' },
+  { kind: 'finding', title: 'Moonfade kept 1.7 ticks per contract after costs over 640 simulated fills', tags: ['gap fade', 'transaction cost model'], attrs: { state: 'observed', gate: 'in-sample', valid_from: '2024-03-02' },
+    metrics: [{ name: 'net_ticks_per_contract', value: 1.7, unit: 'ticks', better: 'higher' }],
+    rels: [{ type: 'about', dst: '@a1', props: { facet_key: 'risk' } }, { type: 'validated_in', dst: '@t1', props: { gate: 'in-sample' } }],
     evidence: [{ kind: 'path', ref: mem1 }],
-    body: `## Claim\ncarry15 fills kept 0.4c per contract.\n\n## Why it matters\nThe edge survives adverse selection.\n\n## Applies when / does not establish\nLive fills only; says nothing about paper.\n\n## Evidence\n> ${MEM}\n\n${fwd(mem1)}` },
+    body: `## Claim\nMoonfade kept 1.7 ticks per contract.\n\n## Why it matters\nThe edge survives the cost model.\n\n## Applies when / does not establish\nIn-sample replay only; says nothing out of sample.\n\n## Evidence\n> ${MEM}\n\n${fwd(mem1)}` },
 ] as any[] });
 const vocab = vocabularyFor(db, 'trading');
 
@@ -131,29 +133,29 @@ test('validate: a spec that follows every rule passes with no problems', () => {
 });
 
 test('validate: a quote that is not verbatim in the cited path fails', () => {
-  const s = good(), altered = MEM.replace('0.4c per contract', '0.5c per contract'); s.records[2].body = s.records[2].body.replace(MEM, altered);
+  const s = good(), altered = MEM.replace('1.7 ticks per contract', '2.4 ticks per contract'); s.records[2].body = s.records[2].body.replace(MEM, altered);
   assert.deepEqual(validateSpec(s, vocab).problems, [`#2 finding "${s.records[2].title.slice(0, 70)}": quoted line not found verbatim in the cited path evidence: "${altered.slice(0, 70)}"`]);
 });
 
 test('validate: a verbatim quote survives different whitespace, bold marks and a trailing ellipsis', () => {
-  const s = good(); s.records[2].body = s.records[2].body.replace(`> ${MEM}`, '> Carry  held **95-99.9c** favourites: fills kept 0.4c per contract after adverse…');
+  const s = good(); s.records[2].body = s.records[2].body.replace(`> ${MEM}`, '> Moonfade  kept **1.7 ticks** per contract after costs over 640 simulated fills at a…');
   assert.deepEqual(validateSpec(s, vocab).problems, []);
 });
 
 // [what is wrong, how the good spec is broken, the reason reported, problems expected (1 unless the break trips a second rule, as the script also did)]
 const cases: [string, (s: any) => void, RegExp, number?][] = [
-  ['a finding title without a number', (s) => { s.records[2].title = 'carry fills kept a small edge per contract after adverse selection'; }, /a finding title carries a number/],
-  ['a finding title that narrates', (s) => { s.records[2].title = 'I pushed the carry15 fix, 0.4c per contract now'; }, /narration, advice or a question/],
-  ['a finding title that asks a question', (s) => { s.records[2].title = 'Does carry15 keep 0.4c per contract?'; }, /narration, advice or a question/],
-  ['a finding title that advises', (s) => { s.records[2].title = 'You should size carry15 at 0.4c per contract'; }, /narration, advice or a question/],
+  ['a finding title without a number', (s) => { s.records[2].title = 'Moonfade kept a small edge per contract after costs'; }, /a finding title carries a number/],
+  ['a finding title that narrates', (s) => { s.records[2].title = 'I pushed the Moonfade fix, 1.7 ticks per contract now'; }, /narration, advice or a question/],
+  ['a finding title that asks a question', (s) => { s.records[2].title = 'Does Moonfade keep 1.7 ticks per contract?'; }, /narration, advice or a question/],
+  ['a finding title that advises', (s) => { s.records[2].title = 'You should size Moonfade at 1.7 ticks per contract'; }, /narration, advice or a question/],
   ['a finding with no tags', (s) => { s.records[2].tags = []; }, /1-5 tags/],
   ['a finding with six tags', (s) => { s.records[2].tags = ['a', 'b', 'c', 'd', 'e', 'f']; }, /1-5 tags/],
-  ['a metric whose name is not snake_case', (s) => { s.records[2].metrics[0].name = 'Edge Per Contract'; }, /snake_case name, numeric value, better higher\|lower/],
-  ['a metric whose value is a string', (s) => { s.records[2].metrics[0].value = '0.4'; }, /snake_case name, numeric value/],
+  ['a metric whose name is not snake_case', (s) => { s.records[2].metrics[0].name = 'Ticks Per Contract'; }, /snake_case name, numeric value, better higher\|lower/],
+  ['a metric whose value is a string', (s) => { s.records[2].metrics[0].value = '1.7'; }, /snake_case name, numeric value/],
   ['a metric whose better is neither higher nor lower', (s) => { s.records[2].metrics[0].better = 'up'; }, /better higher\|lower/],
   ['a state outside unverified|observed|reproduced|conflicting', (s) => { s.records[2].attrs.state = 'confirmed'; }, /attrs\.state confirmed \(unverified\|observed\|reproduced\|conflicting\)/],
   ['a gate outside the template', (s) => { s.records[2].attrs.gate = 'backtest'; }, /attrs\.gate backtest \(in-sample\|out-of-sample\|paper\|live-small\|live\)/],
-  ['a valid_from that is not YYYY-MM-DD', (s) => { s.records[2].attrs.valid_from = '21/09/2026'; }, /valid_from not YYYY-MM-DD/],
+  ['a valid_from that is not YYYY-MM-DD', (s) => { s.records[2].attrs.valid_from = '02/03/2024'; }, /valid_from not YYYY-MM-DD/],
   ['a body missing one of the four headings', (s) => { s.records[2].body = s.records[2].body.replace('## Why it matters', '## Why'); }, /body lacks ## Why it matters/],
   ['a body with no quote line', (s) => { s.records[2].body = s.records[2].body.replace('> ', ''); }, /body has no "> quote" line/],
   ['a finding with no evidence', (s) => { s.records[2].evidence = []; }, /no evidence/, 2], // and its quote has no source to be found in
@@ -162,8 +164,8 @@ const cases: [string, (s: any) => void, RegExp, number?][] = [
   ['facets on a finding', (s) => { s.records[2].facets = { risk: 'x' }; }, /facets belong on approaches and targets, not findings/],
   ['an approach facet outside the template', (s) => { s.records[0].facets = { nope: 'x' }; }, /facet nope not in the template \(why, entry, risk, exit, horizon, instrument_class\)/],
   ['an empty facet value', (s) => { s.records[0].facets.risk = ''; }, /facet risk empty/],
-  ['a target whose facets are not exactly environment and subject', (s) => { s.records[1].facets.platform = 'Kalshi'; }, /facet platform not in the template \(environment, subject\)/],
-  ['a target missing one of its two facets', (s) => { s.records[1].facets = { environment: 'Kalshi live' }; }, /target needs facets\.environment and facets\.subject/],
+  ['a target whose facets are not exactly environment and subject', (s) => { s.records[1].facets.platform = 'Demo'; }, /facet platform not in the template \(environment, subject\)/],
+  ['a target missing one of its two facets', (s) => { s.records[1].facets = { environment: 'Demo replay' }; }, /target needs facets\.environment and facets\.subject/],
   ['a rel to a key defined later or never', (s) => { s.records[2].rels[0].dst = '@zz'; }, /rel to unknown or later key @zz/],
   ['a rel without a dst', (s) => { s.records[2].rels[0] = { type: 'about' }; }, /rel without dst/],
   ['an about rel whose facet_key is outside the template', (s) => { s.records[2].rels[0].props.facet_key = 'nope'; }, /about facet_key nope/],
@@ -172,7 +174,7 @@ const cases: [string, (s: any) => void, RegExp, number?][] = [
   ['a duplicate key', (s) => { s.records.push({ key: 'a1', kind: 'approach', title: 'a second approach under the key a1' }); }, /duplicate key/],
   ['a title shorter than 12 characters', (s) => { s.records[0].title = 'short'; }, /title length \(12-220\)/],
   ['a kind outside approach, target, finding, theme and experiment', (s) => { s.records[0].kind = 'concept'; }, /kind concept/],
-  ['an experiment method outside the template', (s) => { s.records.push({ kind: 'experiment', title: 'grid over dwell seconds 10-60', method: 'guess' }); }, /method guess not in the template \(grid-search, random-search, walk-forward, bayesian, monte-carlo, bootstrap\)/],
+  ['an experiment method outside the template', (s) => { s.records.push({ kind: 'experiment', title: 'grid over confirmation lengths 1-12', method: 'guess' }); }, /method guess not in the template \(grid-search, random-search, walk-forward, bayesian, monte-carlo, bootstrap\)/],
   ['a spec without defaults', (s) => { s.defaults = {}; }, /spec\.defaults needs domain and project/],
 ];
 for (const [name, mutate, reason, count = 1] of cases) test(`validate rejects ${name}`, () => {
