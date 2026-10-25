@@ -10,7 +10,7 @@ import { exportAll, rebuild } from '../kb/export.js';
 import { acceptMerge, rejectMerge, splitAlias, mergeConcepts } from '../kb/concepts.js';
 import { pendingQuestions } from '../kb/brief.js';
 import { compareConcept, compareLine, resolveConceptRef } from '../kb/compare.js';
-import { setTransfer, retractNote, setAttr, kbWrite, type WriteRecord } from '../kb/write.js';
+import { setTransfer, retractNote, setAttr, kbWrite, planTransferPrune, pruneTransfers, type WriteRecord } from '../kb/write.js';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { stringify as toYaml } from 'yaml';
 import { writeFileAtomic } from '../lib/atomic.js';
@@ -26,7 +26,7 @@ const [cmd, ...args] = process.argv.slice(2);
 const has = (f: string) => args.includes(f);
 const value = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
 const home = os.homedir();
-const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
+const usage = 'usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name>|merge <a> <b> | kb transfer <id> confirm|refute | kb transfers prune [--apply] | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n';
 if (cmd === 'doctor') process.exitCode = doctor(home, { baseline: has('--baseline'), live: has('--live') });
 else if (cmd === 'sync') {
   try { const r = sync(paths.bankDir()); if (!has('--quiet')) process.stdout.write(r === 'failed' ? `sync: failed (details in ${path.join(paths.logsDir(), 'hooks.log')})\n` : `sync: ${r}\n`); if (r === 'failed') process.exitCode = 1; }
@@ -76,6 +76,16 @@ else if (cmd === 'cleanup') {
     else if (cmd === 'retract') { retractNote(db, bank, id); process.stdout.write(`retracted ${id}\n`); }
     else { setAttr(db, bank, id, a, b); process.stdout.write(`set ${a}=${b} on ${id}\n`); }
   } catch (e) { process.stderr.write(`kb ${cmd}: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
+} else if (cmd === 'transfers' && args[0] === 'prune') {
+  // DESIGN §4.8 (v1.7): dry run by default; --apply withdraws (soft-deletes) the `proposed` transfers the current rule would not propose. Settled ones are never touched.
+  const db = openDb(), bank = paths.bankDir(), apply = has('--apply');
+  try {
+    const plan = planTransferPrune(db), total = plan.reduce((n, p) => n + p.withdraw.length, 0);
+    for (const p of plan) process.stdout.write(`${apply ? 'DONE' : 'PLAN'}  ${p.finding}  ${p.withdraw.length} of ${p.proposed} proposed\n`);
+    if (!plan.length) process.stdout.write('nothing to prune: every proposed transfer is one the current rule proposes\n');
+    else if (apply) { const r = pruneTransfers(db, bank, plan); process.stdout.write(`withdrew ${r.withdrawn} proposed transfers on ${r.findings} findings; their notes are re-exported, settled transfers untouched\n`); }
+    else process.stdout.write(`\n${total} proposed transfers on ${plan.length} findings would be withdrawn; re-run with --apply (confirmed, refuted and confirmed_provisional transfers are never touched)\n`);
+  } catch (e) { process.stderr.write(`kb transfers prune: ${(e as Error).message}\n`); process.exitCode = 1; } finally { db.sql.close(); }
 } else if (cmd === 'import' && ['serena', 'claude-memory', 'codex', 'all'].includes(args[0])) {
   const root = value('--root');
   if (has('--root') && !root) { process.stderr.write('--root needs a directory\n'); process.exitCode = 2; }

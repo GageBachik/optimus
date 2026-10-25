@@ -29366,22 +29366,47 @@ function agrees(a, b) {
   }
   return verdict;
 }
-var MAX_PROPOSALS = 12;
-function proposeTransfers(db2, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
+var MAX_PROPOSALS = 4;
+function compareCandidates(a, b, withId = true) {
+  if (a.shared !== b.shared) return b.shared - a.shared;
+  for (let i = 0; i < a.rarity.length; i++) if (a.rarity[i] !== b.rarity[i]) return a.rarity[i] - b.rarity[i];
+  if (a.facetKey !== b.facetKey) return a.facetKey ? -1 : 1;
+  return withId ? a.id < b.id ? -1 : a.id > b.id ? 1 : 0 : 0;
+}
+function transferCandidates(db2, findingId) {
   const f = must(db2, findingId), about = getRels(db2, findingId).filter((r) => r.type === "about");
   const concepts2 = about.map((r) => r.dst).filter((d) => kindOfId(d) === "concept");
-  const approaches = about.map((r) => r.dst).filter((d) => kindOfId(d) === "approach");
-  const keys = new Set(about.flatMap((r) => typeof r.props.facet_key === "string" ? [r.props.facet_key] : []));
-  const live2 = `n.kind='approach' AND n.deleted_at IS NULL AND n.project IS NOT NULL AND n.project IS NOT ?`;
-  const byConcept = db2.sql.prepare(`SELECT DISTINCT r.src AS id FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND ${live2}`);
-  const byFacet = db2.sql.prepare(`SELECT DISTINCT a.note_id AS id FROM attr a JOIN note n ON n.id=a.note_id WHERE a.key=? AND ${live2}`);
-  const candidates = /* @__PURE__ */ new Set();
-  for (const c of concepts2) for (const r of byConcept.all(c, f.project).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
-  for (const k of keys) for (const r of byFacet.all(`facet:${k}`, f.project).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
+  const own = new Set(about.map((r) => r.dst).filter((d) => kindOfId(d) === "approach"));
+  const keys = [...new Set(about.flatMap((r) => typeof r.props.facet_key === "string" ? [r.props.facet_key] : []))];
+  const touching = `FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND n.kind='approach' AND n.deleted_at IS NULL`;
+  const byConcept = db2.sql.prepare(`SELECT DISTINCT r.src AS id ${touching} AND n.project IS NOT NULL AND n.project IS NOT ?`);
+  const popularity = db2.sql.prepare(`SELECT count(DISTINCT r.src) AS n ${touching}`);
+  const hasKey = db2.sql.prepare("SELECT 1 FROM attr WHERE note_id=? AND key=?");
+  const cand = /* @__PURE__ */ new Map();
+  for (const c of concepts2) {
+    const pop = popularity.get(c).n;
+    for (const { id } of byConcept.all(c, f.project)) {
+      if (own.has(id)) continue;
+      const e = cand.get(id) ?? { id, shared: 0, rarity: [], facetKey: false };
+      e.shared++;
+      e.rarity.push(pop);
+      cand.set(id, e);
+    }
+  }
+  for (const e of cand.values()) {
+    e.rarity.sort((a, b) => a - b);
+    e.facetKey = keys.some((k) => hasKey.get(e.id, `facet:${k}`) !== void 0);
+  }
+  const ranked = [...cand.values()].sort((a, b) => compareCandidates(a, b));
+  let n = Math.min(MAX_PROPOSALS, ranked.length);
+  while (n > 0 && n < ranked.length && compareCandidates(ranked[n - 1], ranked[n], false) === 0) n--;
+  return ranked.slice(0, n);
+}
+function proposeTransfers(db2, bankDir, findingId, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const existing = new Set(getRels(db2, findingId).filter((r) => r.type === "transfer").map((r) => r.dst));
   const made = [];
-  for (const dst of [...candidates].slice(0, MAX_PROPOSALS)) {
-    if (existing.has(dst) || approaches.includes(dst)) continue;
+  for (const { id: dst } of transferCandidates(db2, findingId)) {
+    if (existing.has(dst)) continue;
     const props = { state: "proposed" }, id = relId(findingId, "transfer", dst, props);
     addRel(db2, { id, src: findingId, type: "transfer", dst, props, created_at: now, deleted_at: null });
     made.push(id);

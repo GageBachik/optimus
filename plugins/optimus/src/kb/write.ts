@@ -57,31 +57,81 @@ export function agrees(a: FindingLite, b: FindingLite): boolean | null {
   return verdict;
 }
 
-/** DESIGN §4.8: a finding about concept C proposes a `transfer{state: proposed}` to every approach in another project that relies_on (or is tagged
- *  `about`) C, or that shares a facet key with the finding's own approach; one per approach, never a second. Returns the new rel ids. */
-const MAX_PROPOSALS = 12; // ponytail: a flat cap; rank by shared-concept count if a finding ever needs more than a dozen candidates
-export function proposeTransfers(db: Db, bankDir: string, findingId: string, now = new Date().toISOString()): string[] {
+/** DESIGN §4.8 (v1.7, 2026-10-24): at most this many transfers are proposed per finding. Measured on the bank the day the rule changed (829 findings,
+ *  281 approaches): 620 findings have a concept-sharing candidate, 511 have more than four, and only 164 of the 8,881 (finding, candidate) pairs share
+ *  two concepts (never more than five such candidates on one finding), so four slots always hold every strong candidate and cut the hub-concept tail. */
+export const MAX_PROPOSALS = 4;
+export type TransferCandidate = { id: string; shared: number; rarity: number[]; facetKey: boolean };
+/** The order of proposals: more shared concepts; then rarer shared concepts (how many live approaches touch each, fewest first, compared one by one);
+ *  then carrying the facet key the finding is `about` (the v1.4 facet path, kept only as this tie-breaker); then id. Zero means the index cannot tell two apart. */
+export function compareCandidates(a: TransferCandidate, b: TransferCandidate, withId = true): number {
+  if (a.shared !== b.shared) return b.shared - a.shared;
+  for (let i = 0; i < a.rarity.length; i++) if (a.rarity[i] !== b.rarity[i]) return a.rarity[i] - b.rarity[i];
+  if (a.facetKey !== b.facetKey) return a.facetKey ? -1 : 1;
+  return withId ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : 0;
+}
+/** DESIGN §4.8 (v1.7): the approaches in other projects a finding's transfers go to, best first. A candidate must be `about` (or `relies_on`) one of the
+ *  finding's concepts: sharing a facet key no longer admits anyone (with six keys per template nearly every approach of the domain qualified, which
+ *  proposed ~12 transfers per finding on the 2026-10-24 build). The list is cut at MAX_PROPOSALS, and a run of candidates the index cannot tell apart
+ *  that straddles the cut is dropped whole: picking among equals by id sent every hub concept's proposals to whichever approaches were written first
+ *  (measured: 473 of 511 capped findings tied at the boundary; 609 of their 2,263 picks landed on the three oldest-imported projects). */
+export function transferCandidates(db: Db, findingId: string): TransferCandidate[] {
   const f = must(db, findingId), about = getRels(db, findingId).filter((r) => r.type === 'about');
   const concepts = about.map((r) => r.dst).filter((d) => kindOfId(d) === 'concept');
-  const approaches = about.map((r) => r.dst).filter((d) => kindOfId(d) === 'approach');
-  // Only the facet the finding is explicitly about (its `about` rel's facet_key) seeds facet candidates. Every key of the approach used to count,
-  // which at 180 approaches proposed ~80 transfers per finding (14,600 in one import); concept-sharing candidates come first, and the list is capped.
-  const keys = new Set(about.flatMap((r) => (typeof r.props.facet_key === 'string' ? [r.props.facet_key] : [])));
-  const live = `n.kind='approach' AND n.deleted_at IS NULL AND n.project IS NOT NULL AND n.project IS NOT ?`;
-  const byConcept = db.sql.prepare(`SELECT DISTINCT r.src AS id FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND ${live}`);
-  const byFacet = db.sql.prepare(`SELECT DISTINCT a.note_id AS id FROM attr a JOIN note n ON n.id=a.note_id WHERE a.key=? AND ${live}`);
-  const candidates = new Set<string>();
-  for (const c of concepts) for (const r of (byConcept.all(c, f.project) as { id: string }[]).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
-  for (const k of keys) for (const r of (byFacet.all(`facet:${k}`, f.project) as { id: string }[]).sort((x, y) => x.id.localeCompare(y.id))) candidates.add(r.id);
+  const own = new Set(about.map((r) => r.dst).filter((d) => kindOfId(d) === 'approach'));
+  const keys = [...new Set(about.flatMap((r) => (typeof r.props.facet_key === 'string' ? [r.props.facet_key] : [])))];
+  const touching = `FROM rel r JOIN note n ON n.id=r.src WHERE r.dst=? AND r.type IN ('relies_on','about') AND r.deleted_at IS NULL AND n.kind='approach' AND n.deleted_at IS NULL`;
+  const byConcept = db.sql.prepare(`SELECT DISTINCT r.src AS id ${touching} AND n.project IS NOT NULL AND n.project IS NOT ?`);
+  const popularity = db.sql.prepare(`SELECT count(DISTINCT r.src) AS n ${touching}`);
+  const hasKey = db.sql.prepare('SELECT 1 FROM attr WHERE note_id=? AND key=?');
+  const cand = new Map<string, TransferCandidate>();
+  for (const c of concepts) {
+    const pop = (popularity.get(c) as { n: number }).n;
+    for (const { id } of byConcept.all(c, f.project) as { id: string }[]) {
+      if (own.has(id)) continue;
+      const e = cand.get(id) ?? { id, shared: 0, rarity: [], facetKey: false }; e.shared++; e.rarity.push(pop); cand.set(id, e);
+    }
+  }
+  for (const e of cand.values()) { e.rarity.sort((a, b) => a - b); e.facetKey = keys.some((k) => hasKey.get(e.id, `facet:${k}`) !== undefined); }
+  const ranked = [...cand.values()].sort((a, b) => compareCandidates(a, b));
+  let n = Math.min(MAX_PROPOSALS, ranked.length);
+  while (n > 0 && n < ranked.length && compareCandidates(ranked[n - 1], ranked[n], false) === 0) n--;
+  return ranked.slice(0, n);
+}
+/** DESIGN §4.8: a finding proposes a `transfer{state: proposed}` to each of its transferCandidates; one per approach, never a second. Returns the new rel ids, best first. */
+export function proposeTransfers(db: Db, bankDir: string, findingId: string, now = new Date().toISOString()): string[] {
   const existing = new Set(getRels(db, findingId).filter((r) => r.type === 'transfer').map((r) => r.dst));
   const made: string[] = [];
-  for (const dst of [...candidates].slice(0, MAX_PROPOSALS)) {
-    if (existing.has(dst) || approaches.includes(dst)) continue;
+  for (const { id: dst } of transferCandidates(db, findingId)) {
+    if (existing.has(dst)) continue;
     const props = { state: 'proposed' }, id = relId(findingId, 'transfer', dst, props);
     addRel(db, { id, src: findingId, type: 'transfer', dst, props, created_at: now, deleted_at: null }); made.push(id);
   }
   if (made.length) { touch(db, findingId, now); exportNote(db, bankDir, findingId); }
   return made;
+}
+
+export type TransferPrune = { finding: string; proposed: number; withdraw: string[] };
+/** `kb transfers prune`: for every live finding, the `proposed` transfers that transferCandidates would not propose today. A settled transfer
+ *  (confirmed, refuted, or the rule's own confirmed_provisional) is never listed; findings with nothing to withdraw are left out. */
+export function planTransferPrune(db: Db): TransferPrune[] {
+  const rows = db.sql.prepare(`SELECT t.src AS finding, t.id, t.dst, t.props FROM rel t JOIN note f ON f.id=t.src
+    WHERE t.type='transfer' AND t.deleted_at IS NULL AND f.kind='finding' AND f.deleted_at IS NULL ORDER BY t.src, t.id`).all() as { finding: string; id: string; dst: string; props: string }[];
+  const plan: (TransferPrune & { keep: Set<string> })[] = []; let cur: (typeof plan)[number] | undefined;
+  for (const r of rows) {
+    if ((JSON.parse(r.props) as { state?: string }).state !== 'proposed') continue;
+    if (!cur || cur.finding !== r.finding) { cur = { finding: r.finding, proposed: 0, withdraw: [], keep: new Set(transferCandidates(db, r.finding).map((c) => c.id)) }; plan.push(cur); }
+    cur.proposed++; if (!cur.keep.has(r.dst)) cur.withdraw.push(r.id);
+  }
+  return plan.filter((p) => p.withdraw.length).map(({ finding, proposed, withdraw }) => ({ finding, proposed, withdraw }));
+}
+/** `kb transfers prune --apply`: soft-deletes the planned rels (`deleted_at`, as a retracted note is), then touches and re-exports each finding; the
+ *  file no longer lists the rel, and an import replaces a note's rels with the file's, which is how the withdrawal reaches every machine (DESIGN §4.3). */
+export function pruneTransfers(db: Db, bankDir: string, plan: TransferPrune[], now = new Date().toISOString()): { withdrawn: number; findings: number } {
+  const del = db.sql.prepare('UPDATE rel SET deleted_at=? WHERE id=? AND deleted_at IS NULL');
+  let withdrawn = 0;
+  for (const p of plan) { for (const id of p.withdraw) withdrawn += Number(del.run(now, id).changes); touch(db, p.finding, now); exportNote(db, bankDir, p.finding); }
+  return { withdrawn, findings: plan.length };
 }
 
 /** DESIGN §4.8 + Ruling R4: every transfer into this finding's project whose source finding shares a concept with it is judged by `agrees`:
