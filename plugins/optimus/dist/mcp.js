@@ -29082,7 +29082,7 @@ function reindexFts(db2, noteId2) {
 }
 
 // src/kb/write.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 
 // src/kb/export.ts
 var import_yaml2 = __toESM(require_dist2(), 1);
@@ -29277,6 +29277,7 @@ function kindOfId(id) {
 
 // src/kb/concepts.ts
 import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync3 } from "node:fs";
+import { createHash as createHash3 } from "node:crypto";
 import path6 from "node:path";
 var concepts = (db2) => db2.sql.prepare(`SELECT id, title FROM note WHERE kind='concept' AND deleted_at IS NULL ORDER BY id`).all();
 var log = (bankDir, line) => {
@@ -29294,8 +29295,18 @@ function addAlias(db2, id, names, now) {
   setAttrs(db2, id, attrs);
   touch(db2, id, now);
 }
+function conceptIdFor(db2, name) {
+  const norm = normalizeName(name);
+  let id = conceptNoteId(name);
+  for (let i = 0; i < 4; i++) {
+    const occupant = getNote(db2, id);
+    if (!occupant || normalizeName(occupant.title) === norm) return id;
+    id = `c_${norm.replace(/-/g, "").slice(0, 17).padEnd(17, "0")}x${createHash3("sha1").update(`${norm}#${i}`).digest("hex").slice(0, 8)}`;
+  }
+  return id;
+}
 function createConcept(db2, name, now) {
-  const id = conceptNoteId(name);
+  const id = conceptIdFor(db2, name);
   upsertNote(db2, { id, kind: "concept", domain: null, project: null, title: name, body: "", created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
   db2.sql.prepare("INSERT OR REPLACE INTO alias(name_norm, concept_id) VALUES(?,?)").run(normalizeName(name), id);
   return id;
@@ -29333,7 +29344,7 @@ function resolveConcept(db2, bankDir, tag, now) {
 
 // src/kb/write.ts
 var red = (s) => redactSensitive(s).text;
-var sha2562 = (s) => createHash3("sha256").update(s).digest("hex");
+var sha2562 = (s) => createHash4("sha256").update(s).digest("hex");
 var touch2 = (db2, id, now) => db2.sql.prepare("UPDATE note SET updated_at=? WHERE id=?").run(now, id);
 var TARGET_FACETS = ["environment", "subject"];
 var must = (db2, id) => {
@@ -29547,8 +29558,12 @@ var marks = (xs) => xs.map(() => "?").join(",");
 var ids = (rows) => rows.map((r) => r.id);
 var cmp2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 function conceptIds(db2, names) {
-  const q = db2.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
-  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
+  const q = db2.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?"), title = db2.sql.prepare("SELECT title FROM note WHERE id=?");
+  const slot = (n) => {
+    const id = conceptNoteId(n), t = title.get(id)?.title;
+    return t === void 0 || normalizeName(t) === normalizeName(n) ? id : void 0;
+  };
+  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? slot(n)))].filter((id) => !!id);
 }
 function findingsAbout(db2, concepts2) {
   if (!concepts2.length) return [];
@@ -29660,7 +29675,12 @@ var live = (db2, id) => {
   const n = getNote(db2, id);
   return n && !n.deleted_at ? n : void 0;
 };
-var resolveConceptRef = (db2, ref) => ref.startsWith("c_") && live(db2, ref) ? ref : conceptIds(db2, [ref])[0];
+var resolveConceptRef = (db2, ref) => {
+  if (ref.startsWith("c_") && live(db2, ref)) return ref;
+  const id = conceptIds(db2, [ref])[0];
+  if (!id) throw new Error(`no concept named "${ref}"`);
+  return id;
+};
 function compareConcept(db2, conceptId, facetKey) {
   const rows = findingsAbout(db2, [conceptId]).map((id) => {
     const a = getAttrs(db2, id), rels = getRels(db2, id);

@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { type Db, upsertNote, getNote, getAttrs, setAttrs, softDeleteNote, deviceId } from './db.js';
 import { exportNote, rekeyRel } from './export.js';
@@ -23,8 +24,22 @@ function addAlias(db: Db, id: string, names: string[], now: string): void {
   setAttrs(db, id, attrs); touch(db, id, now);
 }
 
+/** The id a new concept named `name` gets: normally the deterministic slot `conceptNoteId(name)`, so two machines mint the same note.
+ *  2026-10-25: the normaliser change (a three-letter token keeps its s) moved four live concepts off the slot their id was minted from —
+ *  "ibs" sits at c_ib…, "tts" at c_tt… — so a new name whose norm is that old norm ("IB") would have been upserted over the occupant,
+ *  retitling the occupant and bringing the two names' mix-up back (found in review the same night). A slot occupied by
+ *  a note whose title normalises differently, live or deleted, yields a derived id instead: the norm plus a hash of it, still deterministic. */
+export function conceptIdFor(db: Db, name: string): string {
+  const norm = normalizeName(name); let id = conceptNoteId(name);
+  for (let i = 0; i < 4; i++) {
+    const occupant = getNote(db, id); if (!occupant || normalizeName(occupant.title) === norm) return id;
+    id = `c_${norm.replace(/-/g, '').slice(0, 17).padEnd(17, '0')}x${createHash('sha1').update(`${norm}#${i}`).digest('hex').slice(0, 8)}`;
+  }
+  return id;
+}
+
 function createConcept(db: Db, name: string, now: string): string {
-  const id = conceptNoteId(name);
+  const id = conceptIdFor(db, name);
   upsertNote(db, { id, kind: 'concept', domain: null, project: null, title: name, body: '', created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
   db.sql.prepare('INSERT OR REPLACE INTO alias(name_norm, concept_id) VALUES(?,?)').run(normalizeName(name), id);
   return id;

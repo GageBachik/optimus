@@ -8660,6 +8660,7 @@ function kindOfId(id) {
 
 // src/kb/concepts.ts
 import { appendFileSync as appendFileSync3, mkdirSync as mkdirSync7 } from "node:fs";
+import { createHash as createHash3 } from "node:crypto";
 import path14 from "node:path";
 
 // src/lib/redaction.ts
@@ -8707,8 +8708,18 @@ function addAlias(db, id, names, now) {
   setAttrs(db, id, attrs);
   touch(db, id, now);
 }
+function conceptIdFor(db, name) {
+  const norm2 = normalizeName(name);
+  let id = conceptNoteId(name);
+  for (let i = 0; i < 4; i++) {
+    const occupant = getNote(db, id);
+    if (!occupant || normalizeName(occupant.title) === norm2) return id;
+    id = `c_${norm2.replace(/-/g, "").slice(0, 17).padEnd(17, "0")}x${createHash3("sha1").update(`${norm2}#${i}`).digest("hex").slice(0, 8)}`;
+  }
+  return id;
+}
 function createConcept(db, name, now) {
-  const id = conceptNoteId(name);
+  const id = conceptIdFor(db, name);
   upsertNote(db, { id, kind: "concept", domain: null, project: null, title: name, body: "", created_at: now, updated_at: now, deleted_at: null, device_id: deviceId() });
   db.sql.prepare("INSERT OR REPLACE INTO alias(name_norm, concept_id) VALUES(?,?)").run(normalizeName(name), id);
   return id;
@@ -8816,8 +8827,12 @@ var LIVE_FINDING = `n.kind='finding' AND n.deleted_at IS NULL AND ${NOT_SUPERSED
 var marks = (xs) => xs.map(() => "?").join(",");
 var ids = (rows) => rows.map((r) => r.id);
 function conceptIds(db, names) {
-  const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
-  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
+  const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?"), title = db.sql.prepare("SELECT title FROM note WHERE id=?");
+  const slot = (n) => {
+    const id = conceptNoteId(n), t = title.get(id)?.title;
+    return t === void 0 || normalizeName(t) === normalizeName(n) ? id : void 0;
+  };
+  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? slot(n)))].filter((id) => !!id);
 }
 function findingsAbout(db, concepts2) {
   if (!concepts2.length) return [];
@@ -8829,7 +8844,12 @@ var live = (db, id) => {
   const n = getNote(db, id);
   return n && !n.deleted_at ? n : void 0;
 };
-var resolveConceptRef = (db, ref) => ref.startsWith("c_") && live(db, ref) ? ref : conceptIds(db, [ref])[0];
+var resolveConceptRef = (db, ref) => {
+  if (ref.startsWith("c_") && live(db, ref)) return ref;
+  const id = conceptIds(db, [ref])[0];
+  if (!id) throw new Error(`no concept named "${ref}"`);
+  return id;
+};
 function compareConcept(db, conceptId, facetKey) {
   const rows = findingsAbout(db, [conceptId]).map((id) => {
     const a = getAttrs(db, id), rels = getRels(db, id);
@@ -8875,9 +8895,9 @@ function pendingQuestions(db, max = 3) {
 }
 
 // src/kb/write.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 var red = (s) => redactSensitive(s).text;
-var sha2562 = (s) => createHash3("sha256").update(s).digest("hex");
+var sha2562 = (s) => createHash4("sha256").update(s).digest("hex");
 var touch2 = (db, id, now) => db.sql.prepare("UPDATE note SET updated_at=? WHERE id=?").run(now, id);
 var TARGET_FACETS = ["environment", "subject"];
 var must = (db, id) => {
@@ -9139,11 +9159,11 @@ function fileHereUnder(cwd, domain) {
 
 // src/kb/import.ts
 var import_yaml3 = __toESM(require_dist(), 1);
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 import { closeSync as closeSync2, existsSync as existsSync13, openSync as openSync2, readdirSync as readdirSync7, readFileSync as readFileSync14, readSync as readSync2, statSync as statSync6 } from "node:fs";
 import os3 from "node:os";
 import path16 from "node:path";
-var sha2563 = (b) => createHash4("sha256").update(b).digest("hex");
+var sha2563 = (b) => createHash5("sha256").update(b).digest("hex");
 var none = { project: null, domain: null };
 var CODEX_SCRATCH = path16.join("Documents", "Codex");
 function projectOf(dir, home2) {

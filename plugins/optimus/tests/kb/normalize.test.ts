@@ -16,7 +16,8 @@ test('porter stemmer matches the reference vocabulary', async () => {
 test('a three-letter word keeps its s (2026-10-25): IBS is not IB, OOS is not "oo"; longer plurals still fold', async () => {
   const { stem } = await import('../../src/kb/normalize.js');
   for (const w of ['ibs', 'tts', 'oos', 'mes', 'ios', 'gas', 'bps']) assert.equal(stem(w), w, w);
-  assert.notEqual(normalizeName('IB bot'), normalizeName('ibs')); assert.ok(!tokens('restart the IB gateway').includes('ibs'));
+  // Both assertions fail when the exemption is reverted (review 2026-10-25: the earlier pair held under both stemmers).
+  assert.notEqual(normalizeName('IBS'), normalizeName('IB')); assert.ok(tokens('is IBS dip buying profitable').includes('ibs'));
   assert.equal(normalizeName('IOS 27'), '27-ios');
   for (const [w, e] of Object.entries({ gaps: 'gap', etfs: 'etf', flies: 'fli', sizings: 'size', ss: 'ss', es: 'es' })) assert.equal(stem(w), e, w);
 });

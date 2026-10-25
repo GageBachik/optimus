@@ -673,8 +673,12 @@ var init_templates = __esm({
 
 // src/kb/rank.ts
 function conceptIds(db, names) {
-  const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?");
-  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? conceptNoteId(n)))];
+  const q = db.sql.prepare("SELECT concept_id FROM alias WHERE name_norm=?"), title = db.sql.prepare("SELECT title FROM note WHERE id=?");
+  const slot = (n) => {
+    const id = conceptNoteId(n), t = title.get(id)?.title;
+    return t === void 0 || normalizeName(t) === normalizeName(n) ? id : void 0;
+  };
+  return [...new Set(names.map((n) => q.get(normalizeName(n))?.concept_id ?? slot(n)))].filter((id) => !!id);
 }
 function findingsAbout(db, concepts) {
   if (!concepts.length) return [];
@@ -690,17 +694,15 @@ function findingsAboutIn(db, concepts, domain) {
 function findingsByTitlePhrase(db, prompt, domain, limit = 3) {
   const toks = prompt.toLowerCase().replace(/\S*[\\/]\S+/g, " ").split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP2.has(t));
   const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
-  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING} ORDER BY CASE WHEN n.domain=? THEN 0 ELSE 1 END, n.id LIMIT ?`);
-  const ids2 = [], hit = [];
+  const q = db.sql.prepare(`SELECT n.id, n.domain FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING} ORDER BY CASE WHEN n.domain=? THEN 0 ELSE 1 END, n.id LIMIT ?`);
+  const own = [], other = [], hit = [];
   for (const p of phrases) {
     const rows = q.all(`title:"${p}"`, domain ?? null, limit);
-    if (rows.length) {
-      hit.push(p);
-      for (const r of rows) if (!ids2.includes(r.id)) ids2.push(r.id);
-    }
-    if (ids2.length >= limit) break;
+    if (rows.length) hit.push(p);
+    for (const r of rows) if (!own.includes(r.id) && !other.includes(r.id)) (domain && r.domain === domain ? own : other).push(r.id);
+    if ((domain ? own : other).length >= limit) break;
   }
-  return { ids: ids2.slice(0, limit), phrases: hit };
+  return { ids: [...own, ...other].slice(0, limit), phrases: hit };
 }
 function findingsIn(db, projects) {
   if (!projects.length) return [];
@@ -1320,12 +1322,18 @@ var init_blobs = __esm({
 
 // src/lib/kb-sync.ts
 import { existsSync as existsSync7 } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path12 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function kbJs() {
   const here = path12.dirname(fileURLToPath2(import.meta.url));
   return [path12.join(here, "kb.js"), path12.join(here, "..", "..", "dist", "kb.js")].find(existsSync7);
+}
+function bankDirty() {
+  const bank = paths.bankDir();
+  if (!existsSync7(path12.join(bank, ".git"))) return false;
+  const r = spawnSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: bank, encoding: "utf8", timeout: 1e4, windowsHide: true });
+  return r.status === 0 && r.stdout.trim().length > 0;
 }
 function spawnKbSync() {
   if (!existsSync7(path12.join(paths.bankDir(), ".git"))) return;
@@ -1846,7 +1854,8 @@ async function stop(input) {
   }
   const u = [...entries].reverse().find((e) => e.type === "assistant" && e.message?.usage)?.message?.usage ?? {};
   appendFileSync3(path18.join(paths.stateDir(), "metrics.jsonl"), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + "\n");
-  if (wrote || Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4) spawnKbSync();
+  const stale = Date.now() - (Date.parse(paths.config().lastSyncAt ?? "") || 0) > 6e4;
+  if (wrote || stale || bankDirty()) spawnKbSync();
   if (cfg && ask.length) {
     log("info", "stop: asked the session to record", { project: cfg.project_id, candidates: ask.length });
     return { decision: "block", reason: askText(cfg, ask) };

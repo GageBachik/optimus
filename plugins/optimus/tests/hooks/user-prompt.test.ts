@@ -44,7 +44,7 @@ test('startup in a .kb.json project appends the bank sections; synonym questions
 });
 test('recall is own-domain first, then every domain (2026-10-25), and ignores paths: a trading brief lists its own risk-sizing finding before the Solana one, which names its domain; a domain with nothing about the concept is shown the others\'; a path naming a project is not a mention', async () => {
   { const db = openDb(); installTemplate(db, loadTemplate('templates/solana.yaml'));
-    kbWrite(db, bank, { kind: 'finding', title: 'Risk sizing on Solana perps: 0.25% per trade survived 3 liquidation cascades', domain: 'solana', project: 'sol-perps', tags: ['risk sizing'], attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now);
+    kbWrite(db, bank, { kind: 'finding', title: 'Risk sizing on Solana perps: 0.25% per trade survived 3 liquidation cascades', domain: 'solana', project: 'sol-perps', tags: ['risk sizing'], attrs: { state: 'observed', gate: 'mainnet' /* gate_rank 4: outranks the own finding's out-of-sample gate, so only the own-first partition orders them (review 2026-10-25) */ }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now);
     db.sql.close(); }
   const d2 = mkdtempSync(path.join(tmpdir(), 'spy2-')); writeFileSync(path.join(d2, '.kb.json'), JSON.stringify({ project_id: 'spy2', domain: 'trading' }));
   const r: any = await userPrompt({ session_id: 'u9', cwd: d2, prompt: 'Should we revisit risk sizing for the SPY book?' });
@@ -87,12 +87,25 @@ test('v1.5: a two-word phrase of the prompt that appears in a finding title reca
   assert.ok(!r2 || !/84pt trailing-only/.test(r2.hookSpecificOutput.additionalContext), 'a single shared word ("screen") is not a match');
 });
 
-test('a prompt about the IB bot does not recall IBS (2026-10-25): the plural strip no longer turns a three-letter acronym into another name', async () => {
-  const ibs = 'IBS QQQ dip buy +42 bp per trade t 4.6 (n 823) confirmed net of costs';
+test('a prompt naming a two-letter acronym does not recall the three-letter one (IB vs IBS, 2026-10-25): the plural strip no longer turns a three-letter acronym into another name', async () => {
+  const ibs = 'IBS below 0.2 dip entry +9 bp per trade (n 512, synthetic) confirmed net of costs'; // figures grepped clean against the bank (review 2026-10-25)
   { const db = openDb(); kbWrite(db, bank, { kind: 'finding', title: ibs, domain: 'trading', project: 'strategy', tags: ['ibs'], attrs: { state: 'reproduced', gate: 'out-of-sample' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now); db.sql.close(); }
   assert.equal(await userPrompt({ session_id: 'ib1', cwd, prompt: 'restart the IB gateway before the open' }), undefined, 'IB is not IBS');
-  const r: any = await userPrompt({ session_id: 'ib2', cwd, prompt: 'is IBS dip buying still profitable on QQQ?' });
+  const r: any = await userPrompt({ session_id: 'ib2', cwd, prompt: 'is IBS dip buying still profitable?' });
   assert.ok(r && r.hookSpecificOutput.additionalContext.includes(ibs), 'IBS by name still recalls it\n' + (r?.hookSpecificOutput.additionalContext ?? ''));
+});
+
+test('title-phrase recall reaches the own domain\'s finding after a phrase that only other domains match (review 2026-10-25): three foreign hits on an early phrase no longer end the search', async () => {
+  const own = 'Trailing stop at 2.5 ATR cut the synthetic book drawdown 17%';
+  { const db = openDb(); installTemplate(db, loadTemplate('templates/solana.yaml'));
+    for (const v of ['A', 'B', 'C']) kbWrite(db, bank, { kind: 'finding', title: `Launch banner ${v} lifted synthetic wallet onboarding`, domain: 'solana', project: 'sol-ui', attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now);
+    kbWrite(db, bank, { kind: 'finding', title: own, domain: 'trading', project: 'ts2', attrs: { state: 'observed' }, evidence: [{ kind: 'path', ref: 'README.md' }] }, now);
+    db.sql.close(); }
+  const d5 = mkdtempSync(path.join(tmpdir(), 'ts-')); writeFileSync(path.join(d5, '.kb.json'), JSON.stringify({ project_id: 'ts', domain: 'trading' }));
+  const r: any = await userPrompt({ session_id: 'u10', cwd: d5, prompt: 'check the launch banner then the trailing stop' });
+  const t: string = r?.hookSpecificOutput.additionalContext ?? '';
+  assert.ok(t.includes(own), 'the own domain\'s untagged finding is found by its title phrase\n' + t);
+  assert.ok(t.indexOf(own) < t.indexOf('Launch banner'), 'and listed before the other domain\'s\n' + t);
 });
 
 test('when the bank query throws, the last successful brief cached in state.json is injected (DESIGN §3.1)', async () => {

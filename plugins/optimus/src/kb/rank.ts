@@ -25,10 +25,13 @@ const marks = (xs: unknown[]) => xs.map(() => '?').join(',');
 const ids = (rows: unknown[]) => (rows as { id: string }[]).map((r) => r.id);
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Concept ids for names: the alias table (a concept's own title is in it too), else the deterministic id the name would get (§4.7). */
+/** Concept ids for names: the alias table (a concept's own title is in it too), else the deterministic id the name would get (§4.7) —
+ *  unless that slot holds a concept of another name (the four concepts minted before the 2026-10-25 normaliser change: "ibs" at c_ib…),
+ *  in which case the name maps to nothing rather than to the occupant. */
 export function conceptIds(db: Db, names: string[]): string[] {
-  const q = db.sql.prepare('SELECT concept_id FROM alias WHERE name_norm=?');
-  return [...new Set(names.map((n) => (q.get(normalizeName(n)) as { concept_id: string } | undefined)?.concept_id ?? conceptNoteId(n)))];
+  const q = db.sql.prepare('SELECT concept_id FROM alias WHERE name_norm=?'), title = db.sql.prepare('SELECT title FROM note WHERE id=?');
+  const slot = (n: string) => { const id = conceptNoteId(n), t = (title.get(id) as { title: string } | undefined)?.title; return t === undefined || normalizeName(t) === normalizeName(n) ? id : undefined; };
+  return [...new Set(names.map((n) => (q.get(normalizeName(n)) as { concept_id: string } | undefined)?.concept_id ?? slot(n)))].filter((id): id is string => !!id);
 }
 /** Live, non-superseded findings `about` any of the concepts. */
 export function findingsAbout(db: Db, concepts: string[]): string[] {
@@ -55,14 +58,17 @@ export function findingsByTitlePhrase(db: Db, prompt: string, domain: string | u
   const toks = prompt.toLowerCase().replace(/\S*[\\/]\S+/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t));
   const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
   // 2026-10-25: the project's own domain first, then any other (the same rule as findingsAboutIn); before, other domains were never searched.
-  const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING} ORDER BY CASE WHEN n.domain=? THEN 0 ELSE 1 END, n.id LIMIT ?`);
-  const ids: string[] = [], hit: string[] = [];
+  // Own and other are bucketed across every phrase: when the cap counted both, three foreign hits on an early phrase ended the loop before
+  // a later phrase could reach the own domain's finding (found in review the same day; the old domain filter had made that impossible).
+  const q = db.sql.prepare(`SELECT n.id, n.domain FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING} ORDER BY CASE WHEN n.domain=? THEN 0 ELSE 1 END, n.id LIMIT ?`);
+  const own: string[] = [], other: string[] = [], hit: string[] = [];
   for (const p of phrases) {
-    const rows = q.all(`title:"${p}"`, domain ?? null, limit) as { id: string }[];
-    if (rows.length) { hit.push(p); for (const r of rows) if (!ids.includes(r.id)) ids.push(r.id); }
-    if (ids.length >= limit) break;
+    const rows = q.all(`title:"${p}"`, domain ?? null, limit) as { id: string; domain: string | null }[];
+    if (rows.length) hit.push(p);
+    for (const r of rows) if (!own.includes(r.id) && !other.includes(r.id)) (domain && r.domain === domain ? own : other).push(r.id);
+    if ((domain ? own : other).length >= limit) break;
   }
-  return { ids: ids.slice(0, limit), phrases: hit };
+  return { ids: [...own, ...other].slice(0, limit), phrases: hit };
 }
 /** Live, non-superseded findings recorded in any of the projects. */
 export function findingsIn(db: Db, projects: string[]): string[] {

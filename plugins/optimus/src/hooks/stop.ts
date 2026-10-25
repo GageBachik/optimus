@@ -6,7 +6,7 @@ import { writeFileAtomic } from '../lib/atomic.js';
 import { redactJson } from '../lib/redaction.js';
 import { readTranscript, textOf, type TranscriptEntry } from '../lib/transcript.js';
 import { loadState } from '../lib/session-state.js';
-import { spawnKbSync } from '../lib/kb-sync.js';
+import { bankDirty, spawnKbSync } from '../lib/kb-sync.js';
 import { log } from '../lib/log.js';
 import { type LastSession, type TaskState, extractTaskState, recallPointers } from '../compaction/task-state.js';
 import { buildDrafts, draftKey, existingDraftKeys, writeDrafts, type DraftSpec } from '../compaction/drafts.js';
@@ -45,8 +45,8 @@ const askText = (cfg: ProjectConfig, ask: DraftSpec['records']) => [
   ...ask.map((r) => `- ${r.title}`),
 ].join('\n');
 
-// DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample; runs `kb sync` when the turn called kb_write or
-// the last sync is older than 60 s.
+// DESIGN §3.1 / §3.11: main agent only; writes the last-session record and one usage sample; runs `kb sync` when the turn called kb_write,
+// the last sync is older than 60 s, or the bank holds an uncommitted change.
 // v1.6: the session records its own findings. The turn's measured statements are drafted into the project's log, and when the turn recorded
 // nothing itself, the hook asks the session once (decision "block" with the candidates) to judge and write the durable ones. The log is
 // never something a person has to process by hand.
@@ -78,10 +78,13 @@ export async function stop(input: HookInput) {
   // Ruling R2: a turn without usage fields (or no transcript) still gets a line with nulls, so the measurement never skips a turn silently.
   const u = [...entries].reverse().find((e) => e.type === 'assistant' && e.message?.usage)?.message?.usage ?? {};
   appendFileSync(path.join(paths.stateDir(), 'metrics.jsonl'), JSON.stringify({ at, session: sessionId, input: u.input_tokens ?? null, cache_read: u.cache_read_input_tokens ?? null, cache_create: u.cache_creation_input_tokens ?? null }) + '\n');
-  // DESIGN §4.4: sync when the turn wrote to the bank, or when the last sync is older than 60 s; never synced (unparsable date) counts as 0.
-  // 2026-10-25, a T3 Code thread: the asking stop synced, the thread then wrote two findings, and the continued stop 14 s later skipped the
-  // sync, so the findings sat uncommitted until an unrelated session happened to sync. A turn that wrote always ships what it wrote.
-  if (wrote || Date.now() - (Date.parse(paths.config().lastSyncAt ?? '') || 0) > 60_000) spawnKbSync();
+  // DESIGN §4.4: sync when the turn wrote to the bank, when the last sync is older than 60 s (never synced, an unparsable date, counts as 0),
+  // or when the bank holds a change no sync has committed. 2026-10-25, a T3 Code thread: the asking stop synced, the thread then wrote two
+  // findings, and the continued stop 14 s later skipped the sync, so the findings sat uncommitted until an unrelated session happened to
+  // sync. The same night's review: a subagent's kb_write, a kb_link re-export and a CLI write never show in the main transcript either, so
+  // the bank's own state decides when the transcript shows nothing.
+  const stale = Date.now() - (Date.parse(paths.config().lastSyncAt ?? '') || 0) > 60_000;
+  if (wrote || stale || bankDirty()) spawnKbSync();
   if (cfg && ask.length) { log('info', 'stop: asked the session to record', { project: cfg.project_id, candidates: ask.length }); return { decision: 'block' as const, reason: askText(cfg, ask) }; }
   return undefined;
 }

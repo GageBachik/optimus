@@ -10,7 +10,12 @@ export type CompareRow = {
 
 const live = (db: Db, id: string) => { const n = getNote(db, id); return n && !n.deleted_at ? n : undefined; };
 /** A concept id as given, else the concept a title or alias names (§4.7). */
-export const resolveConceptRef = (db: Db, ref: string): string => (ref.startsWith('c_') && live(db, ref) ? ref : conceptIds(db, [ref])[0]);
+export const resolveConceptRef = (db: Db, ref: string): string => {
+  if (ref.startsWith('c_') && live(db, ref)) return ref;
+  const id = conceptIds(db, [ref])[0]; // undefined since 2026-10-25 when the name's slot holds a concept of another name
+  if (!id) throw new Error(`no concept named "${ref}"`);
+  return id;
+};
 
 /** DESIGN §4.9: one row per live finding `about` the concept. approachValue = the `facet:<facet_key>` attr of the approach it is `about`
  *  (only that key when `facetKey` is given); metric = its first `metric:*` attr (`<value>|<unit>|<better>|<baseline>`); target = the title of
