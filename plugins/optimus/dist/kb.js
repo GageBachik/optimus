@@ -109,17 +109,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path19) {
-      const ctrl = callVisitor(key, node, visitor, path19);
+    function visit_(key, node, visitor, path20) {
+      const ctrl = callVisitor(key, node, visitor, path20);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path19, ctrl);
-        return visit_(key, ctrl, visitor, path19);
+        replaceNode(key, path20, ctrl);
+        return visit_(key, ctrl, visitor, path20);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path19 = Object.freeze(path19.concat(node));
+          path20 = Object.freeze(path20.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path19);
+            const ci = visit_(i, node.items[i], visitor, path20);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -130,13 +130,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path19 = Object.freeze(path19.concat(node));
-          const ck = visit_("key", node.key, visitor, path19);
+          path20 = Object.freeze(path20.concat(node));
+          const ck = visit_("key", node.key, visitor, path20);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path19);
+          const cv = visit_("value", node.value, visitor, path20);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -157,17 +157,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path19) {
-      const ctrl = await callVisitor(key, node, visitor, path19);
+    async function visitAsync_(key, node, visitor, path20) {
+      const ctrl = await callVisitor(key, node, visitor, path20);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path19, ctrl);
-        return visitAsync_(key, ctrl, visitor, path19);
+        replaceNode(key, path20, ctrl);
+        return visitAsync_(key, ctrl, visitor, path20);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path19 = Object.freeze(path19.concat(node));
+          path20 = Object.freeze(path20.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path19);
+            const ci = await visitAsync_(i, node.items[i], visitor, path20);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -178,13 +178,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path19 = Object.freeze(path19.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path19);
+          path20 = Object.freeze(path20.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path20);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path19);
+          const cv = await visitAsync_("value", node.value, visitor, path20);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -211,23 +211,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path19) {
+    function callVisitor(key, node, visitor, path20) {
       if (typeof visitor === "function")
-        return visitor(key, node, path19);
+        return visitor(key, node, path20);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path19);
+        return visitor.Map?.(key, node, path20);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path19);
+        return visitor.Seq?.(key, node, path20);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path19);
+        return visitor.Pair?.(key, node, path20);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path19);
+        return visitor.Scalar?.(key, node, path20);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path19);
+        return visitor.Alias?.(key, node, path20);
       return void 0;
     }
-    function replaceNode(key, path19, node) {
-      const parent = path19[path19.length - 1];
+    function replaceNode(key, path20, node) {
+      const parent = path20[path20.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -839,10 +839,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path19, value2) {
+    function collectionFromPath(schema, path20, value2) {
       let v = value2;
-      for (let i = path19.length - 1; i >= 0; --i) {
-        const k = path19[i];
+      for (let i = path20.length - 1; i >= 0; --i) {
+        const k = path20[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -861,7 +861,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path19) => path19 == null || typeof path19 === "object" && !!path19[Symbol.iterator]().next().done;
+    var isEmptyPath = (path20) => path20 == null || typeof path20 === "object" && !!path20[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -891,11 +891,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path19, value2) {
-        if (isEmptyPath(path19))
+      addIn(path20, value2) {
+        if (isEmptyPath(path20))
           this.add(value2);
         else {
-          const [key, ...rest] = path19;
+          const [key, ...rest] = path20;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value2);
@@ -909,8 +909,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path19) {
-        const [key, ...rest] = path19;
+      deleteIn(path20) {
+        const [key, ...rest] = path20;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -924,8 +924,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path19, keepScalar) {
-        const [key, ...rest] = path19;
+      getIn(path20, keepScalar) {
+        const [key, ...rest] = path20;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -943,8 +943,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path19) {
-        const [key, ...rest] = path19;
+      hasIn(path20) {
+        const [key, ...rest] = path20;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -954,8 +954,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path19, value2) {
-        const [key, ...rest] = path19;
+      setIn(path20, value2) {
+        const [key, ...rest] = path20;
         if (rest.length === 0) {
           this.set(key, value2);
         } else {
@@ -3470,9 +3470,9 @@ var require_Document = __commonJS({
           this.contents.add(value2);
       }
       /** Adds a value to the document. */
-      addIn(path19, value2) {
+      addIn(path20, value2) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path19, value2);
+          this.contents.addIn(path20, value2);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3547,14 +3547,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path19) {
-        if (Collection.isEmptyPath(path19)) {
+      deleteIn(path20) {
+        if (Collection.isEmptyPath(path20)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path19) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path20) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3569,10 +3569,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path19, keepScalar) {
-        if (Collection.isEmptyPath(path19))
+      getIn(path20, keepScalar) {
+        if (Collection.isEmptyPath(path20))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path19, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path20, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3583,10 +3583,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path19) {
-        if (Collection.isEmptyPath(path19))
+      hasIn(path20) {
+        if (Collection.isEmptyPath(path20))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path19) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path20) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3603,13 +3603,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path19, value2) {
-        if (Collection.isEmptyPath(path19)) {
+      setIn(path20, value2) {
+        if (Collection.isEmptyPath(path20)) {
           this.contents = value2;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path19), value2);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path20), value2);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path19, value2);
+          this.contents.setIn(path20, value2);
         }
       }
       /**
@@ -5570,9 +5570,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path19) => {
+    visit.itemAtPath = (cst, path20) => {
       let item = cst;
-      for (const [field, index] of path19) {
+      for (const [field, index] of path20) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5581,23 +5581,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path19) => {
-      const parent = visit.itemAtPath(cst, path19.slice(0, -1));
-      const field = path19[path19.length - 1][0];
+    visit.parentCollection = (cst, path20) => {
+      const parent = visit.itemAtPath(cst, path20.slice(0, -1));
+      const field = path20[path20.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path19, item, visitor) {
-      let ctrl = visitor(item, path19);
+    function _visit(path20, item, visitor) {
+      let ctrl = visitor(item, path20);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path19.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path20.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5608,10 +5608,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path19);
+            ctrl = ctrl(item, path20);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path19) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path20) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7364,7 +7364,7 @@ var require_dist = __commonJS({
 
 // src/cli/index.ts
 import os4 from "node:os";
-import path18 from "node:path";
+import path19 from "node:path";
 
 // src/cli/doctor.ts
 import { existsSync as existsSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync3, unlinkSync as unlinkSync2 } from "node:fs";
@@ -7662,8 +7662,8 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/lib/transcript.ts
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
-function readTranscript(path19, fromOffset = 0) {
-  const fd = openSync(path19, "r");
+function readTranscript(path20, fromOffset = 0) {
+  const fd = openSync(path20, "r");
   try {
     const size = fstatSync(fd).size;
     if (fromOffset >= size) return { entries: [], toOffset: size };
@@ -8643,10 +8643,10 @@ function createConcept(db, name, now) {
 }
 function resolveConcept(db, bankDir, tag, now) {
   tag = redactSensitive(tag).text;
-  const norm = normalizeName(tag), all = concepts(db);
-  const exact = all.find((c) => normalizeName(c.title) === norm);
+  const norm2 = normalizeName(tag), all = concepts(db);
+  const exact = all.find((c) => normalizeName(c.title) === norm2);
   if (exact) return { conceptId: exact.id, how: "exact" };
-  const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm);
+  const hit = db.sql.prepare(`SELECT a.concept_id AS id FROM alias a JOIN note n ON n.id=a.concept_id WHERE a.name_norm=? AND n.deleted_at IS NULL`).get(norm2);
   if (hit) return { conceptId: hit.id, how: "alias" };
   const t = tokens(tag), best = /* @__PURE__ */ new Map();
   for (const c of all) for (const name of [c.title, ...getAttrs(db, c.id).alias ?? []]) {
@@ -8659,7 +8659,7 @@ function resolveConcept(db, bankDir, tag, now) {
     const [id2, { score }] = top;
     addAlias(db, id2, [tag], now);
     exportNote(db, bankDir, id2);
-    log2(bankDir, `- ${now.slice(0, 10)} auto-merged "${tag}" into ${getNote(db, id2).title} (dice ${score.toFixed(2)}) \xB7 undo: kb concepts split "${norm}"`);
+    log2(bankDir, `- ${now.slice(0, 10)} auto-merged "${tag}" into ${getNote(db, id2).title} (dice ${score.toFixed(2)}) \xB7 undo: kb concepts split "${norm2}"`);
     return { conceptId: id2, how: "auto-alias", score };
   }
   const id = createConcept(db, tag, now);
@@ -8952,7 +8952,7 @@ function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()
 
 // src/cli/index.ts
 var import_yaml4 = __toESM(require_dist(), 1);
-import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync15, unlinkSync as unlinkSync3, writeFileSync as writeFileSync7 } from "node:fs";
+import { existsSync as existsSync15, mkdirSync as mkdirSync9, readFileSync as readFileSync16, unlinkSync as unlinkSync3, writeFileSync as writeFileSync7 } from "node:fs";
 
 // src/kb/auto-register.ts
 import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync5 } from "node:fs";
@@ -9928,6 +9928,405 @@ function generateMap(db, outFile = path17.join(paths.stateDir(), "map.html"), to
   return outFile;
 }
 
+// src/kb/build.ts
+import { existsSync as existsSync14, readdirSync as readdirSync8, readFileSync as readFileSync15, statSync as statSync7 } from "node:fs";
+import path18 from "node:path";
+var STATES = ["unverified", "observed", "reproduced", "conflicting"];
+var MEMORY_ORIGINS2 = ["serena", "claude-memory", "codex"];
+var SHARD_SIZE = 36;
+var DOC_LIMIT = 40;
+var DOC_MIN_BYTES = 100;
+var DOC_MAX_BYTES = 4e5;
+var DOC_DEPTH = 2;
+var DOC_SKIP = /* @__PURE__ */ new Set(["node_modules", ".git", ".claude", ".serena", "out", "backups", "__pycache__", "logs", "cache", "data"]);
+var DOC_EXT = /\.(md|txt|toml|json)$/i;
+var DOC_SKIP_NAME = /^(package-lock|res_|log_)/;
+var DOC_FIRST = /readme|playbook|brief|handoff|edges|schemas|research_pipeline|context|design|decisions|results|findings/i;
+var NARRATION = /\b(?:I'll|I'm|I've|we'll|we're|let me|let's|pushed|committed|now|verifying|checking|today|yesterday|tomorrow|you(?:r|'d|'re|'ll|'ve)?|meanwhile|loading|waiting|in the background|(?:is|are|still) running)\b|^(?:I|we|say|still|then|next)\b|\?/i;
+var HEADINGS = ["## Claim", "## Why it matters", "## Applies when / does not establish", "## Evidence"];
+var KINDS2 = ["approach", "target", "finding", "theme", "experiment"];
+var fwd = (p) => p.replace(/\\/g, "/");
+var vocabularyOf = (t) => ({ facets: t.facets, gates: t.gates, methods: t.methods, states: STATES, environment: t.environment, subject: t.subject });
+function vocabularyFor(db, domain) {
+  const t = templateFor(db, domain);
+  if (!t) throw new Error(`no template for domain ${domain} in the index (kb rebuild installs the bank's templates)`);
+  return vocabularyOf(t);
+}
+function findProjectConfig(cwd) {
+  let dir = path18.resolve(cwd);
+  for (let i = 0; i < 8; i++) {
+    const f = path18.join(dir, ".kb.json");
+    if (existsSync14(f)) {
+      try {
+        const c = JSON.parse(readFileSync15(f, "utf8"));
+        if (c && typeof c.project_id === "string" && typeof c.domain === "string") return { dir, config: c };
+      } catch {
+      }
+      return null;
+    }
+    const up = path18.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+function resolveBuildProject(db, cwd, opts = {}) {
+  const found = findProjectConfig(opts.repo ?? cwd);
+  const project = opts.project ?? found?.config.project_id;
+  if (!project) throw new Error(`no .kb.json at or above ${path18.resolve(opts.repo ?? cwd)}; pass --project <id>`);
+  const matches = found && found.config.project_id === project ? found : null;
+  const repo = path18.resolve(opts.repo ?? matches?.dir ?? cwd);
+  const indexed = db.sql.prepare("SELECT domain, COUNT(*) AS n FROM note WHERE project=? AND domain IS NOT NULL AND deleted_at IS NULL GROUP BY domain ORDER BY n DESC, domain LIMIT 1").get(project)?.domain;
+  const domain = matches?.config.domain ?? indexed;
+  if (!domain) throw new Error(`no domain known for project ${project}: run from its folder (.kb.json) or pass --repo <dir>`);
+  return { project, domain, repo };
+}
+function memoriesOf(db, bank, project) {
+  const rows = db.sql.prepare(`SELECT n.id, n.title, n.device_id, LENGTH(n.body) AS bytes,
+    (SELECT value FROM attr WHERE note_id=n.id AND key='origin') AS origin, (SELECT value FROM attr WHERE note_id=n.id AND key='source_path') AS source_path
+    FROM note n WHERE n.kind='evidence' AND n.deleted_at IS NULL AND n.project=? AND (SELECT value FROM attr WHERE note_id=n.id AND key='origin') IN (${MEMORY_ORIGINS2.map(() => "?").join(",")}) ORDER BY n.created_at, n.id`).all(project, ...MEMORY_ORIGINS2);
+  return rows.map((r) => ({ id: r.id, title: r.title, origin: r.origin, device: r.device_id, bytes: r.bytes, source_path: r.source_path, bank_file: fwd(path18.join(bank, "notes", "evidence", `${r.id}.md`)) }));
+}
+function repoDocs(repo) {
+  const found = [];
+  const walk = (d, depth) => {
+    let es;
+    try {
+      es = readdirSync8(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of es) {
+      const p = path18.join(d, e.name);
+      if (e.isDirectory()) {
+        if (depth < DOC_DEPTH && !DOC_SKIP.has(e.name) && !e.name.startsWith(".") && !e.name.startsWith("backup")) walk(p, depth + 1);
+      } else if (DOC_EXT.test(e.name) && !DOC_SKIP_NAME.test(e.name)) {
+        try {
+          const s = statSync7(p);
+          if (s.size > DOC_MIN_BYTES && s.size < DOC_MAX_BYTES) found.push({ file: fwd(p), bytes: s.size });
+        } catch {
+        }
+      }
+    }
+  };
+  if (existsSync14(repo)) walk(repo, 0);
+  const score = (f) => DOC_FIRST.test(f.file) ? 0 : 1;
+  return found.sort((a, b) => score(a) - score(b) || a.file.localeCompare(b.file)).slice(0, DOC_LIMIT);
+}
+function buildManifest(db, bank, p, shardSize = SHARD_SIZE) {
+  if (!Number.isInteger(shardSize) || shardSize < 1) throw new Error("--shard needs a whole number of memories per shard, at least 1");
+  const vocabulary = vocabularyFor(db, p.domain), notes = memoriesOf(db, bank, p.project), docs = repoDocs(p.repo), repo = fwd(p.repo);
+  const n = Math.max(1, Math.ceil(notes.length / shardSize)), shards = [];
+  for (let i = 0; i < n; i++) shards.push({ project: p.project, domain: p.domain, repo, shard: `${i + 1}/${n}`, notes: notes.slice(i * shardSize, (i + 1) * shardSize), docs: i === 0 ? docs : [], docs_note: i === 0 ? "" : "repo docs were given to shard 1 of this project", vocabulary });
+  return shards;
+}
+var shardLine = (s) => `${s.project.padEnd(24)} ${s.shard.padEnd(5)} notes ${String(s.notes.length).padStart(3)} bytes ${String(s.notes.reduce((a, b) => a + b.bytes, 0)).padStart(7)} docs ${String(s.docs.length).padStart(2)} ${s.docs.slice(0, 3).map((x) => path18.basename(x.file)).join(",")}`;
+function parseKeys(arg) {
+  if (!arg) return [];
+  if (existsSync14(arg)) {
+    const j = JSON.parse(readFileSync15(arg, "utf8"));
+    if (Array.isArray(j)) return j.map(String);
+    return (j?.records ?? []).map((r) => r.key).filter((k) => typeof k === "string" && k.length > 0);
+  }
+  return arg.split(",").map((s) => s.trim()).filter(Boolean);
+}
+var norm = (s) => String(s).replace(/\s+/g, " ").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\*\*/g, "").trim().toLowerCase();
+function validateSpec(spec, vocab, opts = {}) {
+  const facets = new Set(vocab.facets), gates = new Set(vocab.gates), states = new Set(vocab.states), methods = new Set(vocab.methods);
+  const extKeys = opts.extKeys ?? [], problems = [], keys = new Map(extKeys.map((k) => [k, "external"])), keep = [];
+  const recs = Array.isArray(spec.records) ? spec.records : [];
+  if (!spec.defaults?.domain || !spec.defaults?.project) problems.push("spec.defaults needs domain and project");
+  if (opts.project && spec.defaults?.project && spec.defaults.project !== opts.project) problems.push(`spec.defaults.project ${spec.defaults.project} is not ${opts.project}`);
+  const cache = /* @__PURE__ */ new Map();
+  const readSource = (ref) => {
+    if (cache.has(ref)) return cache.get(ref);
+    let t = null;
+    try {
+      t = opts.readSource ? opts.readSource(ref) : existsSync14(ref) && statSync7(ref).isFile() ? readFileSync15(ref, "utf8") : null;
+    } catch {
+      t = null;
+    }
+    cache.set(ref, t);
+    return t;
+  };
+  recs.forEach((r, i) => {
+    const where = `#${i} ${r.kind} "${String(r.title ?? "").slice(0, 70)}"`, bad = (m) => problems.push(`${where}: ${m}`);
+    let ok = true;
+    if (!KINDS2.includes(r.kind ?? "")) {
+      bad(`kind ${r.kind}`);
+      ok = false;
+    }
+    if (typeof r.title !== "string" || r.title.length < 12 || r.title.length > 220) {
+      bad("title length (12-220)");
+      ok = false;
+    }
+    if (r.key) {
+      if (keys.has(r.key)) {
+        bad("duplicate key");
+        ok = false;
+      }
+      keys.set(r.key, r.kind ?? "");
+    }
+    for (const [k, v] of Object.entries(r.facets ?? {})) {
+      if (r.kind === "target" ? !["environment", "subject"].includes(k) : !facets.has(k)) {
+        bad(`facet ${k} not in the template (${r.kind === "target" ? "environment, subject" : vocab.facets.join(", ")})`);
+        ok = false;
+      }
+      if (typeof v !== "string" || !v) {
+        bad(`facet ${k} empty`);
+        ok = false;
+      }
+    }
+    if (r.kind === "target" && (!r.facets?.environment || !r.facets?.subject)) {
+      bad("target needs facets.environment and facets.subject");
+      ok = false;
+    }
+    if (r.kind === "finding" && r.facets) {
+      bad("facets belong on approaches and targets, not findings");
+      ok = false;
+    }
+    if (r.kind === "experiment" && r.method && !methods.has(r.method)) {
+      bad(`method ${r.method} not in the template (${vocab.methods.join(", ")})`);
+      ok = false;
+    }
+    for (const l of r.rels ?? []) {
+      if (typeof l.dst !== "string") {
+        bad("rel without dst");
+        ok = false;
+        continue;
+      }
+      if (l.dst.startsWith("@") && !keys.has(l.dst.slice(1))) {
+        bad(`rel to unknown or later key ${l.dst}`);
+        ok = false;
+      }
+      if (l.type === "about" && typeof l.props?.facet_key === "string" && !facets.has(l.props.facet_key)) {
+        bad(`about facet_key ${l.props.facet_key}`);
+        ok = false;
+      }
+      if (l.type === "validated_in" && typeof l.props?.gate === "string" && !gates.has(l.props.gate)) {
+        bad(`validated_in gate ${l.props.gate}`);
+        ok = false;
+      }
+      if (l.type === "transfer") {
+        bad("transfers are proposed by kb write itself");
+        ok = false;
+      }
+    }
+    if (r.kind === "finding") {
+      const a = r.attrs ?? {}, title = String(r.title ?? "");
+      if (!states.has(String(a.state))) {
+        bad(`attrs.state ${a.state} (${vocab.states.join("|")})`);
+        ok = false;
+      }
+      if (a.gate !== void 0 && !gates.has(String(a.gate))) {
+        bad(`attrs.gate ${a.gate} (${vocab.gates.join("|")})`);
+        ok = false;
+      }
+      if (a.valid_from !== void 0 && !/^\d{4}-\d{2}-\d{2}$/.test(String(a.valid_from))) {
+        bad("valid_from not YYYY-MM-DD");
+        ok = false;
+      }
+      if (!/\d/.test(title)) {
+        bad("a finding title carries a number");
+        ok = false;
+      }
+      if (NARRATION.test(title)) {
+        bad("title reads as narration, advice or a question");
+        ok = false;
+      }
+      if (!Array.isArray(r.tags) || r.tags.length < 1 || r.tags.length > 5) {
+        bad("1-5 tags");
+        ok = false;
+      }
+      for (const m of r.metrics ?? []) {
+        if (typeof m?.name !== "string" || !/^[a-z][a-z0-9_]*$/.test(m.name) || typeof m.value !== "number" || !["higher", "lower"].includes(String(m.better))) {
+          bad(`metric ${JSON.stringify(m)} (snake_case name, numeric value, better higher|lower)`);
+          ok = false;
+        }
+      }
+      const ev = r.evidence ?? [];
+      if (!ev.length) {
+        bad("no evidence");
+        ok = false;
+      }
+      for (const e of ev) {
+        if (!["path", "commit", "url"].includes(e.kind ?? "")) {
+          bad(`evidence kind ${e.kind}`);
+          ok = false;
+        }
+        if (e.kind === "path" && !readSource(String(e.ref))) {
+          bad(`evidence path does not exist on this machine: ${e.ref}`);
+          ok = false;
+        }
+      }
+      const body = String(r.body ?? "");
+      for (const h of HEADINGS) if (!body.includes(h)) {
+        bad(`body lacks ${h}`);
+        ok = false;
+      }
+      const quotes = [...body.matchAll(/^> (.+)$/gm)].map((m) => m[1]);
+      if (!quotes.length) {
+        bad('body has no "> quote" line copied from the source');
+        ok = false;
+      } else {
+        const sources = ev.filter((e) => e.kind === "path").map((e) => readSource(String(e.ref))).filter((t) => !!t).map(norm);
+        const missing = quotes.filter((q) => {
+          const n = norm(q).replace(/^…|…$/g, "").replace(/\.\.\.$/, "").trim();
+          const probe = n.length > 60 ? n.slice(0, 60) : n;
+          return !sources.some((s) => s.includes(probe));
+        });
+        if (missing.length) {
+          bad(`quoted line not found verbatim in the cited path evidence: "${missing[0].slice(0, 70)}"`);
+          ok = false;
+        }
+      }
+    }
+    if (ok || r.kind !== "finding") keep.push(r);
+    else if (r.key) keys.delete(r.key);
+  });
+  const kept = /* @__PURE__ */ new Set([...extKeys, ...keep.map((r) => r.key).filter((k) => !!k)]);
+  const fixedRecords = keep.map((r) => r.rels ? { ...r, rels: r.rels.filter((l) => typeof l.dst !== "string" || !l.dst.startsWith("@") || kept.has(l.dst.slice(1))) } : r);
+  const count = (k) => recs.filter((r) => r.kind === k).length;
+  const fixed = { ...spec, defaults: { ...spec.defaults ?? {}, ...opts.project && !spec.defaults?.project ? { project: opts.project } : {} }, records: fixedRecords };
+  return { problems, records: recs.length, approaches: count("approach"), targets: count("target"), findings: count("finding"), keptFindings: keep.filter((r) => r.kind === "finding").length, fixed };
+}
+var validateSummary = (file, r) => `${file}: ${r.records} records (${r.approaches} approaches, ${r.targets} targets, ${r.findings} findings); ${r.problems.length} problem(s); ${r.keptFindings} findings pass`;
+function validatorRules(v) {
+  return [
+    `kinds approach, target, finding, theme, experiment; titles of 12-220 characters; a key (a1, t1, ...) is defined once`,
+    `approach facets only from the template: ${v.facets.join(", ")}; a target's facets are exactly environment and subject; a finding carries no facets`,
+    `an experiment's method is one of ${v.methods.length ? v.methods.join(", ") : "(the template names none)"}`,
+    `a rel's dst is a note id or @key defined earlier in the file (or passed with --keys from an earlier shard); about.props.facet_key is a template facet; validated_in.props.gate is a template gate; no transfer rels (kb write proposes those)`,
+    `a finding's attrs.state is ${v.states.join("|")}; attrs.gate is ${v.gates.join("|")}; valid_from is YYYY-MM-DD`,
+    `a finding's title carries a number and is not narration, advice or a question (no "I'll", "pushed", "now", "you", "?")`,
+    `a finding has 1-5 tags; each metric has a snake_case name, a numeric value and better higher|lower (unit and baseline optional)`,
+    `a finding has at least one evidence entry of kind path, commit or url, and every path exists on this machine`,
+    `a finding's body carries the headings ${HEADINGS.join(", ")} and at least one "> quote" line that appears verbatim (whitespace and bold ignored) in a cited path file`
+  ];
+}
+var TRADING_GATES = "Gates for trading: a backtest on the fitting period is in-sample; a holdout, walk-forward or forward test is out-of-sample; paper trading is paper; small live accounts are live-small; live is live.";
+var TRADING_EXAMPLES = `## Worked examples (verbatim bank records of a trading project, 2026-10-17)
+
+An approach (facets are the trading template's keys):
+
+title: "YoloLottery: all-in 0DTE SPY lottery ticket (3-5 delta, +500% target, no stop)"
+facets: horizon=0dte, instrument_class=etf-options, risk=all-in
+tags: [risk sizing]
+body: The core thesis strategy of the yolo harness: Sizing=AllIn, cheapest strike with 0.03 <= |delta| <= 0.05, exit at +500% vs average fill, hold to expiration (.serena/memories/phase_1_complete_phase_2_handoff.md).
+
+A target (facets are exactly environment and subject: platform x instrument):
+
+title: ThetaData backtest \xD7 SPY 0DTE options
+facets: environment="ThetaData backtest", subject="SPY 0DTE options"
+body: Historical SPY 0DTE chains from ThetaData (502 daily parquets, 2024-2026) replayed through yolo's fill simulator, dispatcher and the pipeline/ validation gates (bootstrap, walk-forward, MCPT).
+
+A finding (one dated, evidenced, declarative claim with the number in the title):
+
+title: GapFade 255-day sanity-gate baseline refreshed on 2026-05-21 to $306,010.08 / 23 active days / 430 fills post dispatcher remediation (a3519d2+4714fb1+ddadacd); old baseline $217,851.47 / 593 fills applied only up to ddadacd-1
+attrs: state=observed, gate=in-sample, valid_from=2026-05-21
+metrics: [{ name: pnl_usd, value: 306010.08, unit: usd, better: higher, baseline: 217851.47 }]
+tags: [data quality, fill leg multi, gap reversal]
+rels: about @approach (facet_key exit); validated_in @target (gate in-sample)
+evidence: [{ kind: path, ref: <home>/.claude/projects/<dashed-cwd>/memory/feedback_run_acceptance_gates_each_phase.md }]
+body:
+## Claim
+GapFade 255-day sanity-gate baseline refreshed on 2026-05-21 to $306,010.08 / 23 active days / 430 fills post dispatcher remediation (a3519d2+4714fb1+ddadacd); old baseline $217,851.47 / 593 fills applied only up to ddadacd-1
+
+## Why it matters
+Only the unit suites were run Phases 11-15, so the integrated economic number drifted ~3.4x unnoticed; end-to-end gates must run every phase and baselines must only be refreshed with written provenance.
+
+## Applies when / does not establish
+Deterministic 255-day in-sample reproduction gate (scripts/pipeline_gapfade_sanity.py); the $306k reflects the multi-leg partial-fill revert remediation, not an out-of-sample result, and the gate's own _run_one_day still has a 60s-timeout silent swallow.
+
+## Evidence
+> baseline refreshed to $306,010.08 / 23 active days / 430 fills post dispatcher remediation (a3519d2+4714fb1+ddadacd); old baseline ($217,851.47 / 593)
+
+<home>/.claude/projects/<dashed-cwd>/memory/feedback_run_acceptance_gates_each_phase.md
+
+Another finding title, for the register (quant research):
+
+"ES 10:00 vol regime predicts rest-of-day range (0.74x compressed vs 1.40x expanded, holds in 2020-26 holdout) but picks no profitable intraday strategy: 0/120 regime-strategy cells net t>=2 in 2010-19"
+metrics: har_logrv_oos_r2 0.6301 higher (baseline 0.5446); regime_first_holdout_net_bps_per_day -0.5825 higher; rod_range_ratio_compressed_holdout 0.7352 lower; rod_range_ratio_expanded_holdout 1.415 higher
+`;
+function specSkeleton(p, v) {
+  const gate = v.gates[0] ?? "<gate>", facet = v.facets[0] ?? "<facet>";
+  const skeleton = { defaults: { domain: p.domain, project: p.project }, records: [
+    { key: "a1", kind: "approach", title: "<name: one line saying what the approach, strategy or design is>", facets: Object.fromEntries(v.facets.map((f) => [f, `<${f.replace(/_/g, " ")}: the value this approach takes, or omit the key>`])), tags: ["<concept>"], body: "<one paragraph, citing the source memory or document path>" },
+    { key: "t1", kind: "target", title: "<environment> \xD7 <subject>", facets: { environment: `<${v.environment}, where it ran>`, subject: `<${v.subject}, what it acted on>` }, body: "<what runs there>" },
+    {
+      kind: "finding",
+      title: "<one declarative claim with the number(s)>",
+      tags: ["<2-4 concept words a future prompt would use>"],
+      attrs: { state: "observed", gate, valid_from: "YYYY-MM-DD" },
+      metrics: [{ name: "snake_case_name", value: 1.23, unit: "<unit or omit>", better: "higher", baseline: 1 }],
+      rels: [{ type: "about", dst: "@a1", props: { facet_key: facet } }, { type: "validated_in", dst: "@t1", props: { gate } }],
+      evidence: [{ kind: "path", ref: "<absolute path of the source memory file, or of the bank note file (bank_file) when the original is on another machine, or of a repo document>" }],
+      body: "## Claim\n<the title>\n\n## Why it matters\n<...>\n\n## Applies when / does not establish\n<scope; what it does not show>\n\n## Evidence\n> <a line copied verbatim from the cited source>\n\n<the cited path>"
+    }
+  ] };
+  return JSON.stringify(skeleton, null, 2);
+}
+function vocabularyBlock(p, v) {
+  return [
+    `## Vocabulary (the ${p.domain} template in the bank; nothing outside it passes)`,
+    `- approach facets: ${v.facets.join(", ")}`,
+    `- gates, weakest first: ${v.gates.join(" < ")}${p.domain === "trading" ? `. ${TRADING_GATES}` : ". Pick the gate the evidence actually passed, never a stronger one."}`,
+    `- experiment methods: ${v.methods.length ? v.methods.join(", ") : "(none in this template)"}`,
+    `- finding states: ${v.states.join(" | ")} (observed: one measurement in the source; reproduced: the source shows it twice or on two setups; conflicting: sources disagree; unverified: a claim without its number)`,
+    `- target axes: environment = ${v.environment} (where it ran), subject = ${v.subject} (what it acted on)`
+  ].join("\n");
+}
+function buildBrief(db, p, role = "extractor") {
+  const v = vocabularyFor(db, p.domain), cli = paths.kbCli(), rules = validatorRules(v).map((r) => `- ${r}`).join("\n");
+  if (role === "reviewer") {
+    return [
+      `# Knowledge build, reviewer brief: project ${p.project} (domain ${p.domain}, repo ${fwd(p.repo)})`,
+      "",
+      `You review the extractor shards of one project before anything reaches the bank. The judgement is yours; ${cli} build validate checks shape and quotes, ${cli} write records. The 2026-10-24 build dropped 83 of 121 candidates in one project at this step and merged 18: expect to drop and merge.`,
+      "",
+      "## What to do",
+      `1. Merge: concatenate the shard specs in shard order into one spec (defaults.domain ${p.domain}, defaults.project ${p.project}). Keys stay unique across shards (a rel to an earlier shard's key resolves once the files are one). An approach or target two shards both wrote is one record: keep one key, repoint the rels.`,
+      "2. Refute: for every finding, open the cited path and find the quote and the number. Drop a claim the source does not carry, a number the source states differently, a superseded figure (a later memory gives a newer number for the same thing), an ops log, a plan, a to-do, a worktree duplicate. The quote is copied, not paraphrased; the title restates the source, not what one would advise.",
+      "3. Deduplicate: the same claim from several memories is one finding with the strongest gate the sources support, every evidence path, the latest valid_from; copies of a memory (git worktrees, archived trees) are one source.",
+      `4. Enrich the repo's .kb.json: from the approaches and targets, set facets (one value per facet key where the project has a settled answer: ${v.facets.join(", ")}), target {environment, subject} and relies_on (the concept names the project's findings are tagged with), so the start-up brief ranks by them. Keep project_id and domain as they are.`,
+      `5. Validate, then record: ${cli} build validate <merged.json> (--fix drops the failing findings and strips rels to them; approaches and targets stay), then ${cli} write <merged.json>, then ${cli} sync. A large batch is rehearsed against a temporary bank first (OPTIMUS_HOME and OPTIMUS_BANK pointed at empty folders, ${cli} init --bank).`,
+      "",
+      vocabularyBlock(p, v),
+      "",
+      "## Rules the validator enforces",
+      rules,
+      ""
+    ].join("\n");
+  }
+  return [
+    `# Knowledge build, extractor brief: project ${p.project} (domain ${p.domain}, repo ${fwd(p.repo)})`,
+    "",
+    `You are one extractor in a knowledge build. Your shard of the manifest (${cli} build manifest) lists imported memories (evidence notes in the bank; source_path is the original file where it exists on this machine, bank_file the note that holds the same text) and, for shard 1, the repository's documents. Read every one in full. Write one ${cli} write spec (JSON) for this project: the approaches the memories describe, the targets they ran on, and every dated, evidenced, numbered claim as a finding. The thinking is yours; ${cli} build validate checks the shape and the quotes before a reviewer merges the shards.`,
+    "",
+    "## What to record",
+    `- approach: one record per strategy or design the project tried. The title names it in one line; the facets are the ${p.domain} template's keys (${v.facets.join(", ")}): fill the keys the source supports, omit the rest, never invent a key. Tag it with the concepts it relies on.`,
+    `- target: where it ran, as ${v.environment} \xD7 ${v.subject}; the facets are exactly environment and subject.`,
+    `- finding: one declarative claim with the number(s) in the title, dated (attrs.valid_from), with its state and gate, 1-5 tags (concept words a future prompt would use), metrics (snake_case name, numeric value, better higher|lower, unit and baseline when the source gives them), rels about @approach (props.facet_key: the facet the claim is about) and validated_in @target (props.gate), evidence (the memory's source_path, else its bank_file, else a repo document) and a body with the four headings ${HEADINGS.join(", ")}, the last with at least one "> quote" line copied verbatim from a cited path.`,
+    `- Not findings: ops logs, plans, to-do lists, superseded numbers, narration ("I'll", "pushed", "now"), advice and questions. A claim whose title has no number is not a finding here; a claim whose number is not in the source is not a finding anywhere.`,
+    "",
+    vocabularyBlock(p, v),
+    "",
+    `## The spec file (${cli} write reads it)`,
+    specSkeleton(p, v),
+    "",
+    "## Rules the validator enforces",
+    rules,
+    "",
+    "## Shards and keys",
+    "Keys (a1, t1, ...) are local to your file; a rel's @key points at a key defined earlier in the same file or in an earlier shard of this project (the reviewer passes --keys <earlier shard spec> when validating yours). Do not repeat another shard's approaches when you know their keys; otherwise write your own and let the reviewer merge.",
+    "",
+    ...p.domain === "trading" ? [TRADING_EXAMPLES] : [],
+    "## Commands",
+    `${cli} build validate <spec.json> [--keys <earlier-shard.json>] [--fix]   (exit 0 when every record passes; one line per failure)`,
+    ""
+  ].join("\n");
+}
+
 // src/cli/index.ts
 import { spawn } from "node:child_process";
 var [cmd, ...args] = process.argv.slice(2);
@@ -9937,12 +10336,13 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>] | kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>] | kb build brief [--project <id>] [--role extractor|reviewer] | kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
+var buildUsage = "usage: kb build manifest [--project <id>] [--repo <dir>] [--shard <n>] [--out <file>]\n       kb build brief [--project <id>] [--role extractor|reviewer]\n       kb build validate <spec.json> [--keys <keys.json>] [--fix] [--out <file>] [--project <id>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
     const r = sync(paths.bankDir());
-    if (!has("--quiet")) process.stdout.write(r === "failed" ? `sync: failed (details in ${path18.join(paths.logsDir(), "hooks.log")})
+    if (!has("--quiet")) process.stdout.write(r === "failed" ? `sync: failed (details in ${path19.join(paths.logsDir(), "hooks.log")})
 ` : `sync: ${r}
 `);
     if (r === "failed") process.exitCode = 1;
@@ -10058,7 +10458,7 @@ else if (cmd === "sync") {
     process.stderr.write("--root needs a directory\n");
     process.exitCode = 2;
   } else {
-    const db = openDb(), bank = paths.bankDir(), roots = [root ?? path18.join(home, "projects")];
+    const db = openDb(), bank = paths.bankDir(), roots = [root ?? path19.join(home, "projects")];
     const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
 `);
     try {
@@ -10076,11 +10476,11 @@ else if (cmd === "sync") {
 } else if (cmd === "write" && args[0]) {
   const db = openDb(), bank = paths.bankDir();
   try {
-    const spec = JSON.parse(readFileSync15(args[0] === "-" ? 0 : args[0], "utf8"));
+    const spec = JSON.parse(readFileSync16(args[0] === "-" ? 0 : args[0], "utf8"));
     const defaults = spec.defaults ?? {}, records = spec.records ?? spec;
     const ids2 = /* @__PURE__ */ new Map(), now = (/* @__PURE__ */ new Date()).toISOString();
     let written = 0, failed = 0, already = 0;
-    const draftFile = args[0] !== "-" && path18.basename(args[0]) === "draft-findings.json";
+    const draftFile = args[0] !== "-" && path19.basename(args[0]) === "draft-findings.json";
     for (const rec of records) {
       const { key, written: done, ...r } = rec;
       if (done) {
@@ -10121,15 +10521,15 @@ else if (cmd === "sync") {
     if (!/^[a-z0-9](?:[a-z0-9-]{0,24}[a-z0-9])?$/.test(name)) throw new Error("name: lowercase letters, digits and dashes, 1\u201326 characters, no trailing dash");
     if (facets.length < 2 || gates.length < 2) throw new Error("--facets and --gates each need at least two comma-separated entries");
     const bank = paths.bankDir();
-    if (!existsSync14(path18.join(bank, ".git"))) throw new Error(`${bank} is not a knowledge bank yet; run kb init first`);
-    const file = path18.join(bank, "templates", `${name}.yaml`);
-    if (existsSync14(file)) throw new Error(`domain ${name} exists (${file}); edit that file and run kb rebuild`);
+    if (!existsSync15(path19.join(bank, ".git"))) throw new Error(`${bank} is not a knowledge bank yet; run kb init first`);
+    const file = path19.join(bank, "templates", `${name}.yaml`);
+    if (existsSync15(file)) throw new Error(`domain ${name} exists (${file}); edit that file and run kb rebuild`);
     const db = openDb();
     try {
       const taken = getNote(db, templateNoteId(name));
       if (taken || installedDomains(db).includes(name)) throw new Error(`the name ${name} collides with the installed domain ${taken?.domain ?? name}; pick another`);
       const t = { domain: name, facets, methods, gates, environment: value("--environment") ?? "environment", subject: value("--subject") ?? "subject", keywords: [.../* @__PURE__ */ new Set([name, ...keywords])], seed_concepts: [] };
-      mkdirSync9(path18.dirname(file), { recursive: true });
+      mkdirSync9(path19.dirname(file), { recursive: true });
       writeFileSync7(file, (0, import_yaml4.stringify)(t));
       try {
         installTemplate(db, loadTemplate(file));
@@ -10175,6 +10575,64 @@ else if (cmd === "sync") {
     process.exitCode = 1;
   } finally {
     db.sql.close();
+  }
+} else if (cmd === "build") {
+  const sub = args[0], valued = /* @__PURE__ */ new Set(["--project", "--repo", "--shard", "--out", "--keys", "--role"]);
+  const positional = args.slice(1).filter((a, i, all) => !a.startsWith("--") && !valued.has(all[i - 1]))[0];
+  const missing = [...valued].find((f) => has(f) && (value(f) === void 0 || value(f).startsWith("--")));
+  if (!["manifest", "brief", "validate"].includes(sub)) {
+    process.stdout.write(buildUsage);
+    if (sub) process.exitCode = 2;
+  } else if (missing) {
+    process.stderr.write(`${missing} needs a value
+${buildUsage}`);
+    process.exitCode = 2;
+  } else if (sub === "validate" && !positional) {
+    process.stderr.write(`kb build validate needs a spec file
+${buildUsage}`);
+    process.exitCode = 2;
+  } else if (sub === "brief" && has("--role") && !["extractor", "reviewer"].includes(value("--role"))) {
+    process.stderr.write(`--role is extractor or reviewer
+${buildUsage}`);
+    process.exitCode = 2;
+  } else {
+    const db = openDb(), bank = paths.bankDir();
+    try {
+      if (sub === "validate") {
+        const file = positional, spec = JSON.parse(readFileSync16(file, "utf8"));
+        const domain = spec?.defaults?.domain ?? (has("--project") || existsSync15(path19.join(process.cwd(), ".kb.json")) ? resolveBuildProject(db, process.cwd(), { project: value("--project") }).domain : void 0);
+        if (!domain) throw new Error("spec.defaults.domain is missing and no project names a domain here (--project <id> or a .kb.json)");
+        const r = validateSpec(spec, vocabularyFor(db, domain), { extKeys: parseKeys(value("--keys")), project: value("--project") });
+        process.stdout.write(validateSummary(file, r) + "\n");
+        for (const p of r.problems) process.stdout.write(`  - ${p}
+`);
+        if (has("--fix")) {
+          const out = value("--out") ?? file;
+          writeFileAtomic(out, JSON.stringify(r.fixed, null, 1) + "\n");
+          process.stdout.write(`wrote ${out}: ${r.keptFindings} of ${r.findings} findings kept
+`);
+          if (r.problems.some((p) => !/^#\d+ finding /.test(p))) process.exitCode = 1;
+        } else if (r.problems.length) process.exitCode = 1;
+      } else {
+        const p = resolveBuildProject(db, process.cwd(), { project: value("--project"), repo: value("--repo") });
+        if (sub === "brief") process.stdout.write(buildBrief(db, p, value("--role") ?? "extractor"));
+        else {
+          const size = has("--shard") ? Number(value("--shard")) : void 0, shards = buildManifest(db, bank, p, size), out = value("--out");
+          if (out) {
+            writeFileAtomic(out, JSON.stringify(shards, null, 1) + "\n");
+            process.stdout.write(shards.map(shardLine).join("\n") + `
+wrote ${out}
+`);
+          } else process.stdout.write(JSON.stringify(shards, null, 1) + "\n");
+        }
+      }
+    } catch (e) {
+      process.stderr.write(`kb build ${sub}: ${e.message}
+`);
+      process.exitCode = 1;
+    } finally {
+      db.sql.close();
+    }
   }
 } else if (cmd === "compare" && args[0]) {
   const db = openDb(), name = args.join(" ");

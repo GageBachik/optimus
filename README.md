@@ -77,6 +77,7 @@ Agents your session spawns get the same project card and record what they measur
 | `kb concepts review` | Shows the open "merge X into Y?" questions |
 | `kb sync` | Commits the bank, pulls what other machines pushed, and pushes (also runs itself at the end of each turn) |
 | `kb import all [--root <dir>]` | Turns Serena memories under the root (default `~/projects`), Claude Code auto-memory and Codex memories into evidence notes; rerunning adds only what is new |
+| `kb build manifest\|brief\|validate` | Prepares a knowledge build of the imported memories: `manifest` lists a project's memories (every machine) and repo documents in shards for extractor agents, `brief --role extractor\|reviewer` prints an agent's instructions in the words of the project's domain template, `validate <spec.json>` refuses any record of a `kb write` spec that the template or its cited sources do not support (`--fix` drops the failing findings) |
 
 `kb` with no arguments lists everything.
 
