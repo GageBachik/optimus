@@ -75,6 +75,7 @@ Agents your session spawns get the same project card and record what they measur
 | `kb project init --domain <d>` | Files the current folder under a domain by hand |
 | `kb domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2` | Adds a new kind of project to the bank |
 | `kb concepts review` | Shows the open "merge X into Y?" questions |
+| `kb transfers prune [--apply]` | Lists (with `--apply`, withdraws) the proposed transfers the current rule would no longer propose; confirmed, refuted and provisional ones are never touched |
 | `kb sync` | Commits the bank, pulls what other machines pushed, and pushes (also runs itself at the end of each turn) |
 | `kb import all [--root <dir>]` | Turns Serena memories under the root (default `~/projects`), Claude Code auto-memory and Codex memories into evidence notes; rerunning adds only what is new |
 
