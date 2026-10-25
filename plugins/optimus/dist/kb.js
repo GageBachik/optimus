@@ -7367,96 +7367,135 @@ import os4 from "node:os";
 import path18 from "node:path";
 
 // src/cli/doctor.ts
-import { existsSync as existsSync4, readFileSync as readFileSync5, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync3, unlinkSync } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync6, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync3, unlinkSync as unlinkSync2 } from "node:fs";
 import { spawnSync as spawnSync2 } from "node:child_process";
-import path7 from "node:path";
+import path8 from "node:path";
 
 // src/lib/paths.ts
 import os from "node:os";
-import path from "node:path";
+import path2 from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { mkdirSync, existsSync as existsSync2, readFileSync as readFileSync2, realpathSync as realpathSync2, renameSync as renameSync2 } from "node:fs";
+
+// src/lib/atomic.ts
+import { writeFileSync, readFileSync, renameSync, realpathSync, existsSync, statSync, chmodSync, unlinkSync } from "node:fs";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
+function writeFileAtomic(filePath, data) {
+  const dir = realpathSync(path.dirname(filePath));
+  const target = path.join(dir, path.basename(filePath));
+  const tmp = path.join(dir, `.${path.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const mode = existsSync(target) ? statSync(target).mode & 511 : void 0;
+  writeFileSync(tmp, data, "utf8");
+  if (mode !== void 0) chmodSync(tmp, mode);
+  let lastErr;
+  for (let i = 0; i < 5; i++) {
+    try {
+      renameSync(tmp, target);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (!["EPERM", "EBUSY", "ENOENT"].includes(e?.code)) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try {
+    unlinkSync(tmp);
+  } catch {
+  }
+  throw lastErr;
+}
+
+// src/lib/paths.ts
 function ensure(p) {
-  if (!existsSync(p)) mkdirSync(p, { recursive: true });
+  if (!existsSync2(p)) mkdirSync(p, { recursive: true });
   return p;
 }
 var safe = (s) => s.replace(/[^A-Za-z0-9_-]/g, "_");
+var canonical = (p) => {
+  const r = path2.resolve(p);
+  try {
+    return realpathSync2.native(r);
+  } catch {
+    return r;
+  }
+};
+var defaultDeviceId = (host = os.hostname()) => host.split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-");
 var paths = {
   /** `~/.optimus` (or `OPTIMUS_HOME`). The plugin was called project-memory until 2026-10-20: an existing `~/.project-memory` with no `~/.optimus` beside it is renamed once. */
   stateDir() {
     if (!process.env.OPTIMUS_HOME) {
-      const home2 = os.homedir(), old = path.join(home2, ".project-memory"), now = path.join(home2, ".optimus");
-      if (existsSync(old) && !existsSync(now)) {
+      const home2 = os.homedir(), old = path2.join(home2, ".project-memory"), now = path2.join(home2, ".optimus");
+      if (existsSync2(old) && !existsSync2(now)) {
         try {
-          renameSync(old, now);
+          renameSync2(old, now);
         } catch {
         }
       }
     }
-    return ensure(path.normalize(process.env.OPTIMUS_HOME ?? path.join(os.homedir(), ".optimus")));
+    return ensure(path2.normalize(process.env.OPTIMUS_HOME ?? path2.join(os.homedir(), ".optimus")));
   },
   blobsDir() {
-    return ensure(path.join(this.stateDir(), "blobs"));
+    return ensure(path2.join(this.stateDir(), "blobs"));
   },
   sessionDir(sessionId, agentId = "main") {
-    return ensure(path.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
+    return ensure(path2.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
   },
   logsDir() {
-    return ensure(path.join(this.stateDir(), "logs"));
+    return ensure(path2.join(this.stateDir(), "logs"));
   },
   configPath() {
-    return path.join(this.stateDir(), "config.json");
+    return path2.join(this.stateDir(), "config.json");
   },
   config() {
     try {
-      const c = JSON.parse(readFileSync(this.configPath(), "utf8"));
+      const c = JSON.parse(readFileSync2(this.configPath(), "utf8"));
       return c && typeof c === "object" && !Array.isArray(c) ? c : {};
     } catch {
       return {};
     }
   },
   saveConfig(patch) {
-    const next = { ...this.config(), ...patch };
-    const tmp = this.configPath() + ".tmp";
-    writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
-    renameSync(tmp, this.configPath());
+    writeFileAtomic(this.configPath(), JSON.stringify({ ...this.config(), ...patch }, null, 2) + "\n");
   },
+  // the retrying rename: a reader holding config.json open on Windows makes a bare renameSync throw EPERM
   bankDir() {
-    return path.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path.join(os.homedir(), "knowledge-bank"));
+    return path2.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path2.join(os.homedir(), "knowledge-bank"));
   },
   projectKey(cwd) {
-    let dir = path.resolve(cwd);
+    const start = canonical(cwd);
+    let dir = start;
     for (let i = 0; i < 8; i++) {
-      const f = path.join(dir, ".kb.json");
-      if (existsSync(f)) {
+      const f = path2.join(dir, ".kb.json");
+      if (existsSync2(f)) {
         try {
-          const id = JSON.parse(readFileSync(f, "utf8")).project_id;
+          const id = JSON.parse(readFileSync2(f, "utf8")).project_id;
           if (typeof id === "string" && id) return id;
         } catch {
         }
       }
-      const up = path.dirname(dir);
+      const up = path2.dirname(dir);
       if (up === dir) break;
       dir = up;
     }
-    return createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
+    return createHash("sha256").update(start).digest("hex").slice(0, 16);
   },
   projectDir(key) {
-    return ensure(path.join(this.stateDir(), "projects", safe(key)));
+    return ensure(path2.join(this.stateDir(), "projects", safe(key)));
   },
   /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
    *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
   kbCli() {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node "${path.normalize(c).split(path.sep).join("/")}"`;
+    const here = path2.dirname(fileURLToPath(import.meta.url));
+    for (const c of [path2.join(here, "kb.js"), path2.join(here, "..", "..", "dist", "kb.js")]) if (existsSync2(c)) return `node "${path2.normalize(c).split(path2.sep).join("/")}"`;
     return "kb";
   }
 };
 
 // src/kb/db.ts
 import { createRequire as requireFrom } from "node:module";
-import path2 from "node:path";
+import path3 from "node:path";
 var DDL = `
 CREATE TABLE IF NOT EXISTS note(id TEXT PRIMARY KEY, kind TEXT NOT NULL, domain TEXT, project TEXT, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, device_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS attr(note_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(note_id, key, value));
@@ -7482,7 +7521,7 @@ function loadSqlite() {
     process.emitWarning = emit;
   }
 }
-function openDb(file = path2.join(paths.stateDir(), "kb.sqlite")) {
+function openDb(file = path3.join(paths.stateDir(), "kb.sqlite")) {
   const sql = new (loadSqlite()).DatabaseSync(file);
   sql.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA foreign_keys=ON;");
   sql.exec(DDL);
@@ -7491,7 +7530,7 @@ function openDb(file = path2.join(paths.stateDir(), "kb.sqlite")) {
   return { sql, file };
 }
 function deviceId() {
-  return process.env.OPTIMUS_DEVICE ?? paths.config().deviceId ?? "unknown";
+  return process.env.OPTIMUS_DEVICE ?? paths.config().deviceId ?? defaultDeviceId();
 }
 function upsertNote(db, n) {
   db.sql.prepare(`INSERT INTO note(id,kind,domain,project,title,body,created_at,updated_at,deleted_at,device_id) VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -7530,28 +7569,28 @@ function reindexFts(db, noteId2) {
 }
 
 // src/kb/project.ts
-import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import path4 from "node:path";
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+import path5 from "node:path";
 
 // src/lib/log.ts
 import { appendFileSync } from "node:fs";
-import path3 from "node:path";
+import path4 from "node:path";
 function log(level, msg, data) {
   try {
-    appendFileSync(path3.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+    appendFileSync(path4.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
   } catch {
   }
 }
 
 // src/kb/project.ts
 function loadProjectConfig(cwd) {
-  let dir = path4.resolve(cwd);
+  let dir = path5.resolve(cwd);
   for (let i = 0; i < 8; i++) {
-    const f = path4.join(dir, ".kb.json");
-    if (existsSync2(f)) {
+    const f = path5.join(dir, ".kb.json");
+    if (existsSync3(f)) {
       let c;
       try {
-        c = JSON.parse(readFileSync2(f, "utf8"));
+        c = JSON.parse(readFileSync3(f, "utf8"));
       } catch (e) {
         log("warn", `.kb.json at ${f} is not valid JSON; ignored`, String(e));
         return null;
@@ -7562,7 +7601,7 @@ function loadProjectConfig(cwd) {
       }
       return c;
     }
-    const up = path4.dirname(dir);
+    const up = path5.dirname(dir);
     if (up === dir) break;
     dir = up;
   }
@@ -7570,14 +7609,14 @@ function loadProjectConfig(cwd) {
 }
 
 // src/cli/baseline.ts
-import { readdirSync, readFileSync as readFileSync3, statSync } from "node:fs";
-import path5 from "node:path";
+import { readdirSync, readFileSync as readFileSync4, statSync as statSync2 } from "node:fs";
+import path6 from "node:path";
 function computeBaseline(projectsDir) {
   const files = [];
   const walk = (d) => {
     for (const f of readdirSync(d)) {
-      const p = path5.join(d, f);
-      if (statSync(p).isDirectory()) {
+      const p = path6.join(d, f);
+      if (statSync2(p).isDirectory()) {
         if (f !== "subagents") walk(p);
       } else if (f.endsWith(".jsonl")) files.push(p);
     }
@@ -7587,7 +7626,7 @@ function computeBaseline(projectsDir) {
   let compactions = 0, cacheRead = 0, total = 0;
   for (const f of files) {
     let boundaries = 0, summaries = 0;
-    for (const line of readFileSync3(f, "utf8").split("\n")) {
+    for (const line of readFileSync4(f, "utf8").split("\n")) {
       if (!line) continue;
       let j;
       try {
@@ -7616,9 +7655,9 @@ function computeBaseline(projectsDir) {
 
 // src/cli/live-test.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, mkdtempSync, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync2, mkdtempSync, readFileSync as readFileSync5, writeFileSync as writeFileSync2 } from "node:fs";
 import { tmpdir } from "node:os";
-import path6 from "node:path";
+import path7 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/lib/transcript.ts
@@ -7703,23 +7742,23 @@ var parse = (s) => {
   }
 };
 function findHookJs() {
-  for (let d = path6.dirname(fileURLToPath2(import.meta.url)); ; d = path6.dirname(d)) {
-    const f = path6.join(d, "dist", "hook.js");
-    if (existsSync3(f)) return f;
-    if (path6.dirname(d) === d) throw new Error("dist/hook.js not found; run npm run build");
+  for (let d = path7.dirname(fileURLToPath2(import.meta.url)); ; d = path7.dirname(d)) {
+    const f = path7.join(d, "dist", "hook.js");
+    if (existsSync4(f)) return f;
+    if (path7.dirname(d) === d) throw new Error("dist/hook.js not found; run npm run build");
   }
 }
 function runLiveTest(opts = {}) {
   const hookJs = opts.hookJs ?? findHookJs();
   const claude = opts.claude ?? "claude";
-  const dir = mkdtempSync(path6.join(tmpdir(), "pm-live-"));
-  const state = path6.join(dir, "state");
-  const probe = path6.join(dir, "probe.mjs");
-  const logFile = path6.join(dir, "events.jsonl");
-  mkdirSync2(path6.join(dir, ".claude"));
+  const dir = mkdtempSync(path7.join(tmpdir(), "pm-live-"));
+  const state = path7.join(dir, "state");
+  const probe = path7.join(dir, "probe.mjs");
+  const logFile = path7.join(dir, "events.jsonl");
+  mkdirSync2(path7.join(dir, ".claude"));
   writeFileSync2(probe, PROBE_MJS);
-  writeFileSync2(path6.join(dir, "hello.txt"), "hello from the optimus live test\n");
-  writeFileSync2(path6.join(dir, ".claude", "settings.json"), JSON.stringify(liveSettings(hookJs, probe, logFile), null, 2));
+  writeFileSync2(path7.join(dir, "hello.txt"), "hello from the optimus live test\n");
+  writeFileSync2(path7.join(dir, ".claude", "settings.json"), JSON.stringify(liveSettings(hookJs, probe, logFile), null, 2));
   const { CLAUDECODE: _nested, ...env } = process.env;
   const run = (args2) => spawnSync(
     claude,
@@ -7738,20 +7777,20 @@ function runLiveTest(opts = {}) {
     lines.push(`run2 (/compact): exit ${r2.status}${r2.error ? ` error: ${r2.error.message}` : ""}${err2 ? ` stderr: ${err2}` : ""}`, `run2 result: ${parse(out2)?.result ?? out2.slice(0, 1e3)}`);
   }
   const wallMs = Date.now() - started;
-  const events = existsSync3(logFile) ? readFileSync4(logFile, "utf8").split("\n").map(parse).filter(Boolean) : [];
+  const events = existsSync4(logFile) ? readFileSync5(logFile, "utf8").split("\n").map(parse).filter(Boolean) : [];
   const tp = events.find((e) => e.transcript_path)?.transcript_path;
-  const texts = tp && existsSync3(tp) ? userTexts(readTranscript(tp).entries) : [];
-  const auditExists = typeof j1?.session_id === "string" && existsSync3(path6.join(state, "sessions", j1.session_id, "main", "audit.json"));
+  const texts = tp && existsSync4(tp) ? userTexts(readTranscript(tp).entries) : [];
+  const auditExists = typeof j1?.session_id === "string" && existsSync4(path7.join(state, "sessions", j1.session_id, "main", "audit.json"));
   lines.push(`events: ${events.map((e) => `${e.ev}${e.source ? `(${e.source})` : ""}${e.tool_name ? `(${e.tool_name})` : ""}`).join(" \u2192 ") || "none logged"}`, `audit.json: ${auditExists ? "present" : "absent"}`);
-  const hooksLog = path6.join(state, "logs", "hooks.log");
-  if (existsSync3(hooksLog)) lines.push("hooks.log:", readFileSync4(hooksLog, "utf8").trim());
+  const hooksLog = path7.join(state, "logs", "hooks.log");
+  if (existsSync4(hooksLog)) lines.push("hooks.log:", readFileSync5(hooksLog, "utf8").trim());
   return { ...evaluate({ result: String(j1?.result ?? ""), texts, events, auditExists }), wallMs, log: lines.join("\n") };
 }
 
 // src/cli/doctor.ts
 var readJsonFile = (f) => {
   try {
-    return JSON.parse(readFileSync5(f, "utf8"));
+    return JSON.parse(readFileSync6(f, "utf8"));
   } catch {
     return null;
   }
@@ -7768,18 +7807,18 @@ function fts5Probe() {
   }
 }
 function installedPlugins(home2) {
-  const dir = path7.join(home2, ".claude", "plugins"), j = readJsonFile(path7.join(dir, "installed_plugins.json")), markets = readJsonFile(path7.join(dir, "known_marketplaces.json")) ?? {};
+  const dir = path8.join(home2, ".claude", "plugins"), j = readJsonFile(path8.join(dir, "installed_plugins.json")), markets = readJsonFile(path8.join(dir, "known_marketplaces.json")) ?? {};
   const runDir = (name, cached) => {
     const [plugin, market] = name.split("@"), m = markets[market];
     if (m?.source?.source !== "directory") return cached;
-    const root = m.installLocation ?? m.source.path, src = readJsonFile(path7.join(root, ".claude-plugin", "marketplace.json"))?.plugins?.find((p) => p?.name === plugin)?.source;
-    return typeof src === "string" ? path7.resolve(root, src) : cached;
+    const root = m.installLocation ?? m.source.path, src = readJsonFile(path8.join(root, ".claude-plugin", "marketplace.json"))?.plugins?.find((p) => p?.name === plugin)?.source;
+    return typeof src === "string" ? path8.resolve(root, src) : cached;
   };
   return Object.entries(j?.plugins ?? {}).flatMap(([name, entries]) => (Array.isArray(entries) ? entries : []).filter((e) => typeof e?.installPath === "string").map((e) => ({ name, installPath: runDir(name, e.installPath) })));
 }
 function bankChecks() {
   const bank = paths.bankDir();
-  if (!existsSync4(path7.join(bank, ".git"))) return [{ status: "WARN", name: "bank", detail: `${bank} is not a git repository (run \`kb init\`)` }];
+  if (!existsSync5(path8.join(bank, ".git"))) return [{ status: "WARN", name: "bank", detail: `${bank} is not a git repository (run \`kb init\`)` }];
   const g = (args2, timeout = 6e4) => spawnSync2("git", args2, { cwd: bank, encoding: "utf8", timeout });
   const st = g(["status", "--porcelain"]);
   if (st.error) return [{ status: "WARN", name: "bank", detail: `${bank}: git failed: ${st.error.message}` }];
@@ -7796,8 +7835,8 @@ function bankChecks() {
   return out;
 }
 function indexChecks() {
-  const file = path7.join(paths.stateDir(), "kb.sqlite"), at = paths.config().lastSyncAt ?? "unknown time";
-  if (!existsSync4(file)) return [{ status: "INFO", name: "index", detail: "no kb.sqlite yet (kb init builds it)" }, { status: "INFO", name: "last-sync", detail: "never" }];
+  const file = path8.join(paths.stateDir(), "kb.sqlite"), at = paths.config().lastSyncAt ?? "unknown time";
+  if (!existsSync5(file)) return [{ status: "INFO", name: "index", detail: "no kb.sqlite yet (kb init builds it)" }, { status: "INFO", name: "last-sync", detail: "never" }];
   let db;
   try {
     db = openDb(file);
@@ -7809,7 +7848,7 @@ function indexChecks() {
     const pending = db.sql.prepare("SELECT COUNT(*) AS n FROM pending_merge WHERE resolved IS NULL").get().n;
     const result = db.sql.prepare("SELECT value FROM meta WHERE key='lastSyncResult'").get()?.value;
     return [
-      { status: "INFO", name: "index", detail: `${file} ${(statSync2(file).size / 1048576).toFixed(1)} MB: ${counts}` },
+      { status: "INFO", name: "index", detail: `${file} ${(statSync3(file).size / 1048576).toFixed(1)} MB: ${counts}` },
       { status: "INFO", name: "pending-merges", detail: pending ? `${pending} awaiting review (kb concepts review)` : "none" },
       !result ? { status: "INFO", name: "last-sync", detail: "never" } : { status: result.startsWith("failed") ? "WARN" : result === "ok" ? "PASS" : "INFO", name: "last-sync", detail: `${result} at ${at}${result.includes("rebase conflict") ? ` \u2014 resolve with git in ${paths.bankDir()}, then kb sync` : ""}` }
     ];
@@ -7836,30 +7875,30 @@ function doctorChecks(home2) {
   out.push(...bankChecks(), ...indexChecks());
   const state = paths.stateDir();
   try {
-    const probe = path7.join(state, `.doctor-${process.pid}`);
+    const probe = path8.join(state, `.doctor-${process.pid}`);
     writeFileSync3(probe, "ok");
-    unlinkSync(probe);
+    unlinkSync2(probe);
     out.push({ status: "PASS", name: "state-dir", detail: `${state} writable` });
   } catch (e) {
     out.push({ status: "FAIL", name: "state-dir", detail: `${state} not writable: ${e?.message ?? e}` });
   }
-  const blobs = readdirSync2(paths.blobsDir()).filter((f) => f.length === 64).map((f) => statSync2(path7.join(paths.blobsDir(), f)));
+  const blobs = readdirSync2(paths.blobsDir()).filter((f) => f.length === 64).map((f) => statSync3(path8.join(paths.blobsDir(), f)));
   const bytes = blobs.reduce((n, s) => n + s.size, 0);
   const oldest = blobs.length ? new Date(Math.min(...blobs.map((s) => s.mtimeMs))).toISOString() : "none";
   out.push({ status: "INFO", name: "blobs", detail: `${blobs.length} blobs, ${(bytes / 1048576).toFixed(1)} MB, oldest ${oldest}` });
-  const sessionsDir = path7.join(state, "sessions");
-  out.push({ status: "INFO", name: "sessions", detail: `${existsSync4(sessionsDir) ? readdirSync2(sessionsDir).length : 0} session dirs` });
-  const settings = readJsonFile(path7.join(home2, ".claude", "settings.json")) ?? {};
+  const sessionsDir = path8.join(state, "sessions");
+  out.push({ status: "INFO", name: "sessions", detail: `${existsSync5(sessionsDir) ? readdirSync2(sessionsDir).length : 0} session dirs` });
+  const settings = readJsonFile(path8.join(home2, ".claude", "settings.json")) ?? {};
   out.push(settings.autoCompactWindow === 333e3 ? { status: "PASS", name: "autoCompactWindow", detail: "333000" } : { status: "WARN", name: "autoCompactWindow", detail: `${settings.autoCompactWindow ?? "unset"} (run \`kb setup\` to set 333000)` });
   const enabled = settings.enabledPlugins ?? {};
   const installed = installedPlugins(home2);
   const ours = installed.filter((p) => p.name.startsWith("optimus@"));
-  const live2 = ours.find((p) => enabled[p.name] && existsSync4(path7.join(p.installPath, "hooks", "hooks.json")) && existsSync4(path7.join(p.installPath, "dist", "hook.js")));
+  const live2 = ours.find((p) => enabled[p.name] && existsSync5(path8.join(p.installPath, "hooks", "hooks.json")) && existsSync5(path8.join(p.installPath, "dist", "hook.js")));
   out.push(live2 ? { status: "PASS", name: "hooks", detail: `${live2.name} hooks present in ${live2.installPath}` } : { status: "WARN", name: "hooks", detail: ours.length ? `${ours[0].name} installed but not enabled or ${ours[0].installPath} lacks hooks/hooks.json + dist/hook.js` : "optimus plugin not installed in the plugin cache" });
   const collisions = [];
   for (const p of installed) {
     if (!enabled[p.name] || p.name.startsWith("optimus@")) continue;
-    const hooks = readJsonFile(path7.join(p.installPath, "hooks", "hooks.json"))?.hooks ?? {};
+    const hooks = readJsonFile(path8.join(p.installPath, "hooks", "hooks.json"))?.hooks ?? {};
     if ((hooks.PreToolUse ?? []).some((e) => matchesAgent(e?.matcher))) collisions.push(`${p.name}: PreToolUse matcher covers Agent`);
     if ((hooks.SubagentStart ?? []).length) collisions.push(`${p.name}: SubagentStart hook`);
   }
@@ -7902,8 +7941,8 @@ function doctor(home2, opts = {}) {
     }
   }
   if (opts.baseline) {
-    const dir = path7.join(home2, ".claude", "projects");
-    if (!existsSync4(dir)) process.stdout.write(`
+    const dir = path8.join(home2, ".claude", "projects");
+    if (!existsSync5(dir)) process.stdout.write(`
 baseline: ${dir} not found
 `);
     else {
@@ -7931,37 +7970,6 @@ import path9 from "node:path";
 
 // src/cli/backup.ts
 import { copyFileSync, existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
-
-// src/lib/atomic.ts
-import { writeFileSync as writeFileSync4, readFileSync as readFileSync6, renameSync as renameSync2, realpathSync, existsSync as existsSync5, statSync as statSync3, chmodSync, unlinkSync as unlinkSync2 } from "node:fs";
-import path8 from "node:path";
-import { randomBytes } from "node:crypto";
-function writeFileAtomic(filePath, data) {
-  const dir = realpathSync(path8.dirname(filePath));
-  const target = path8.join(dir, path8.basename(filePath));
-  const tmp = path8.join(dir, `.${path8.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
-  const mode = existsSync5(target) ? statSync3(target).mode & 511 : void 0;
-  writeFileSync4(tmp, data, "utf8");
-  if (mode !== void 0) chmodSync(tmp, mode);
-  let lastErr;
-  for (let i = 0; i < 5; i++) {
-    try {
-      renameSync2(tmp, target);
-      return;
-    } catch (e) {
-      lastErr = e;
-      if (!["EPERM", "EBUSY", "ENOENT"].includes(e?.code)) break;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-    }
-  }
-  try {
-    unlinkSync2(tmp);
-  } catch {
-  }
-  throw lastErr;
-}
-
-// src/cli/backup.ts
 function backupFile(file) {
   if (existsSync6(file)) copyFileSync(file, `${file}.bak-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}`);
 }
@@ -8039,7 +8047,6 @@ import os2 from "node:os";
 import path10 from "node:path";
 import { existsSync as existsSync8, readFileSync as readFileSync9, appendFileSync as appendFileSync2 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-var defaultDeviceId = (host = os2.hostname()) => host.split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-");
 var HEADING = "## Compaction instructions (optimus)";
 function compactionInstructionsPath() {
   const here = path10.dirname(fileURLToPath3(import.meta.url));
@@ -8075,13 +8082,13 @@ function setup(home2, opts = {}) {
   appendFileSync2(claudeMd, `
 ${HEADING}
 
-${readFileSync9(instructions, "utf8")}`);
+${readFileSync9(instructions, "utf8").replace(/\r\n/g, "\n")}`);
   print(`appended compaction instructions to ${claudeMd} (backup written)`);
 }
 
 // src/cli/init.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { copyFileSync as copyFileSync2, existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12, readdirSync as readdirSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import { copyFileSync as copyFileSync2, existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12, readdirSync as readdirSync5, writeFileSync as writeFileSync4 } from "node:fs";
 import path13 from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 
@@ -8430,6 +8437,7 @@ function steps(db, bank) {
 function record(db, result, reason) {
   paths.saveConfig({ lastSyncAt: (/* @__PURE__ */ new Date()).toISOString() });
   db.sql.prepare("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)").run("lastSyncResult", reason ? `${result} (${reason})` : result);
+  log("info", `sync: ${result}`, reason ? { reason } : void 0);
   return result;
 }
 function sync(bankDir) {
@@ -8489,7 +8497,7 @@ function initBank(opts = {}) {
       git2(bank, "init", "-q", "-b", "main");
     }
     if (!existsSync11(path13.join(bank, ".gitattributes"))) {
-      writeFileSync5(path13.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
+      writeFileSync4(path13.join(bank, ".gitattributes"), "* text=auto eol=lf\n");
       written.push(".gitattributes");
     }
     for (const d of ["templates", "notes"]) mkdirSync6(path13.join(bank, d), { recursive: true });
@@ -8522,7 +8530,7 @@ function projectInit(cwd, opts) {
   const file = path13.join(cwd, ".kb.json");
   const { auto: _auto, ...prev } = existsSync11(file) ? JSON.parse(readFileSync12(file, "utf8")) : {};
   const c = { ...prev, project_id: opts.id ?? prev.project_id ?? path13.basename(path13.resolve(cwd)).toLowerCase(), domain: opts.domain };
-  writeFileSync5(file, JSON.stringify(c, null, 2) + "\n");
+  writeFileSync4(file, JSON.stringify(c, null, 2) + "\n");
   return c;
 }
 
@@ -8927,10 +8935,10 @@ function setAttr(db, bankDir, id, key, value2, now = (/* @__PURE__ */ new Date()
 
 // src/cli/index.ts
 var import_yaml4 = __toESM(require_dist(), 1);
-import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync15, unlinkSync as unlinkSync3, writeFileSync as writeFileSync8 } from "node:fs";
+import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync15, unlinkSync as unlinkSync3, writeFileSync as writeFileSync7 } from "node:fs";
 
 // src/kb/auto-register.ts
-import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync6 } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync6, readFileSync as readFileSync13, writeFileSync as writeFileSync5 } from "node:fs";
 import path15 from "node:path";
 function findConfig(cwd) {
   let dir = path15.resolve(cwd), file = "";
@@ -8958,7 +8966,7 @@ function fileHereUnder(cwd, domain) {
   if (!cfg.auto || cfg.auto.confidence === "high") return null;
   cfg.domain = domain;
   cfg.auto = { ...cfg.auto, confidence: "high", reason: `domain ${domain} created here by kb domain new` };
-  writeFileSync6(file, JSON.stringify(cfg, null, 2) + "\n");
+  writeFileSync5(file, JSON.stringify(cfg, null, 2) + "\n");
   log("info", "domain settled by kb domain new", { file, domain });
   return { file, project_id: String(cfg.project_id ?? "") };
 }
@@ -8970,10 +8978,23 @@ import { closeSync as closeSync2, existsSync as existsSync13, openSync as openSy
 import os3 from "node:os";
 import path16 from "node:path";
 var sha2563 = (b) => createHash4("sha256").update(b).digest("hex");
-var projectOf = (dir) => {
-  const c = loadProjectConfig(dir);
-  return { project: c?.project_id ?? path16.basename(dir), domain: c?.domain ?? null };
-};
+var none = { project: null, domain: null };
+function projectOf(dir, home2) {
+  const d = path16.resolve(dir), top = path16.resolve(home2);
+  if (d === top) return none;
+  const c = loadProjectConfig(d);
+  if (c) return { project: c.project_id, domain: c.domain };
+  for (let p = d, i = 0; i < 16 && p !== top; i++) {
+    try {
+      if (statSync6(path16.join(p, ".git")).isDirectory()) return { project: path16.basename(p), domain: null };
+    } catch {
+    }
+    const up = path16.dirname(p);
+    if (up === p) break;
+    p = up;
+  }
+  return { project: path16.basename(d), domain: null };
+}
 var mdFiles = (dir) => readdirSync7(dir, { recursive: true }).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort();
 function importSources(db, bankDir, sources, now) {
   let created = 0;
@@ -9015,8 +9036,9 @@ function importSerena(db, bankDir, roots, home2 = os3.homedir(), now = (/* @__PU
     }
   };
   const global = path16.join(home2, ".serena", "memories", "global");
-  if (existsSync13(global)) add(global, { project: null, domain: null });
-  for (const root of roots) for (const memDir of serenaDirs(path16.resolve(root), path16.join(home2, ".cache"))) add(memDir, projectOf(path16.dirname(path16.dirname(memDir))));
+  if (existsSync13(global)) add(global, none);
+  const depth = (p) => p.split(path16.sep).length, byDepth = (a, b) => depth(a) - depth(b) || (a < b ? -1 : a > b ? 1 : 0);
+  for (const root of roots) for (const memDir of serenaDirs(path16.resolve(root), path16.join(home2, ".cache")).sort(byDepth)) add(memDir, projectOf(path16.dirname(path16.dirname(memDir)), home2));
   return importSources(db, bankDir, sources, now);
 }
 function transcriptCwd(projDir) {
@@ -9065,7 +9087,7 @@ function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PUR
     if (!existsSync13(memDir)) continue;
     const files = readdirSync7(memDir).filter((f) => f.endsWith(".md") && f !== "MEMORY.md" && statSync6(path16.join(memDir, f)).isFile()).sort();
     if (!files.length) continue;
-    const cwd = transcriptCwd(projDir) ?? resolveDashed(d), owner = cwd ? projectOf(cwd) : { project: d, domain: null };
+    const cwd = transcriptCwd(projDir) ?? resolveDashed(d), owner = cwd ? projectOf(cwd, home2) : { project: d, domain: null };
     for (const f of files) {
       const file = path16.join(memDir, f), fm = frontmatter(readFileSync14(file, "utf8"));
       const type = fm.metadata?.type ?? fm.type;
@@ -9077,6 +9099,33 @@ function importClaudeMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PUR
       });
     }
   }
+  return importSources(db, bankDir, sources, now);
+}
+var plainPath = (p) => p.trim().replace(/^\\\\\?\\/, "");
+function importCodexMemory(db, bankDir, home2 = os3.homedir(), now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const mem = path16.join(home2, ".codex", "memories"), sources = [];
+  if (!existsSync13(mem)) return { files: 0, created: 0, unchanged: 0 };
+  const scratch = path16.resolve(home2, "Documents", "Codex");
+  const ownerOf = (cwd) => {
+    if (!cwd) return none;
+    const c = path16.resolve(plainPath(cwd));
+    return c === scratch || c.startsWith(scratch + path16.sep) ? none : projectOf(c, home2);
+  };
+  const heading = (t, fallback) => /^# (.+)$/m.exec(t)?.[1].trim() || fallback;
+  const field = (t, key) => new RegExp(`^${key}: (.+)$`, "m").exec(t)?.[1].trim();
+  const list2 = (dir) => existsSync13(dir) ? readdirSync7(dir).filter((f) => f.endsWith(".md") && statSync6(path16.join(dir, f)).isFile()).sort() : [];
+  const summaries = path16.join(mem, "rollout_summaries");
+  for (const f of list2(summaries)) {
+    const file = path16.join(summaries, f), t = readFileSync14(file, "utf8"), cwd = field(t, "cwd"), thread = field(t, "thread_id");
+    sources.push({ file, title: heading(t, f.slice(0, -3)), ...ownerOf(cwd), attrs: { origin: "codex", memory_name: `rollout_summaries/${f.slice(0, -3)}`, ...thread ? { thread_id: thread } : {}, ...cwd ? { cwd: plainPath(cwd) } : {} } });
+  }
+  const notes = path16.join(mem, "extensions", "ad_hoc", "notes");
+  for (const f of list2(notes)) {
+    const file = path16.join(notes, f), t = readFileSync14(file, "utf8"), project = /^Project: `([^`]+)`/m.exec(t)?.[1];
+    sources.push({ file, title: heading(t, f.slice(0, -3)), ...ownerOf(project), attrs: { origin: "codex", memory_name: `ad_hoc/${f.slice(0, -3)}` } });
+  }
+  const summary = path16.join(mem, "memory_summary.md");
+  if (existsSync13(summary)) sources.push({ file: summary, title: "memory_summary", ...none, attrs: { origin: "codex", memory_name: "memory_summary" } });
   return importSources(db, bankDir, sources, now);
 }
 function frontmatter(text) {
@@ -9091,7 +9140,7 @@ function frontmatter(text) {
 }
 
 // src/kb/map.ts
-import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync7 } from "node:fs";
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync6 } from "node:fs";
 import path17 from "node:path";
 
 // src/kb/map-template.ts
@@ -9822,7 +9871,7 @@ function generateMap(db, outFile = path17.join(paths.stateDir(), "map.html"), to
   };
   const html = TEMPLATE.replace(/__(META|FILTERS|BOARD|EDGES|DATA)__/g, (_, k) => parts[k]);
   mkdirSync8(path17.dirname(outFile), { recursive: true });
-  writeFileSync7(outFile, html);
+  writeFileSync6(outFile, html);
   return outFile;
 }
 
@@ -9835,12 +9884,12 @@ var value = (f) => {
   return i >= 0 ? args[i + 1] : void 0;
 };
 var home = os4.homedir();
-var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
+var usage = "usage: kb init [--bank <dir>] [--clone <url>] | kb project init --domain <d> [--id <id>] | kb doctor [--baseline] [--live] | kb cleanup [--apply] | kb setup [--device <name>] [--append-claude-md] | kb export | kb rebuild | kb concepts review|accept <id>|reject <id>|split <name> | kb transfer <id> confirm|refute | kb retract <id> | kb set <id> <attr> <value> | kb compare <concept> | kb import serena|claude-memory|codex|all [--root <dir>] | kb sync [--quiet] | kb map [--open] | kb write <spec.json|-> | kb domain new <name> --facets a,b,c --gates g1,g2,g3 [--keywords w1,w2] [--methods m1,m2] [--environment <e>] [--subject <s>]\n";
 if (cmd === "doctor") process.exitCode = doctor(home, { baseline: has("--baseline"), live: has("--live") });
 else if (cmd === "sync") {
   try {
     const r = sync(paths.bankDir());
-    if (!has("--quiet")) process.stdout.write(r === "failed" ? `sync: failed (details in ${paths.logsDir()}/hooks.log)
+    if (!has("--quiet")) process.stdout.write(r === "failed" ? `sync: failed (details in ${path18.join(paths.logsDir(), "hooks.log")})
 ` : `sync: ${r}
 `);
     if (r === "failed") process.exitCode = 1;
@@ -9950,7 +9999,7 @@ else if (cmd === "sync") {
   } finally {
     db.sql.close();
   }
-} else if (cmd === "import" && ["serena", "claude-memory", "all"].includes(args[0])) {
+} else if (cmd === "import" && ["serena", "claude-memory", "codex", "all"].includes(args[0])) {
   const root = value("--root");
   if (has("--root") && !root) {
     process.stderr.write("--root needs a directory\n");
@@ -9960,8 +10009,9 @@ else if (cmd === "sync") {
     const line = (what, r) => process.stdout.write(`${what}: ${r.files} files, ${r.created} created, ${r.unchanged} unchanged
 `);
     try {
-      if (args[0] !== "claude-memory") line("serena", importSerena(db, bank, roots));
-      if (args[0] !== "serena") line("claude-memory", importClaudeMemory(db, bank));
+      if (args[0] === "serena" || args[0] === "all") line("serena", importSerena(db, bank, roots));
+      if (args[0] === "claude-memory" || args[0] === "all") line("claude-memory", importClaudeMemory(db, bank));
+      if (args[0] === "codex" || args[0] === "all") line("codex", importCodexMemory(db, bank));
     } catch (e) {
       process.stderr.write(`kb import: ${e.message}
 `);
@@ -10027,7 +10077,7 @@ else if (cmd === "sync") {
       if (taken || installedDomains(db).includes(name)) throw new Error(`the name ${name} collides with the installed domain ${taken?.domain ?? name}; pick another`);
       const t = { domain: name, facets, methods, gates, environment: value("--environment") ?? "environment", subject: value("--subject") ?? "subject", keywords: [.../* @__PURE__ */ new Set([name, ...keywords])], seed_concepts: [] };
       mkdirSync9(path18.dirname(file), { recursive: true });
-      writeFileSync8(file, (0, import_yaml4.stringify)(t));
+      writeFileSync7(file, (0, import_yaml4.stringify)(t));
       try {
         installTemplate(db, loadTemplate(file));
       } catch (e) {

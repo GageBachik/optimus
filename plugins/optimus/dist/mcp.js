@@ -28838,109 +28838,33 @@ import path3 from "node:path";
 
 // src/lib/paths.ts
 import os from "node:os";
-import path from "node:path";
+import path2 from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
-function ensure(p) {
-  if (!existsSync(p)) mkdirSync(p, { recursive: true });
-  return p;
-}
-var safe = (s) => s.replace(/[^A-Za-z0-9_-]/g, "_");
-var paths = {
-  /** `~/.optimus` (or `OPTIMUS_HOME`). The plugin was called project-memory until 2026-10-20: an existing `~/.project-memory` with no `~/.optimus` beside it is renamed once. */
-  stateDir() {
-    if (!process.env.OPTIMUS_HOME) {
-      const home = os.homedir(), old = path.join(home, ".project-memory"), now = path.join(home, ".optimus");
-      if (existsSync(old) && !existsSync(now)) {
-        try {
-          renameSync(old, now);
-        } catch {
-        }
-      }
-    }
-    return ensure(path.normalize(process.env.OPTIMUS_HOME ?? path.join(os.homedir(), ".optimus")));
-  },
-  blobsDir() {
-    return ensure(path.join(this.stateDir(), "blobs"));
-  },
-  sessionDir(sessionId, agentId = "main") {
-    return ensure(path.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
-  },
-  logsDir() {
-    return ensure(path.join(this.stateDir(), "logs"));
-  },
-  configPath() {
-    return path.join(this.stateDir(), "config.json");
-  },
-  config() {
-    try {
-      const c = JSON.parse(readFileSync(this.configPath(), "utf8"));
-      return c && typeof c === "object" && !Array.isArray(c) ? c : {};
-    } catch {
-      return {};
-    }
-  },
-  saveConfig(patch) {
-    const next = { ...this.config(), ...patch };
-    const tmp = this.configPath() + ".tmp";
-    writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
-    renameSync(tmp, this.configPath());
-  },
-  bankDir() {
-    return path.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path.join(os.homedir(), "knowledge-bank"));
-  },
-  projectKey(cwd) {
-    let dir = path.resolve(cwd);
-    for (let i = 0; i < 8; i++) {
-      const f = path.join(dir, ".kb.json");
-      if (existsSync(f)) {
-        try {
-          const id = JSON.parse(readFileSync(f, "utf8")).project_id;
-          if (typeof id === "string" && id) return id;
-        } catch {
-        }
-      }
-      const up = path.dirname(dir);
-      if (up === dir) break;
-      dir = up;
-    }
-    return createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
-  },
-  projectDir(key) {
-    return ensure(path.join(this.stateDir(), "projects", safe(key)));
-  },
-  /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
-   *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
-  kbCli() {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node "${path.normalize(c).split(path.sep).join("/")}"`;
-    return "kb";
-  }
-};
+import { mkdirSync, existsSync as existsSync2, readFileSync as readFileSync2, realpathSync as realpathSync2, renameSync as renameSync2 } from "node:fs";
 
 // src/lib/atomic.ts
-import { writeFileSync as writeFileSync2, readFileSync as readFileSync2, renameSync as renameSync2, realpathSync, existsSync as existsSync2, statSync, chmodSync, unlinkSync } from "node:fs";
-import path2 from "node:path";
+import { writeFileSync, readFileSync, renameSync, realpathSync, existsSync, statSync, chmodSync, unlinkSync } from "node:fs";
+import path from "node:path";
 import { randomBytes } from "node:crypto";
 function readJson(filePath) {
   try {
-    return JSON.parse(readFileSync2(filePath, "utf8"));
+    return JSON.parse(readFileSync(filePath, "utf8"));
   } catch {
     return null;
   }
 }
 function writeFileAtomic(filePath, data) {
-  const dir = realpathSync(path2.dirname(filePath));
-  const target = path2.join(dir, path2.basename(filePath));
-  const tmp = path2.join(dir, `.${path2.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
-  const mode = existsSync2(target) ? statSync(target).mode & 511 : void 0;
-  writeFileSync2(tmp, data, "utf8");
+  const dir = realpathSync(path.dirname(filePath));
+  const target = path.join(dir, path.basename(filePath));
+  const tmp = path.join(dir, `.${path.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const mode = existsSync(target) ? statSync(target).mode & 511 : void 0;
+  writeFileSync(tmp, data, "utf8");
   if (mode !== void 0) chmodSync(tmp, mode);
   let lastErr;
   for (let i = 0; i < 5; i++) {
     try {
-      renameSync2(tmp, target);
+      renameSync(tmp, target);
       return;
     } catch (e) {
       lastErr = e;
@@ -28954,6 +28878,92 @@ function writeFileAtomic(filePath, data) {
   }
   throw lastErr;
 }
+
+// src/lib/paths.ts
+function ensure(p) {
+  if (!existsSync2(p)) mkdirSync(p, { recursive: true });
+  return p;
+}
+var safe = (s) => s.replace(/[^A-Za-z0-9_-]/g, "_");
+var canonical = (p) => {
+  const r = path2.resolve(p);
+  try {
+    return realpathSync2.native(r);
+  } catch {
+    return r;
+  }
+};
+var defaultDeviceId = (host = os.hostname()) => host.split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-");
+var paths = {
+  /** `~/.optimus` (or `OPTIMUS_HOME`). The plugin was called project-memory until 2026-10-20: an existing `~/.project-memory` with no `~/.optimus` beside it is renamed once. */
+  stateDir() {
+    if (!process.env.OPTIMUS_HOME) {
+      const home = os.homedir(), old = path2.join(home, ".project-memory"), now = path2.join(home, ".optimus");
+      if (existsSync2(old) && !existsSync2(now)) {
+        try {
+          renameSync2(old, now);
+        } catch {
+        }
+      }
+    }
+    return ensure(path2.normalize(process.env.OPTIMUS_HOME ?? path2.join(os.homedir(), ".optimus")));
+  },
+  blobsDir() {
+    return ensure(path2.join(this.stateDir(), "blobs"));
+  },
+  sessionDir(sessionId, agentId = "main") {
+    return ensure(path2.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
+  },
+  logsDir() {
+    return ensure(path2.join(this.stateDir(), "logs"));
+  },
+  configPath() {
+    return path2.join(this.stateDir(), "config.json");
+  },
+  config() {
+    try {
+      const c = JSON.parse(readFileSync2(this.configPath(), "utf8"));
+      return c && typeof c === "object" && !Array.isArray(c) ? c : {};
+    } catch {
+      return {};
+    }
+  },
+  saveConfig(patch) {
+    writeFileAtomic(this.configPath(), JSON.stringify({ ...this.config(), ...patch }, null, 2) + "\n");
+  },
+  // the retrying rename: a reader holding config.json open on Windows makes a bare renameSync throw EPERM
+  bankDir() {
+    return path2.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path2.join(os.homedir(), "knowledge-bank"));
+  },
+  projectKey(cwd) {
+    const start = canonical(cwd);
+    let dir = start;
+    for (let i = 0; i < 8; i++) {
+      const f = path2.join(dir, ".kb.json");
+      if (existsSync2(f)) {
+        try {
+          const id = JSON.parse(readFileSync2(f, "utf8")).project_id;
+          if (typeof id === "string" && id) return id;
+        } catch {
+        }
+      }
+      const up = path2.dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+    return createHash("sha256").update(start).digest("hex").slice(0, 16);
+  },
+  projectDir(key) {
+    return ensure(path2.join(this.stateDir(), "projects", safe(key)));
+  },
+  /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
+   *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
+  kbCli() {
+    const here = path2.dirname(fileURLToPath(import.meta.url));
+    for (const c of [path2.join(here, "kb.js"), path2.join(here, "..", "..", "dist", "kb.js")]) if (existsSync2(c)) return `node "${path2.normalize(c).split(path2.sep).join("/")}"`;
+    return "kb";
+  }
+};
 
 // src/lib/redaction.ts
 var PATTERNS = [
@@ -29037,7 +29047,7 @@ function openDb(file = path4.join(paths.stateDir(), "kb.sqlite")) {
   return { sql, file };
 }
 function deviceId() {
-  return process.env.OPTIMUS_DEVICE ?? paths.config().deviceId ?? "unknown";
+  return process.env.OPTIMUS_DEVICE ?? paths.config().deviceId ?? defaultDeviceId();
 }
 function upsertNote(db2, n) {
   db2.sql.prepare(`INSERT INTO note(id,kind,domain,project,title,body,created_at,updated_at,deleted_at,device_id) VALUES(?,?,?,?,?,?,?,?,?,?)

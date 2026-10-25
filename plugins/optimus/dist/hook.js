@@ -10,89 +10,138 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/lib/atomic.ts
+import { writeFileSync, readFileSync, renameSync, realpathSync, existsSync, statSync, chmodSync, unlinkSync } from "node:fs";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
+function readJson(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function writeFileAtomic(filePath, data) {
+  const dir = realpathSync(path.dirname(filePath));
+  const target = path.join(dir, path.basename(filePath));
+  const tmp = path.join(dir, `.${path.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const mode = existsSync(target) ? statSync(target).mode & 511 : void 0;
+  writeFileSync(tmp, data, "utf8");
+  if (mode !== void 0) chmodSync(tmp, mode);
+  let lastErr;
+  for (let i = 0; i < 5; i++) {
+    try {
+      renameSync(tmp, target);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (!["EPERM", "EBUSY", "ENOENT"].includes(e?.code)) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try {
+    unlinkSync(tmp);
+  } catch {
+  }
+  throw lastErr;
+}
+var init_atomic = __esm({
+  "src/lib/atomic.ts"() {
+    "use strict";
+  }
+});
+
 // src/lib/paths.ts
 import os from "node:os";
-import path from "node:path";
+import path2 from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { mkdirSync, existsSync as existsSync2, readFileSync as readFileSync2, realpathSync as realpathSync2, renameSync as renameSync2 } from "node:fs";
 function ensure(p) {
-  if (!existsSync(p)) mkdirSync(p, { recursive: true });
+  if (!existsSync2(p)) mkdirSync(p, { recursive: true });
   return p;
 }
-var safe, paths;
+var safe, canonical, paths;
 var init_paths = __esm({
   "src/lib/paths.ts"() {
     "use strict";
+    init_atomic();
     safe = (s) => s.replace(/[^A-Za-z0-9_-]/g, "_");
+    canonical = (p) => {
+      const r = path2.resolve(p);
+      try {
+        return realpathSync2.native(r);
+      } catch {
+        return r;
+      }
+    };
     paths = {
       /** `~/.optimus` (or `OPTIMUS_HOME`). The plugin was called project-memory until 2026-10-20: an existing `~/.project-memory` with no `~/.optimus` beside it is renamed once. */
       stateDir() {
         if (!process.env.OPTIMUS_HOME) {
-          const home = os.homedir(), old = path.join(home, ".project-memory"), now = path.join(home, ".optimus");
-          if (existsSync(old) && !existsSync(now)) {
+          const home = os.homedir(), old = path2.join(home, ".project-memory"), now = path2.join(home, ".optimus");
+          if (existsSync2(old) && !existsSync2(now)) {
             try {
-              renameSync(old, now);
+              renameSync2(old, now);
             } catch {
             }
           }
         }
-        return ensure(path.normalize(process.env.OPTIMUS_HOME ?? path.join(os.homedir(), ".optimus")));
+        return ensure(path2.normalize(process.env.OPTIMUS_HOME ?? path2.join(os.homedir(), ".optimus")));
       },
       blobsDir() {
-        return ensure(path.join(this.stateDir(), "blobs"));
+        return ensure(path2.join(this.stateDir(), "blobs"));
       },
       sessionDir(sessionId, agentId = "main") {
-        return ensure(path.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
+        return ensure(path2.join(this.stateDir(), "sessions", safe(sessionId), safe(agentId)));
       },
       logsDir() {
-        return ensure(path.join(this.stateDir(), "logs"));
+        return ensure(path2.join(this.stateDir(), "logs"));
       },
       configPath() {
-        return path.join(this.stateDir(), "config.json");
+        return path2.join(this.stateDir(), "config.json");
       },
       config() {
         try {
-          const c = JSON.parse(readFileSync(this.configPath(), "utf8"));
+          const c = JSON.parse(readFileSync2(this.configPath(), "utf8"));
           return c && typeof c === "object" && !Array.isArray(c) ? c : {};
         } catch {
           return {};
         }
       },
       saveConfig(patch) {
-        const next = { ...this.config(), ...patch };
-        const tmp = this.configPath() + ".tmp";
-        writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
-        renameSync(tmp, this.configPath());
+        writeFileAtomic(this.configPath(), JSON.stringify({ ...this.config(), ...patch }, null, 2) + "\n");
       },
+      // the retrying rename: a reader holding config.json open on Windows makes a bare renameSync throw EPERM
       bankDir() {
-        return path.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path.join(os.homedir(), "knowledge-bank"));
+        return path2.normalize(process.env.OPTIMUS_BANK ?? this.config().bankDir ?? path2.join(os.homedir(), "knowledge-bank"));
       },
       projectKey(cwd) {
-        let dir = path.resolve(cwd);
+        const start = canonical(cwd);
+        let dir = start;
         for (let i = 0; i < 8; i++) {
-          const f = path.join(dir, ".kb.json");
-          if (existsSync(f)) {
+          const f = path2.join(dir, ".kb.json");
+          if (existsSync2(f)) {
             try {
-              const id = JSON.parse(readFileSync(f, "utf8")).project_id;
+              const id = JSON.parse(readFileSync2(f, "utf8")).project_id;
               if (typeof id === "string" && id) return id;
             } catch {
             }
           }
-          const up = path.dirname(dir);
+          const up = path2.dirname(dir);
           if (up === dir) break;
           dir = up;
         }
-        return createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16);
+        return createHash("sha256").update(start).digest("hex").slice(0, 16);
       },
       projectDir(key) {
-        return ensure(path.join(this.stateDir(), "projects", safe(key)));
+        return ensure(path2.join(this.stateDir(), "projects", safe(key)));
       },
       /** v1.5: the runnable kb command for text a session will execute. There is no `kb` on PATH unless the user aliased it (README), so
        *  briefs say `node <plugin>/dist/kb.js`: next to this bundle in dist/, or the plugin's dist/ when running from src/ under tsx. */
       kbCli() {
-        const here = path.dirname(fileURLToPath(import.meta.url));
-        for (const c of [path.join(here, "kb.js"), path.join(here, "..", "..", "dist", "kb.js")]) if (existsSync(c)) return `node "${path.normalize(c).split(path.sep).join("/")}"`;
+        const here = path2.dirname(fileURLToPath(import.meta.url));
+        for (const c of [path2.join(here, "kb.js"), path2.join(here, "..", "..", "dist", "kb.js")]) if (existsSync2(c)) return `node "${path2.normalize(c).split(path2.sep).join("/")}"`;
         return "kb";
       }
     };
@@ -101,10 +150,10 @@ var init_paths = __esm({
 
 // src/lib/log.ts
 import { appendFileSync } from "node:fs";
-import path2 from "node:path";
+import path3 from "node:path";
 function log(level, msg, data) {
   try {
-    appendFileSync(path2.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
+    appendFileSync(path3.join(paths.logsDir(), "hooks.log"), JSON.stringify({ t: (/* @__PURE__ */ new Date()).toISOString(), level, msg, data }) + "\n", "utf8");
   } catch {
   }
 }
@@ -161,47 +210,6 @@ function fitBrief(preamble, sections, limitChars = 9e3) {
 }
 var init_budget = __esm({
   "src/lib/budget.ts"() {
-    "use strict";
-  }
-});
-
-// src/lib/atomic.ts
-import { writeFileSync as writeFileSync2, readFileSync as readFileSync2, renameSync as renameSync2, realpathSync, existsSync as existsSync2, statSync, chmodSync, unlinkSync } from "node:fs";
-import path3 from "node:path";
-import { randomBytes } from "node:crypto";
-function readJson(filePath) {
-  try {
-    return JSON.parse(readFileSync2(filePath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-function writeFileAtomic(filePath, data) {
-  const dir = realpathSync(path3.dirname(filePath));
-  const target = path3.join(dir, path3.basename(filePath));
-  const tmp = path3.join(dir, `.${path3.basename(filePath)}.tmp-${process.pid}-${randomBytes(4).toString("hex")}`);
-  const mode = existsSync2(target) ? statSync(target).mode & 511 : void 0;
-  writeFileSync2(tmp, data, "utf8");
-  if (mode !== void 0) chmodSync(tmp, mode);
-  let lastErr;
-  for (let i = 0; i < 5; i++) {
-    try {
-      renameSync2(tmp, target);
-      return;
-    } catch (e) {
-      lastErr = e;
-      if (!["EPERM", "EBUSY", "ENOENT"].includes(e?.code)) break;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
-    }
-  }
-  try {
-    unlinkSync(tmp);
-  } catch {
-  }
-  throw lastErr;
-}
-var init_atomic = __esm({
-  "src/lib/atomic.ts"() {
     "use strict";
   }
 });
@@ -679,7 +687,7 @@ function findingsAboutIn(db, concepts, domain, unsure = false) {
   return own.length || !unsure ? own : findingsAbout(db, concepts);
 }
 function findingsByTitlePhrase(db, prompt, domain, limit = 3) {
-  const toks = prompt.toLowerCase().replace(/\S*\/\S+/g, " ").split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP2.has(t));
+  const toks = prompt.toLowerCase().replace(/\S*[\\/]\S+/g, " ").split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP2.has(t));
   const phrases = [...new Set(toks.slice(0, -1).map((t, i) => `${t} ${toks[i + 1]}`))].slice(0, 80);
   const q = db.sql.prepare(`SELECT n.id FROM note_fts f JOIN note n ON n.id=f.note_id WHERE note_fts MATCH ? AND ${LIVE_FINDING}${domain ? " AND n.domain=?" : ""} LIMIT ?`);
   const ids2 = [], hit = [];
@@ -956,7 +964,7 @@ function buildRecallBrief(db, cfg, prompt, state, today = /* @__PURE__ */ new Da
   if (!words.size) return null;
   const aliases = db.sql.prepare("SELECT a.name_norm, a.concept_id, n.title FROM alias a JOIN note n ON n.id=a.concept_id AND n.deleted_at IS NULL").all();
   const hits = aliases.filter((a) => a.name_norm && a.name_norm.split("-").every((t) => words.has(t)));
-  const prose = prompt.replace(/\S*\/\S+/g, " ");
+  const prose = prompt.replace(/\S*[\\/]\S+/g, " ");
   const projects = db.sql.prepare("SELECT DISTINCT project FROM note WHERE kind='finding' AND project IS NOT NULL AND deleted_at IS NULL").all().map((r) => r.project).filter((p) => p !== cfg.project_id && new RegExp(`\\b${escapeRe(p)}\\b`, "i").test(prose));
   const byTitle = findingsByTitlePhrase(db, prompt, cfg.domain);
   const names = [.../* @__PURE__ */ new Set([...hits.map((h) => h.title), ...projects, ...byTitle.phrases.map((p) => `"${p}"`)])];
@@ -988,7 +996,7 @@ var init_brief = __esm({
 });
 
 // src/kb/auto-register.ts
-import { existsSync as existsSync5, readdirSync, readFileSync as readFileSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync5, readdirSync, readFileSync as readFileSync5, writeFileSync as writeFileSync2 } from "node:fs";
 import os2 from "node:os";
 import path9 from "node:path";
 function loadLexicon(db) {
@@ -1081,13 +1089,13 @@ function settleFromPrompt(cwd, prompt, lex = DEFAULT_LEXICON) {
   if (guess.domain === previous) {
     if (cfg.auto.confidence === "low") {
       cfg.auto = { ...cfg.auto, confidence: "medium", reason: `confirmed by a prompt (${guess.reason})` };
-      writeFileSync3(file, JSON.stringify(cfg, null, 2) + "\n");
+      writeFileSync2(file, JSON.stringify(cfg, null, 2) + "\n");
     }
     return null;
   }
   cfg.domain = guess.domain;
   cfg.auto = { ...cfg.auto, confidence: "medium", reason: `a prompt mentions ${guess.reason}` };
-  writeFileSync3(file, JSON.stringify(cfg, null, 2) + "\n");
+  writeFileSync2(file, JSON.stringify(cfg, null, 2) + "\n");
   log("info", "domain settled from prompt", { file, previous, domain: guess.domain, reason: guess.reason });
   return { file, project_id: String(cfg.project_id ?? ""), domain: guess.domain, previous, reason: guess.reason };
 }
@@ -1098,7 +1106,7 @@ function needsDecision(cwd, prompt, lex = DEFAULT_LEXICON) {
   if (!cfg.auto || cfg.auto.confidence !== "low" || !cfg.domain || cfg.auto.decided) return null;
   if (tokensOf(prompt).length < MIN_DECISION_WORDS) return null;
   cfg.auto = { ...cfg.auto, decided: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) };
-  writeFileSync3(file, JSON.stringify(cfg, null, 2) + "\n");
+  writeFileSync2(file, JSON.stringify(cfg, null, 2) + "\n");
   log("info", "domain decision asked", { file, domain: cfg.domain });
   return { file, project_id: String(cfg.project_id ?? ""), domain: cfg.domain, known: knownDomains(lex) };
 }
@@ -1115,26 +1123,25 @@ function looksLikeProject(cwd) {
 }
 function autoRegister(cwd, home = os2.homedir(), lex = DEFAULT_LEXICON) {
   if (!cwd) return null;
-  const dir = path9.resolve(cwd);
+  const dir = canonical(cwd);
   if (!existsSync5(dir)) return null;
-  const rel = path9.relative(home, dir);
+  const rel = path9.relative(canonical(home), dir);
   if (!rel || rel === ".." || rel.startsWith(".." + path9.sep) || path9.isAbsolute(rel)) return null;
   if (rel.split(path9.sep).some((s) => s.startsWith(".") || SKIP_DIRS.has(s))) return null;
   if (["projects", "Desktop", "Documents", "Downloads", "src", "code", "work", "github"].includes(rel)) return null;
-  if (loadProjectConfig(dir)) return null;
+  if (kbJsonAbove(dir)) return null;
   if (!looksLikeProject(dir)) return null;
   const { domain, confidence, reason } = inferDomain(dir, lex);
   const project_id = path9.basename(dir).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
   const file = path9.join(dir, ".kb.json");
-  writeFileSync3(file, JSON.stringify({ project_id, domain, auto: { registered: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), confidence, reason } }, null, 2) + "\n");
+  writeFileSync2(file, JSON.stringify({ project_id, domain, auto: { registered: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), confidence, reason } }, null, 2) + "\n");
   log("info", "auto-registered project", { file, domain, confidence, reason });
   return { file, project_id, domain, confidence, reason };
 }
-var DEFAULT_LEXICON, knownDomains, tokensOf, SKIP_DIRS, MANIFESTS, read, settledLine, MIN_DECISION_WORDS, decisionLine, autoLine;
+var DEFAULT_LEXICON, knownDomains, tokensOf, SKIP_DIRS, MANIFESTS, read, settledLine, MIN_DECISION_WORDS, decisionLine, kbJsonAbove, autoLine;
 var init_auto_register = __esm({
   "src/kb/auto-register.ts"() {
     "use strict";
-    init_project();
     init_templates();
     init_log();
     init_paths();
@@ -1147,7 +1154,7 @@ var init_auto_register = __esm({
     };
     knownDomains = (lex = DEFAULT_LEXICON) => Object.keys(lex).sort((a, b) => a === "tooling" ? 1 : b === "tooling" ? -1 : a.localeCompare(b));
     tokensOf = (text) => text.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean);
-    SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "target", "dist", "build", ".next", "vendor", "Pods"]);
+    SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "target", "dist", "build", ".next", "vendor", "Pods", "AppData", "Library"]);
     MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "requirements.txt", "go.mod", "Package.swift", "pubspec.yaml", "Anchor.toml"];
     read = (p) => {
       try {
@@ -1159,6 +1166,16 @@ var init_auto_register = __esm({
     settledLine = (s) => `Project domain changed from \`${s.previous}\` to \`${s.domain}\` because this prompt mentions ${s.reason}; the brief below is for ${s.domain}. Say "this is a <domain> project" to override.`;
     MIN_DECISION_WORDS = 12;
     decisionLine = (d) => `This folder was filed under \`${d.domain}\` by a guess (low confidence) and this prompt did not settle it. Decide now from the prompt alone, and do not ask the user unless the work is plainly a new kind of project. (1) Ordinary software \u2014 scripts, sites, services, libraries, tools, docs \u2014 is \`tooling\`: leave it and say nothing. (2) If it is one of ${d.known.filter((k) => k !== "tooling").join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so; your next prompt's brief then carries that domain's findings, or call kb_brief({ project: "${d.project_id}" }) for them now. (3) Only if none of those describes the work (a console game, hardware, a research paper\u2026), propose a domain to the user with one AskUserQuestion \u2014 a short lowercase name, 4\u20136 facets (the axes an approach varies on; single snake_case words), 4\u20136 gates (the stages evidence passes through, weakest first) and 5\u201310 single-word keywords a prompt about such work contains \u2014 and on a yes run from this folder: ${paths.kbCli()} domain new <name> --facets a,b,c --gates g1,g2,g3 --keywords w1,w2,w3 --environment <where it runs> --subject <what it acts on>. It writes the template into the bank, installs it and files this folder under it.`;
+    kbJsonAbove = (dir) => {
+      let d = dir;
+      for (let i = 0; i < 8; i++) {
+        if (existsSync5(path9.join(d, ".kb.json"))) return true;
+        const up = path9.dirname(d);
+        if (up === d) break;
+        d = up;
+      }
+      return false;
+    };
     autoLine = (a, known = knownDomains()) => `This folder was registered in the knowledge bank automatically: project \`${a.project_id}\`, domain \`${a.domain}\` (${a.confidence} confidence: ${a.reason}).${a.confidence === "low" ? ` If the work turns out to be ${known.filter((d) => d !== a.domain).join(", ")}, run \`${paths.kbCli()} project init --domain <d>\` here and say so; the first prompt usually settles it on its own.` : ""} The file is \`.kb.json\`; commit it when you commit.`;
   }
 });
@@ -1716,8 +1733,8 @@ var init_drafts = __esm({
     init_atomic();
     MAX_DRAFTS = 8;
     norm = (s) => s.toLowerCase().replace(/[^a-z0-9%$.]+/g, " ").trim().slice(0, 100);
-    MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|years|bars)\b|\b(?:a year|per year|sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|correlation|compute units|cu)\b/i;
-    NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day|meanwhile|loading|waiting|in the background|(?:is|are|still) running)\b|^(?:I|we|say|still|then|next)\b|`|\?/i;
+    MEASURE_RE = /%|\$\d|[+−-]\d+\.\d+|\b\d+(?:\.\d+)?\s?(?:x|times|fold|ms|s|K|M|GB|MB|KB|tokens|bps|fills|trades|days|years|bars|tests|passes|failures|errors|warnings|files|lines|rows|runs|samples|requests)\b|\b[a-z]+_(?:ms|us|ns|s|secs?|bytes|kb|mb|gb|pct|bps|count)\b:?\s*\d|\b(?:a year|per year|sharpe|drawdown|win rate|pnl|p50|p90|p99|latency|throughput|hit rate|accuracy|error rate|correlation|compute units|cu)\b/i;
+    NARRATION_RE = /\b(?:I'll|I'm|I've|I'd|we'll|we're|let me|let's|pushed|committed|watcher|re-armed|next:|now|verifying|checking|looks (?:right|good|fine|correct)|one (?:\w+ )?(?:problem|issue)|you(?:r|'d|'re|'ll|'ve)?|today|yesterday|tomorrow|tonight|this (?:week|month|morning|afternoon)|on (?:mon|tues|wednes|thurs|fri|satur|sun)day|meanwhile|loading|waiting|in the background|(?:is|are|still) running)\b|^(?:I|we|say|still|then|next)\b|\?/i;
     isClaim = (line) => MEASURE_RE.test(line) && !NARRATION_RE.test(line);
     shortTitle = (s) => s.length <= 120 ? s : s.slice(0, 120).replace(/\s+\S*$/, "") + "\u2026";
     draftsFile = (projectKey) => path17.join(paths.projectDir(projectKey), "draft-findings.json");
@@ -1788,10 +1805,16 @@ function lastPromptIndex(entries) {
   return 0;
 }
 function withLastMessage(entries, last) {
-  if (typeof last !== "string" || !last.trim()) return entries;
-  const prev = [...entries].reverse().find((e) => e.type === "assistant" && textOf(e));
-  if (prev && textOf(prev) === last.trim()) return entries;
+  if (typeof last !== "string" || !last.trim() || hasLast(entries, last)) return entries;
   return [...entries, { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: last }] } }];
+}
+async function entriesWithLastMessage(tp, last) {
+  let entries = readTranscript(tp, 0).entries;
+  if (typeof last === "string" && last.trim()) for (let i = 0; i < 5 && !hasLast(entries, last); i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    entries = readTranscript(tp, 0).entries;
+  }
+  return withLastMessage(entries, last);
 }
 async function stop(input) {
   if (input.agent_id) return void 0;
@@ -1799,7 +1822,7 @@ async function stop(input) {
   const cwd = String(input.cwd ?? "");
   const tp = String(input.transcript_path ?? "");
   const at = (/* @__PURE__ */ new Date()).toISOString();
-  const entries = tp && existsSync10(tp) ? withLastMessage(readTranscript(tp, 0).entries, input.last_assistant_message) : [];
+  const entries = tp && existsSync10(tp) ? await entriesWithLastMessage(tp, input.last_assistant_message) : [];
   let cfg = null, ask = [];
   if (entries.length) {
     const taskState = JSON.parse(JSON.stringify(extractTaskState(entries, recallPointers(loadState(sessionId))), redactJson));
@@ -1812,6 +1835,7 @@ async function stop(input) {
       const fresh = spec.records.filter((r) => !known.has(draftKey(r.title)));
       drafts = writeDrafts(key, spec);
       if (fresh.length && !input.stop_hook_active && !wroteFindings(turn)) ask = fresh.slice(0, MAX_ASK);
+      log("info", "stop: turn judged", { project: cfg.project_id, candidates: fresh.length, asked: ask.length > 0, wrote: wroteFindings(turn), continued: !!input.stop_hook_active });
     }
     const last = { at, sessionId, cwd, taskState, ...drafts ? { drafts } : {} };
     writeFileAtomic(path18.join(paths.projectDir(paths.projectKey(cwd)), "last-session.json"), JSON.stringify(last) + "\n");
@@ -1825,7 +1849,7 @@ async function stop(input) {
   }
   return void 0;
 }
-var MAX_ASK, wroteFindings, askText, handler9;
+var MAX_ASK, hasLast, wroteFindings, askText, handler9;
 var init_stop = __esm({
   "src/hooks/stop.ts"() {
     "use strict";
@@ -1840,6 +1864,10 @@ var init_stop = __esm({
     init_drafts();
     init_project();
     MAX_ASK = 8;
+    hasLast = (entries, last) => {
+      const prev = [...entries].reverse().find((e) => e.type === "assistant" && textOf(e));
+      return !!prev && textOf(prev) === last.trim();
+    };
     wroteFindings = (turn) => turn.some((e) => e.type === "assistant" && Array.isArray(e.message?.content) && e.message.content.some((b) => b?.type === "tool_use" && /kb_write$/.test(String(b.name ?? ""))));
     askText = (cfg, ask) => [
       `Optimus: before finishing, record what this turn established. For each candidate below that is a durable, reusable result (a measurement, the cause of a failure, a limit that was hit), call kb_write({ kind: "finding", title: "<one claim with the number>", domain: "${cfg.domain}", project: "${cfg.project_id}", tags: ["<2-3 concept words a future prompt would use>"], attrs: { state: "observed" }, evidence: [{ kind: "path", ref: "<file>" }] }). Skip narration, definitions, dated prices and advice. Then finish; this request is not repeated for these statements.`,
