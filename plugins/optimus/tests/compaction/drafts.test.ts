@@ -141,3 +141,11 @@ test('drafts v1.5: progress reports about work in flight are narration', async (
   assert.equal(isClaim('Still running after 20 minutes; waiting for the last 3 processes'), false);
   assert.equal(isClaim('Full tick replay of 500 days took 41 minutes on 8 processes'), true);
 });
+
+test('drafts (Windows live session, 2026-10-24): a command name in backticks is not narration; counts and unit-named metrics are measurements', async () => {
+  const { isClaim } = await import('../../src/compaction/drafts.js');
+  assert.equal(isClaim('The `npm test` run on this Windows machine finished with 136 tests, 136 passes, 0 failures and duration_ms 25157.4781'), true);
+  assert.equal(isClaim('`kb init --clone` rebuilt the index from the clone in 41 s on this machine'), true);
+  assert.equal(isClaim('All in, pushed as 36c6b30, 107 of 107 tests'), false); // "pushed" is still narration
+  assert.equal(isClaim('I ran `npm test` twice and got 136 of 136 both times'), false); // a person\'s action is still narration
+});
